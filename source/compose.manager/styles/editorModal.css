@@ -67,10 +67,10 @@
 .editor-btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.95rem; }
 .editor-btn-cancel { background-color: var(--alt-background-color, #3a3a3a); color: var(--text-color, #ccc); }
 .editor-btn-cancel:hover { background-color: var(--border-color, #4a4a4a); }
-.editor-btn-save { background: var(--button-background, linear-gradient(90deg,#e22828,#ff8c2f)); color: #fff; }
-.editor-btn-save:disabled { background: var(--disabled-input-background-color, #5a5a5a); color: var(--disabled-text-color, #888); cursor: not-allowed; }
 .editor-btn-save-all { background-color: #4caf50; color: #fff; }
 .editor-btn-save-all:hover { background-color: #5cbf60; }
+.editor-btn-save-all:disabled { background: var(--disabled-input-background-color, #5a5a5a); color: var(--disabled-text-color, #888); cursor: not-allowed; }
+.editor-btn-save-all:disabled:hover { background-color: var(--disabled-input-background-color, #5a5a5a); }
 
 .editor-shortcuts { color: var(--alt-text-color, #666); font-size: 0.8rem; }
 .editor-shortcuts kbd { background-color: var(--alt-background-color, #3a3a3a); padding: 2px 6px; border-radius: 3px; font-family: monospace; }
