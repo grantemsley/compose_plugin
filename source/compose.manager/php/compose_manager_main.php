@@ -584,9 +584,9 @@ function loadEditorFiles(project) {
 }
 
 function switchEditorTab(tabName) {
-  // Update tab buttons
-  $('.editor-tab').removeClass('active');
-  $('#editor-tab-' + tabName).addClass('active');
+  // Update tab buttons and ARIA states
+  $('.editor-tab').removeClass('active').attr('aria-selected', 'false');
+  $('#editor-tab-' + tabName).addClass('active').attr('aria-selected', 'true');
   
   // Update editor containers
   $('.editor-container').removeClass('active');
@@ -1060,29 +1060,29 @@ function ComposeLogs(myID) {
 <BODY>
 
 <!-- Editor Modal -->
-<div id="editor-modal-overlay" class="editor-modal-overlay">
+<div id="editor-modal-overlay" class="editor-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="editor-modal-title">
   <div class="editor-modal">
     <!-- Modal Header -->
     <div class="editor-modal-header">
       <h2 class="editor-modal-title" id="editor-modal-title">Edit Stack</h2>
-      <button class="editor-modal-close" onclick="closeEditorModal()">
+      <button class="editor-modal-close" onclick="closeEditorModal()" aria-label="Close editor modal">
         <i class="fa fa-times"></i>
       </button>
     </div>
     
     <!-- Tab Bar -->
-    <div class="editor-tabs">
-      <button class="editor-tab active" id="editor-tab-compose" onclick="switchEditorTab('compose')">
+    <div class="editor-tabs" role="tablist">
+      <button class="editor-tab active" id="editor-tab-compose" onclick="switchEditorTab('compose')" role="tab" aria-selected="true" aria-controls="editor-container-compose">
         <i class="fa fa-file-code-o"></i>
         docker-compose.yml
         <span class="editor-tab-modified"></span>
       </button>
-      <button class="editor-tab" id="editor-tab-env" onclick="switchEditorTab('env')">
+      <button class="editor-tab" id="editor-tab-env" onclick="switchEditorTab('env')" role="tab" aria-selected="false" aria-controls="editor-container-env">
         <i class="fa fa-cog"></i>
         .env
         <span class="editor-tab-modified"></span>
       </button>
-      <button class="editor-tab" id="editor-tab-override" onclick="switchEditorTab('override')">
+      <button class="editor-tab" id="editor-tab-override" onclick="switchEditorTab('override')" role="tab" aria-selected="false" aria-controls="editor-container-override">
         <i class="fa fa-files-o"></i>
         docker-compose.override.yml
         <span class="editor-tab-modified"></span>
@@ -1092,17 +1092,17 @@ function ComposeLogs(myID) {
     <!-- Editor Body -->
     <div class="editor-modal-body">
       <!-- Compose Editor -->
-      <div class="editor-container active" id="editor-container-compose">
+      <div class="editor-container active" id="editor-container-compose" role="tabpanel" aria-labelledby="editor-tab-compose">
         <div id="editor-compose" style="width: 100%; height: 100%;"></div>
       </div>
       
       <!-- ENV Editor -->
-      <div class="editor-container" id="editor-container-env">
+      <div class="editor-container" id="editor-container-env" role="tabpanel" aria-labelledby="editor-tab-env">
         <div id="editor-env" style="width: 100%; height: 100%;"></div>
       </div>
       
       <!-- Override Editor -->
-      <div class="editor-container" id="editor-container-override">
+      <div class="editor-container" id="editor-container-override" role="tabpanel" aria-labelledby="editor-tab-override">
         <div id="editor-override" style="width: 100%; height: 100%;"></div>
       </div>
     </div>
