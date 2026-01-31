@@ -267,8 +267,8 @@ function initEditorModal() {
     editorModal.editors[type] = editor;
   });
   
-  // Keyboard shortcuts
-  $(document).on('keydown', function(e) {
+  // Keyboard shortcuts - use namespaced event to avoid duplicates
+  $(document).off('keydown.editorModal').on('keydown.editorModal', function(e) {
     if ($('#editor-modal-overlay').hasClass('active')) {
       // Ctrl+S or Cmd+S to save current
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
