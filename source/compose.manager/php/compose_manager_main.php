@@ -631,7 +631,10 @@ function updateValidation(type, content, isValid, errorMsg) {
     validationEl.html('<i class="fa fa-check editor-validation-icon"></i> YAML syntax is valid');
     validationEl.removeClass('error warning').addClass('valid');
   } else {
-    validationEl.html('<i class="fa fa-times editor-validation-icon"></i> YAML Error: ' + errorMsg);
+    // Truncate error message to first line for cleaner display
+    var shortError = errorMsg.split('\n')[0].substring(0, 100);
+    if (errorMsg.length > 100) shortError += '...';
+    validationEl.html('<i class="fa fa-times editor-validation-icon"></i> YAML Error: ' + shortError);
     validationEl.removeClass('valid warning').addClass('error');
   }
 }
