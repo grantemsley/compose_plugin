@@ -634,7 +634,10 @@ function updateValidation(type, content, isValid, errorMsg) {
     // Truncate error message to first line for cleaner display
     var shortError = errorMsg.split('\n')[0].substring(0, 100);
     if (errorMsg.length > 100) shortError += '...';
-    validationEl.html('<i class="fa fa-times editor-validation-icon"></i> YAML Error: ' + shortError);
+    // Use text node to prevent XSS from malicious YAML content
+    validationEl.empty()
+      .append('<i class="fa fa-times editor-validation-icon"></i> YAML Error: ')
+      .append(document.createTextNode(shortError));
     validationEl.removeClass('valid warning').addClass('error');
   }
 }
