@@ -160,6 +160,7 @@ const webui_label = <?php echo json_encode($docker_label_webui); ?>;
 const shell_label = <?php echo json_encode($docker_label_shell); ?>;
 
 $('head').append( $('<link rel="stylesheet" type="text/css" />').attr('href', '<?autov("/plugins/compose.manager/styles/comboButton.css");?>') );
+$('head').append( $('<link rel="stylesheet" type="text/css" />').attr('href', '<?autov("/plugins/compose.manager/styles/editorModal.css");?>') );
 
 if (typeof swal2 === "undefined") {
     $('head').append( $('<link rel="stylesheet" type="text/css" />').attr('href', '<?autov("/plugins/compose.manager/styles/sweetalert2.css");?>') );
@@ -174,11 +175,106 @@ function dirname( path ) {
   return path.replace( /\\/g, '/' ).replace( /\/[^\/]*$/, '' );
 }
 
+// Editor modal state
+var editorModal = {
+  editors: {},
+  currentTab: null,
+  originalContent: {},
+  modifiedTabs: new Set(),
+  currentProject: null
+};
+
+// Calculate unRAID header offset dynamically
+function updateModalOffset() {
+  var headerOffset = 0;
+  var header = document.getElementById('header');
+  var menu = document.getElementById('menu');
+  var tabs = document.querySelector('div.tabs');
+  
+  if (header) {
+    headerOffset += header.offsetHeight;
+  }
+  if (menu) {
+    headerOffset += menu.offsetHeight;
+  }
+  if (tabs) {
+    headerOffset += tabs.offsetHeight;
+  }
+  
+  // Add a small buffer
+  headerOffset += 10;
+  
+  // Set CSS custom property
+  document.documentElement.style.setProperty('--unraid-header-offset', headerOffset + 'px');
+  var overlay = document.getElementById('editor-modal-overlay');
+  if (overlay) {
+    overlay.style.setProperty('--unraid-header-offset', headerOffset + 'px');
+  }
+}
+
 $(function() {
-  var editor = ace.edit("itemEditor");
-  editor.setTheme(aceTheme);
-  editor.setShowPrintMargin(false);
+  updateModalOffset();
+  $(window).on('resize', updateModalOffset);
+  initEditorModal();
 })
+
+function initEditorModal() {
+  // Initialize Ace editors for each tab
+  ['compose', 'env', 'override'].forEach(function(type) {
+    var editor = ace.edit('editor-' + type);
+    editor.setTheme(aceTheme);
+    editor.setShowPrintMargin(false);
+    editor.setOptions({
+      fontSize: '14px',
+      tabSize: 2,
+      useSoftTabs: true,
+      wrap: true
+    });
+    
+    // Set mode based on type
+    if (type === 'env') {
+      editor.getSession().setMode('ace/mode/sh');
+    } else {
+      editor.getSession().setMode('ace/mode/yaml');
+    }
+    
+    // Track modifications
+    editor.on('change', function() {
+      var currentContent = editor.getValue();
+      var originalContent = editorModal.originalContent[type] || '';
+      var tabEl = $('#editor-tab-' + type);
+      
+      if (currentContent !== originalContent) {
+        editorModal.modifiedTabs.add(type);
+        tabEl.addClass('modified');
+      } else {
+        editorModal.modifiedTabs.delete(type);
+        tabEl.removeClass('modified');
+      }
+      
+      updateSaveButtonState();
+      validateYaml(type, currentContent);
+    });
+    
+    editorModal.editors[type] = editor;
+  });
+  
+  // Keyboard shortcuts
+  $(document).on('keydown', function(e) {
+    if ($('#editor-modal-overlay').hasClass('active')) {
+      // Ctrl+S or Cmd+S to save current
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        saveCurrentTab();
+      }
+      // Escape to close
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeEditorModal();
+      }
+    }
+  });
+}
 
 $(function() {
 	$(".tipsterallowed").show();
@@ -374,24 +470,20 @@ function applyDesc(myID) {
 function editStack(myID) {
   var buttonsList = {};
 
-  buttonsList["compose_file"] = { text: "Compose File" };
-  buttonsList["env_file"] = { text: "ENV File" };
+  buttonsList["edit_files"] = { text: "Edit Files" };
   buttonsList["override_file"] = { text: "UI Labels" };
   buttonsList["stack_settings"] = { text: "Stack Settings" };
 
   buttonsList["Cancel"] = { text: "Cancel", value: null, };
   swal2({
-    title: "Select Stack File to Edit",
+    title: "Select Action",
     className: 'edit-stack-form',
     buttons: buttonsList,
   }).then((result) => {
     if (result) {
       switch(result) {
-        case 'compose_file':
-          editComposeFile(myID);
-          break;
-        case 'env_file':
-          editEnv(myID);
+        case 'edit_files':
+          openEditorModal(myID);
           break;
         case 'override_file':
           generateOverride(myID);
@@ -404,6 +496,236 @@ function editStack(myID) {
       }
     }
   });
+}
+
+// New Editor Modal Functions
+function openEditorModal(myID) {
+  $("#"+myID).tooltipster("close");
+  var project = $("#"+myID).attr("data-scriptname");
+  var projectName = $("#"+myID).attr("data-namename");
+  
+  editorModal.currentProject = project;
+  editorModal.modifiedTabs = new Set();
+  editorModal.originalContent = {};
+  
+  // Reset all tabs to unmodified state
+  $('.editor-tab').removeClass('modified active');
+  $('.editor-container').removeClass('active');
+  
+  // Set modal title
+  $('#editor-modal-title').text('Editing: ' + projectName);
+  $('#editor-file-info').text(compose_root + '/' + project);
+  
+  // Show loading state
+  $('#editor-modal-overlay').addClass('active');
+  $('#editor-validation').html('<i class="fa fa-spinner fa-spin editor-validation-icon"></i> Loading files...').removeClass('valid error warning');
+  
+  // Load all files
+  loadEditorFiles(project);
+}
+
+function loadEditorFiles(project) {
+  var loadPromises = [];
+  
+  // Load compose file
+  loadPromises.push(
+    $.post(caURL, {action:'getYml', script:project}).then(function(data) {
+      if (data) {
+        var response = jQuery.parseJSON(data);
+        editorModal.originalContent['compose'] = response.content || '';
+        editorModal.editors['compose'].setValue(response.content || '', -1);
+      }
+    })
+  );
+  
+  // Load env file
+  loadPromises.push(
+    $.post(caURL, {action:'getEnv', script:project}).then(function(data) {
+      if (data) {
+        var response = jQuery.parseJSON(data);
+        editorModal.originalContent['env'] = response.content || '';
+        editorModal.editors['env'].setValue(response.content || '', -1);
+      }
+    })
+  );
+  
+  // Load override file
+  loadPromises.push(
+    $.post(caURL, {action:'getOverride', script:project}).then(function(data) {
+      if (data) {
+        var response = jQuery.parseJSON(data);
+        editorModal.originalContent['override'] = response.content || '';
+        editorModal.editors['override'].setValue(response.content || '', -1);
+      }
+    })
+  );
+  
+  // When all files are loaded
+  $.when.apply($, loadPromises).then(function() {
+    // Activate the compose tab by default
+    switchEditorTab('compose');
+    // Run validation on the initial content
+    validateYaml('compose', editorModal.editors['compose'].getValue());
+  });
+}
+
+function switchEditorTab(tabName) {
+  // Update tab buttons
+  $('.editor-tab').removeClass('active');
+  $('#editor-tab-' + tabName).addClass('active');
+  
+  // Update editor containers
+  $('.editor-container').removeClass('active');
+  $('#editor-container-' + tabName).addClass('active');
+  
+  // Focus and resize the editor
+  editorModal.editors[tabName].focus();
+  editorModal.editors[tabName].resize();
+  
+  editorModal.currentTab = tabName;
+  
+  // Update validation for current tab
+  validateYaml(tabName, editorModal.editors[tabName].getValue());
+}
+
+function validateYaml(type, content) {
+  if (type === 'env') {
+    // Basic validation for env files
+    updateValidation(type, content);
+    return;
+  }
+  
+  try {
+    if (content.trim()) {
+      jsyaml.load(content);
+    }
+    updateValidation(type, content, true);
+  } catch (e) {
+    updateValidation(type, content, false, e.message);
+  }
+}
+
+function updateValidation(type, content, isValid, errorMsg) {
+  var validationEl = $('#editor-validation');
+  
+  // Handle env files separately (no YAML validation needed)
+  if (type === 'env') {
+    var lines = content.split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
+    validationEl.html('<i class="fa fa-info-circle editor-validation-icon"></i> ' + lines.length + ' environment variable(s)');
+    validationEl.removeClass('error warning').addClass('valid');
+    return;
+  }
+  
+  // If isValid is undefined, run actual YAML validation
+  if (isValid === undefined) {
+    validateYaml(type, content);
+    return;
+  }
+  
+  if (isValid) {
+    validationEl.html('<i class="fa fa-check editor-validation-icon"></i> YAML syntax is valid');
+    validationEl.removeClass('error warning').addClass('valid');
+  } else {
+    validationEl.html('<i class="fa fa-times editor-validation-icon"></i> YAML Error: ' + errorMsg);
+    validationEl.removeClass('valid warning').addClass('error');
+  }
+}
+
+function updateSaveButtonState() {
+  var hasChanges = editorModal.modifiedTabs.size > 0;
+  $('#editor-btn-save-all').prop('disabled', !hasChanges);
+  
+  if (hasChanges) {
+    $('#editor-btn-save-all').text('Save All (' + editorModal.modifiedTabs.size + ')');
+  } else {
+    $('#editor-btn-save-all').text('Save All');
+  }
+}
+
+function saveCurrentTab() {
+  var currentTab = editorModal.currentTab;
+  if (!currentTab || !editorModal.modifiedTabs.has(currentTab)) return;
+  
+  saveTab(currentTab);
+}
+
+function saveTab(tabName) {
+  var content = editorModal.editors[tabName].getValue();
+  var project = editorModal.currentProject;
+  var actionStr = null;
+  
+  switch(tabName) {
+    case 'compose':
+      actionStr = 'saveYml';
+      break;
+    case 'env':
+      actionStr = 'saveEnv';
+      break;
+    case 'override':
+      actionStr = 'saveOverride';
+      break;
+    default:
+      return Promise.reject('Unknown tab');
+  }
+  
+  return $.post(caURL, {action:actionStr, script:project, scriptContents:content}).then(function(data) {
+    if (data) {
+      editorModal.originalContent[tabName] = content;
+      editorModal.modifiedTabs.delete(tabName);
+      $('#editor-tab-' + tabName).removeClass('modified');
+      updateSaveButtonState();
+      
+      // Regenerate profiles if compose file was saved
+      if (tabName === 'compose') {
+        generateProfiles(null, project);
+      }
+      
+      return true;
+    }
+    return false;
+  });
+}
+
+function saveAllTabs() {
+  var savePromises = [];
+  
+  editorModal.modifiedTabs.forEach(function(tabName) {
+    savePromises.push(saveTab(tabName));
+  });
+  
+  $.when.apply($, savePromises).then(function() {
+    swal2({
+      title: "Saved!",
+      text: "All changes have been saved.",
+      icon: "success",
+      timer: 1500,
+      buttons: false
+    });
+  });
+}
+
+function closeEditorModal() {
+  if (editorModal.modifiedTabs.size > 0) {
+    swal2({
+      title: "Unsaved Changes",
+      text: "You have unsaved changes. Are you sure you want to close?",
+      icon: "warning",
+      buttons: ["Cancel", "Discard Changes"],
+      dangerMode: true,
+    }).then((willClose) => {
+      if (willClose) {
+        doCloseEditorModal();
+      }
+    });
+  } else {
+    doCloseEditorModal();
+  }
+}
+
+function doCloseEditorModal() {
+  $('#editor-modal-overlay').removeClass('active');
+  editorModal.currentProject = null;
+  editorModal.modifiedTabs = new Set();
 }
 
 function build_override_input_table( id, value, label, placeholder, disable=false) {
@@ -774,13 +1096,73 @@ function ComposeLogs(myID) {
 </HEAD>
 <BODY>
 
-<div class='editing' style="margin-bottom:34px;" hidden>
-<!-- <center><b>Editing <?=$compose_root?>/<span id='editStackName'></span>/<span id='editStackFileName'></span></b><br> -->
-<center><b>Editing <span id='editorFileName' data-stackname="" data-stackfilename=""></span></b><br>
-<input type='button' value='Cancel' onclick='cancelEdit();'><input type='button' onclick='saveEdit();' value='Save Changes'><br>
-<!-- <textarea class='editing' id='editStack' style='width:90%; height:500px; border-color:red; font-family:monospace;' ></textarea> -->
-<div id='itemEditor' style='width:90%; height:500px; position: relative;'></div>
-</center>
+<!-- Editor Modal -->
+<div id="editor-modal-overlay" class="editor-modal-overlay">
+  <div class="editor-modal">
+    <!-- Modal Header -->
+    <div class="editor-modal-header">
+      <h2 class="editor-modal-title" id="editor-modal-title">Edit Stack</h2>
+      <button class="editor-modal-close" onclick="closeEditorModal()">
+        <i class="fa fa-times"></i>
+      </button>
+    </div>
+    
+    <!-- Tab Bar -->
+    <div class="editor-tabs">
+      <button class="editor-tab active" id="editor-tab-compose" onclick="switchEditorTab('compose')">
+        <i class="fa fa-file-code-o"></i>
+        docker-compose.yml
+        <span class="editor-tab-modified"></span>
+      </button>
+      <button class="editor-tab" id="editor-tab-env" onclick="switchEditorTab('env')">
+        <i class="fa fa-cog"></i>
+        .env
+        <span class="editor-tab-modified"></span>
+      </button>
+      <button class="editor-tab" id="editor-tab-override" onclick="switchEditorTab('override')">
+        <i class="fa fa-files-o"></i>
+        docker-compose.override.yml
+        <span class="editor-tab-modified"></span>
+      </button>
+    </div>
+    
+    <!-- Editor Body -->
+    <div class="editor-modal-body">
+      <!-- Compose Editor -->
+      <div class="editor-container active" id="editor-container-compose">
+        <div id="editor-compose" style="width: 100%; height: 100%;"></div>
+      </div>
+      
+      <!-- ENV Editor -->
+      <div class="editor-container" id="editor-container-env">
+        <div id="editor-env" style="width: 100%; height: 100%;"></div>
+      </div>
+      
+      <!-- Override Editor -->
+      <div class="editor-container" id="editor-container-override">
+        <div id="editor-override" style="width: 100%; height: 100%;"></div>
+      </div>
+    </div>
+    
+    <!-- Validation Panel -->
+    <div class="editor-validation" id="editor-validation">
+      <i class="fa fa-check editor-validation-icon"></i> Ready
+    </div>
+    
+    <!-- Modal Footer -->
+    <div class="editor-modal-footer">
+      <div class="editor-footer-left">
+        <span class="editor-file-info" id="editor-file-info"></span>
+        <span class="editor-shortcuts">
+          <kbd>Ctrl+S</kbd> Save &nbsp; <kbd>Esc</kbd> Close
+        </span>
+      </div>
+      <div class="editor-footer-right">
+        <button class="editor-btn editor-btn-cancel" onclick="closeEditorModal()">Cancel</button>
+        <button class="editor-btn editor-btn-save-all" id="editor-btn-save-all" onclick="saveAllTabs()" disabled>Save All</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <span class='tipsterallowed' hidden></span>
