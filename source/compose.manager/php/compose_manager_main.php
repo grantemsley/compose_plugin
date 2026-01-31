@@ -212,11 +212,8 @@ function updateModalOffset() {
   }
 }
 
-$(function() {
-  updateModalOffset();
-  $(window).on('resize', updateModalOffset);
-  initEditorModal();
-})
+// Editor modal will be initialized when document is fully ready
+// (deferred to ensure DOM elements exist)
 
 function initEditorModal() {
   // Initialize Ace editors for each tab
@@ -535,6 +532,8 @@ function loadEditorFiles(project) {
         editorModal.originalContent['compose'] = response.content || '';
         editorModal.editors['compose'].setValue(response.content || '', -1);
       }
+    }).fail(function() {
+      editorModal.editors['compose'].setValue('# Error loading file', -1);
     })
   );
   
@@ -546,6 +545,8 @@ function loadEditorFiles(project) {
         editorModal.originalContent['env'] = response.content || '';
         editorModal.editors['env'].setValue(response.content || '', -1);
       }
+    }).fail(function() {
+      editorModal.editors['env'].setValue('# Error loading file', -1);
     })
   );
   
@@ -557,6 +558,8 @@ function loadEditorFiles(project) {
         editorModal.originalContent['override'] = response.content || '';
         editorModal.editors['override'].setValue(response.content || '', -1);
       }
+    }).fail(function() {
+      editorModal.editors['override'].setValue('# Error loading file', -1);
     })
   );
   
@@ -566,6 +569,8 @@ function loadEditorFiles(project) {
     switchEditorTab('compose');
     // Run validation on the initial content
     validateYaml('compose', editorModal.editors['compose'].getValue());
+  }).fail(function() {
+    $('#editor-validation').html('<i class="fa fa-exclamation-triangle editor-validation-icon"></i> Error loading some files').removeClass('valid').addClass('error');
   });
 }
 
@@ -675,8 +680,9 @@ function saveTab(tabName) {
       $('#editor-tab-' + tabName).removeClass('modified');
       updateSaveButtonState();
       
-      // Regenerate profiles if compose file was saved
+      // Regenerate override and profiles if compose file was saved
       if (tabName === 'compose') {
+        generateOverride(null, project);
         generateProfiles(null, project);
       }
       
@@ -905,84 +911,6 @@ function generateProfiles(myID, myProject=null) {
   });
 }
 
-function editComposeFile(myID) {
-  var origID = myID;
-  $("#"+myID).tooltipster("close");
-  var project = $("#"+myID).attr("data-scriptname");
-  $.post(caURL,{action:'getYml',script:project},function(data) {
-    if (data) {
-      var response = jQuery.parseJSON(data);
-      var editor = ace.edit("itemEditor");
-      editor.getSession().setValue(response.content);
-      editor.getSession().setMode("ace/mode/yaml");
-      editor.getSession().setOptions({ tabSize: 2, useSoftTabs: true });
-
-      $('#editorFileName').data("stackname", project);
-      $('#editorFileName').data("stackfilename", "docker-compose.yml")
-      $('#editorFileName').html(response.fileName)
-      $(".editing").show();
-			window.scrollTo(0, 0);
-    }
-  });
-}
-
-function editEnv(myID) {
-  var origID = myID;
-  $("#"+myID).tooltipster("close");
-  var project = $("#"+myID).attr("data-scriptname");
-  $.post(caURL,{action:'getEnv',script:project},function(data) {
-    if (data) {
-      var response = jQuery.parseJSON(data);
-      var editor = ace.edit("itemEditor");
-      editor.getSession().setValue(response.content);
-      editor.getSession().setMode("ace/mode/sh");
-
-      $('#editorFileName').data("stackname", project);
-      $('#editorFileName').data("stackfilename", ".env")
-      $('#editorFileName').html(response.fileName)
-      $(".editing").show();
-			window.scrollTo(0, 0);
-    }
-  });
-}
-
-function cancelEdit() {
-  $(".editing").hide();
-}
-
-function saveEdit() {
-  var project = $("#editorFileName").data("stackname");
-  var fileName = $("#editorFileName").data("stackfilename");
-  var editor = ace.edit("itemEditor");
-  var scriptContents = editor.getValue();
-  var actionStr = null
-
-  switch(fileName) {
-    case 'docker-compose.yml':
-      actionStr = 'saveYml'
-      break;
-
-    case '.env':
-      actionStr = 'saveEnv'
-      break;
-
-    default:
-      $(".editing").hide();
-      return;
-  }
-
-  $.post(caURL,{action:actionStr,script:project,scriptContents:scriptContents},function(data) {
-    if (data) {
-      $(".editing").hide();
-      if (actionStr == 'saveYml') {
-        generateOverride(null,project);
-        generateProfiles(null,project);
-      }
-    }
-  });
-
-}
-
 function editStackSettings(myID) {
   var project = $("#"+myID).attr("data-scriptname");
 
@@ -1172,5 +1100,13 @@ function ComposeLogs(myID) {
 </table>
 <span class='tipsterallowed' hidden><input type='button' value='Add New Stack' onclick='addStack();'><span><br>
 
+<script>
+// Initialize editor modal after DOM is fully loaded
+$(function() {
+  updateModalOffset();
+  $(window).on('resize', updateModalOffset);
+  initEditorModal();
+});
+</script>
 </BODY>
 </HTML>
