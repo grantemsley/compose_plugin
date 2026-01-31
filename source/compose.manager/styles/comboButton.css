@@ -49,3 +49,174 @@
   .combo-btn-subgroup {
     display: inline;
   }
+
+/* ============================================
+   Minimal Custom Styles for Compose Manager
+   Most styling uses Unraid's native CSS classes
+   ============================================ */
+
+/* Expand icon rotation animation */
+.expand-icon {
+  transition: transform 0.2s ease;
+}
+
+.expand-icon.expanded {
+  transform: rotate(90deg);
+}
+
+/* Stack Actions Modal (context menu) */
+.stack-actions-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9998;
+}
+
+.stack-actions-modal {
+  position: fixed;
+  z-index: 9999;
+  background-color: #1c1c1c;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  min-width: 200px;
+  max-width: 280px;
+}
+
+.stack-actions-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.stack-actions-modal-title {
+  font-weight: bold;
+  color: #ff8c2f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stack-actions-modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #888;
+  padding: 4px;
+  line-height: 1;
+}
+
+.stack-actions-modal-close:hover {
+  color: #f44336;
+}
+
+.stack-actions-modal-body {
+  padding: 8px 0;
+}
+
+.stack-action-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #ccc;
+  text-align: left;
+  transition: background-color 0.15s ease;
+}
+
+.stack-action-item:hover {
+  background-color: rgba(255, 140, 47, 0.1);
+}
+
+.stack-action-item i {
+  width: 16px;
+  text-align: center;
+  color: #888;
+}
+
+.stack-action-item:hover i {
+  color: #ff8c2f;
+}
+
+.stack-action-item.stack-action-danger {
+  color: #f44336;
+}
+
+.stack-action-item.stack-action-danger i {
+  color: #f44336;
+}
+
+.stack-action-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.stack-actions-divider {
+  height: 1px;
+  background-color: #3a3a3a;
+  margin: 8px 0;
+}
+
+/* Loading/error/empty states */
+.stack-details-loading,
+.stack-details-error,
+.stack-details-empty {
+  padding: 20px;
+  text-align: center;
+  color: #888;
+}
+
+.stack-details-error {
+  color: #f44336;
+}
+
+/* SweetAlert2 button customizations */
+.swal-stack-name {
+  color: #ff8c2f;
+}
+
+.swal-btn-danger {
+  background-color: #f44336 !important;
+}
+
+.swal-btn-warning {
+  background-color: #ff8c2f !important;
+}
+
+.swal-btn-cancel {
+  background-color: #3a3a3a !important;
+  color: #ccc !important;
+}
+
+/* Alternating row colors for compose stacks table */
+/* The hidden details rows throw off nth-child, so we target sortable rows explicitly */
+#compose_stacks tbody tr.sortable:nth-of-type(4n+1) {
+  background-color: var(--dynamix-tablesorter-tbody-row-alt-bg-color, rgba(0,0,0,0.05));
+}
+
+#compose_stacks tbody tr.sortable:nth-of-type(4n+3) {
+  background-color: transparent;
+}
+
+/* Details row background */
+#compose_stacks tbody tr.stack-details-row {
+  background-color: rgba(0,0,0,0.08) !important;
+}
+
+/* Update column links - ensure pointer cursor */
+.updatecolumn a,
+.updatecolumn a.exec {
+  cursor: pointer !important;
+}
+
+.updatecolumn a:hover {
+  text-decoration: none;
+}
