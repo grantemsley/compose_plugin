@@ -666,7 +666,13 @@ function saveCurrentTab() {
   var currentTab = editorModal.currentTab;
   if (!currentTab || !editorModal.modifiedTabs.has(currentTab)) return;
   
-  saveTab(currentTab);
+  saveTab(currentTab).then(function() {
+    // Brief feedback in validation panel
+    $('#editor-validation').html('<i class="fa fa-check editor-validation-icon"></i> Saved!').removeClass('error warning').addClass('valid');
+    setTimeout(function() {
+      validateYaml(currentTab, editorModal.editors[currentTab].getValue());
+    }, 1500);
+  });
 }
 
 function saveTab(tabName) {
@@ -703,6 +709,13 @@ function saveTab(tabName) {
       
       return true;
     }
+    return false;
+  }).fail(function() {
+    swal2({
+      title: "Save Failed",
+      text: "Failed to save " + tabName + " file. Please try again.",
+      icon: "error"
+    });
     return false;
   });
 }
