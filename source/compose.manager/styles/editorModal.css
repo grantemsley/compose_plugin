@@ -1,0 +1,76 @@
+/* Editor Modal - Uses unRAID CSS variables where possible */
+.editor-modal-overlay {
+  --unraid-header-offset: 140px;
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  z-index: 9999;
+  overflow: auto;
+  padding: 20px;
+  padding-top: calc(var(--unraid-header-offset) + 10px);
+  box-sizing: border-box;
+}
+.editor-modal-overlay.active { display: flex; justify-content: center; align-items: flex-start; }
+
+.editor-modal {
+  width: 95%;
+  height: calc(100vh - var(--unraid-header-offset) - 40px);
+  max-width: 1400px;
+  background-color: var(--background-color, #1c1c1c);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--border-color, #3a3a3a);
+}
+
+.editor-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 20px;
+  background-color: var(--alt-background-color, #252525);
+  border-bottom: 1px solid var(--border-color, #3a3a3a);
+  border-radius: 8px 8px 0 0;
+}
+.editor-modal-title { font-size: 1.4rem; color: var(--brand-orange, #ff8c2f); font-weight: bold; margin: 0; }
+.editor-modal-close { background: none; border: none; color: var(--alt-text-color, #888); font-size: 1.5rem; cursor: pointer; padding: 5px 10px; }
+.editor-modal-close:hover { color: var(--brand-red, #ff4444); }
+
+.editor-tabs { display: flex; background-color: var(--background-color, #1e1e1e); border-bottom: 1px solid var(--border-color, #3a3a3a); padding: 0 10px; }
+.editor-tab { padding: 12px 20px; background: transparent; border: none; color: var(--alt-text-color, #888); cursor: pointer; font-size: 0.95rem; border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 8px; }
+.editor-tab:hover { color: var(--text-color, #ccc); background-color: var(--alt-background-color, #2a2a2a); }
+.editor-tab.active { color: var(--brand-orange, #ff8c2f); border-bottom-color: var(--brand-orange, #ff8c2f); background-color: var(--alt-background-color, #2a2a2a); }
+.editor-tab i { font-size: 0.85rem; }
+.editor-tab-modified { width: 8px; height: 8px; background-color: var(--brand-orange, #ff8c2f); border-radius: 50%; display: none; }
+.editor-tab.modified .editor-tab-modified { display: inline-block; }
+
+.editor-modal-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+.editor-container { flex: 1; position: relative; display: none; }
+.editor-container.active { display: block; }
+.editor-container .ace_editor { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+
+.editor-validation { padding: 10px 20px; background-color: var(--background-color, #1a1a1a); border-top: 1px solid var(--border-color, #3a3a3a); font-family: monospace; font-size: 1.1rem; }
+.editor-validation.valid { color: #4caf50; }
+.editor-validation.error { color: #f44336; }
+.editor-validation-icon { margin-right: 8px; }
+
+.editor-modal-footer { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background-color: var(--alt-background-color, #252525); border-top: 1px solid var(--border-color, #3a3a3a); border-radius: 0 0 8px 8px; }
+.editor-footer-left { display: flex; align-items: center; gap: 15px; }
+.editor-footer-right { display: flex; gap: 10px; }
+.editor-file-info { color: var(--alt-text-color, #888); font-size: 1.1rem; }
+
+.editor-btn { padding: 10px 25px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.95rem; }
+.editor-btn-cancel { background-color: var(--alt-background-color, #3a3a3a); color: var(--text-color, #ccc); }
+.editor-btn-cancel:hover { background-color: var(--border-color, #4a4a4a); }
+.editor-btn-save { background: var(--button-background, linear-gradient(90deg,#e22828,#ff8c2f)); color: #fff; }
+.editor-btn-save:disabled { background: var(--disabled-input-background-color, #5a5a5a); color: var(--disabled-text-color, #888); cursor: not-allowed; }
+.editor-btn-save-all { background-color: #4caf50; color: #fff; }
+.editor-btn-save-all:hover { background-color: #5cbf60; }
+
+.editor-shortcuts { color: var(--alt-text-color, #666); font-size: 0.8rem; }
+.editor-shortcuts kbd { background-color: var(--alt-background-color, #3a3a3a); padding: 2px 6px; border-radius: 3px; font-family: monospace; }
