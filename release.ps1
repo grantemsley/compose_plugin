@@ -142,6 +142,11 @@ if (-not $Force) {
     }
 }
 
+# Push any pending commits first
+Write-Host ""
+Write-Host "Pushing commits to origin/$currentBranch..." -ForegroundColor Cyan
+git push origin $currentBranch
+
 # Create and push the tag
 Write-Host ""
 Write-Host "Creating tag $newTag..." -ForegroundColor Cyan
