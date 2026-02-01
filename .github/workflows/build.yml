@@ -117,7 +117,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: dev
+          ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download artifacts
@@ -169,7 +169,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update PLG in dev branch
+      - name: Update PLG in main branch
         run: |
           VERSION="${{ needs.build.outputs.version }}"
           MD5="${{ needs.build.outputs.md5 }}"
@@ -190,4 +190,4 @@ jobs:
           # Commit and push
           git add ${{ env.PLUGIN_NAME }}.plg
           git commit -m "Release v${VERSION}" || echo "No changes to commit"
-          git push origin dev
+          git push origin main

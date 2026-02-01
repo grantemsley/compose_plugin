@@ -95,10 +95,10 @@ if ($status) {
     }
 }
 
-# Check if we're on dev branch
+# Check if we're on main branch
 $currentBranch = git branch --show-current
-if ($currentBranch -ne 'dev') {
-    Write-Host "Warning: You're on branch '$currentBranch', not 'dev'" -ForegroundColor Yellow
+if ($currentBranch -ne 'main') {
+    Write-Host "Warning: You're on branch '$currentBranch', not 'main'" -ForegroundColor Yellow
     
     if (-not $Force) {
         $response = Read-Host "Continue anyway? (y/N)"
