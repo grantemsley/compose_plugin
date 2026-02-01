@@ -488,6 +488,20 @@ switch ($_POST['action']) {
                                 $image .= ':latest';
                             }
                             
+                            // Clear cached local SHA to force re-inspection of the actual image
+                            // This is needed because Unraid's reloadUpdateStatus uses cached values
+                            // which can be stale after docker compose pull
+                            $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
+                            $imageLookupKey = $image;
+                            if (!isset($updateStatusData[$image]) && strpos($image, '/') === false) {
+                                $imageLookupKey = 'library/' . $image;
+                            }
+                            if (isset($updateStatusData[$imageLookupKey])) {
+                                // Clear the local SHA to force fresh inspection
+                                $updateStatusData[$imageLookupKey]['local'] = null;
+                                DockerUtil::saveJSON($dockerManPaths['update-status'], $updateStatusData);
+                            }
+                            
                             // Check update status using Unraid's DockerUpdate class
                             $DockerUpdate->reloadUpdateStatus($image);
                             $updateStatus = $DockerUpdate->getUpdateStatus($image);
@@ -626,6 +640,20 @@ switch ($_POST['action']) {
                             if ($containerName && $image && $state === 'running') {
                                 if (strpos($image, ':') === false) {
                                     $image .= ':latest';
+                                }
+                                
+                                // Clear cached local SHA to force re-inspection of the actual image
+                                // This is needed because Unraid's reloadUpdateStatus uses cached values
+                                // which can be stale after docker compose pull
+                                $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
+                                $imageLookupKey = $image;
+                                if (!isset($updateStatusData[$image]) && strpos($image, '/') === false) {
+                                    $imageLookupKey = 'library/' . $image;
+                                }
+                                if (isset($updateStatusData[$imageLookupKey])) {
+                                    // Clear the local SHA to force fresh inspection
+                                    $updateStatusData[$imageLookupKey]['local'] = null;
+                                    DockerUtil::saveJSON($dockerManPaths['update-status'], $updateStatusData);
                                 }
                                 
                                 $DockerUpdate->reloadUpdateStatus($image);
