@@ -2196,7 +2196,8 @@ function renderContainerDetails(stackId, containers, project) {
   html += '<thead><tr>';
   html += '<th style="width:180px;">Container</th>';
   html += '<th>Update</th>';
-  html += '<th>Version</th>';
+  html += '<th>Source</th>';
+  html += '<th>Tag</th>';
   html += '<th>Network</th>';
   html += '<th>Container IP</th>';
   html += '<th>Container Port</th>';
@@ -2209,6 +2210,7 @@ function renderContainerDetails(stackId, containers, project) {
     var shortName = containerName.replace(/^[^-]+-/, ''); // Remove project prefix
     var image = container.Image || '';
     var imageParts = image.split(':');
+    var imageSource = imageParts[0] || ''; // Image name without tag
     var imageTag = imageParts[1] || 'latest';
     var state = container.State || 'unknown';
     var containerId = (container.Id || containerName).substring(0, 12);
@@ -2306,7 +2308,10 @@ function renderContainerDetails(stackId, containers, project) {
     }
     html += '</td>';
     
-    // Version (image tag)
+    // Source (image name without tag)
+    html += '<td><span class="docker_readmore" style="color:#606060;">' + escapeHtml(imageSource) + '</span></td>';
+    
+    // Tag (image tag)
     html += '<td><span class="docker_readmore" style="color:#f0a000;">' + escapeHtml(imageTag) + '</span></td>';
     
     // Network
