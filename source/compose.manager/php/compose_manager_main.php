@@ -2514,6 +2514,29 @@ $(document).on('click', '.docker-action[data-action]', function(e) {
   }
 });
 
+// Row click handler - expand/collapse stack details
+$(document).on('click', 'tr.sortable[id^="stack-row-"]', function(e) {
+  var $target = $(e.target);
+  
+  // Don't expand if clicking on interactive elements
+  if ($target.closest('[data-stackid]').length ||      // Stack icon (context menu)
+      $target.closest('.expand-icon').length ||        // Expand arrow
+      $target.closest('.updatecolumn a').length ||     // Update links
+      $target.closest('.updatecolumn .exec').length || // Update actions
+      $target.closest('.auto_start').length ||         // Autostart toggle
+      $target.closest('.switchButton').length ||       // Switch button wrapper
+      $target.closest('a').length ||                   // Any link
+      $target.closest('button').length ||              // Any button
+      $target.closest('input').length) {               // Any input
+    return;
+  }
+  
+  var stackId = this.id.replace('stack-row-', '');
+  if (stackId) {
+    toggleStackDetails(stackId);
+  }
+});
+
 // Close actions menu when clicking outside
 $(document).on('click', function(e) {
   if (!$(e.target).closest('#stack-actions-modal, .stack-kebab-btn').length) {
