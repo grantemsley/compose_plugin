@@ -2,10 +2,10 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "compose.manager">
 <!ENTITY author      "mstrhakr">
-<!ENTITY version     "2026.02.01g">
+<!ENTITY version     "2026.02.01h">
 <!ENTITY launch      "Settings/&name;">
 <!ENTITY packageVER  "&version;">
-<!ENTITY packageMD5  "3e7ec16d58885dc35e1744811b8d4658">
+<!ENTITY packageMD5  "201e4cd909b2e3139fa1586d9c593492">
 <!ENTITY packageName "&name;-package-&packageVER;">
 <!ENTITY packagefile "&packageName;.txz">
 <!ENTITY github      "mstrhakr/compose_plugin">
