@@ -3,6 +3,11 @@
 require_once("/usr/local/emhttp/plugins/compose.manager/php/defines.php");
 require_once("/usr/local/emhttp/plugins/compose.manager/php/util.php");
 
+// Load plugin config
+$cfg = parse_plugin_cfg($sName);
+$autoCheckUpdates = ($cfg['AUTO_CHECK_UPDATES'] ?? 'false') === 'true';
+$autoCheckDays = floatval($cfg['AUTO_CHECK_UPDATES_DAYS'] ?? '1');
+
 function createComboButton($text, $id, $onClick, $onClickParams, $items) {
   $o = "";
 
@@ -321,6 +326,10 @@ const icon_label = <?php echo json_encode($docker_label_icon); ?>;
 const webui_label = <?php echo json_encode($docker_label_webui); ?>;
 const shell_label = <?php echo json_encode($docker_label_shell); ?>;
 
+// Auto-check settings from config
+var autoCheckUpdates = <?php echo json_encode($autoCheckUpdates); ?>;
+var autoCheckDays = <?php echo json_encode($autoCheckDays); ?>;
+
 $('head').append( $('<link rel="stylesheet" type="text/css" />').attr('href', '<?autov("/plugins/compose.manager/styles/comboButton.css");?>') );
 $('head').append( $('<link rel="stylesheet" type="text/css" />').attr('href', '<?autov("/plugins/compose.manager/styles/editorModal.css");?>') );
 
@@ -603,6 +612,7 @@ function escapeAttr(text) {
 var stackUpdateStatus = {};
 
 // Load saved update status from server (called on page load)
+// If auto-check is enabled and interval has elapsed, trigger a fresh check
 function loadSavedUpdateStatus() {
   $.post(caURL, {action: 'getSavedUpdateStatus'}, function(data) {
     if (data) {
@@ -616,12 +626,55 @@ function loadSavedUpdateStatus() {
             var stackInfo = response.stacks[stackName];
             updateStackUpdateUI(stackName, stackInfo);
           }
+          
+          // Check if auto-check should run based on interval
+          if (autoCheckUpdates) {
+            checkAutoUpdateIfNeeded(response.stacks);
+          }
+        } else if (autoCheckUpdates) {
+          // No saved status, run check immediately if auto-check enabled
+          checkAllUpdates();
         }
       } catch(e) {
         console.error('Failed to load saved update status:', e);
+        if (autoCheckUpdates) {
+          // On error, run check if auto-check enabled
+          checkAllUpdates();
+        }
       }
+    } else if (autoCheckUpdates) {
+      // No data, run check if auto-check enabled
+      checkAllUpdates();
     }
   });
+}
+
+// Check if auto-update check is needed based on lastChecked timestamp
+function checkAutoUpdateIfNeeded(stacks) {
+  if (!autoCheckUpdates) return;
+  
+  var now = Math.floor(Date.now() / 1000); // Current time in seconds
+  var intervalSeconds = autoCheckDays * 24 * 60 * 60; // Convert days to seconds
+  var needsCheck = true;
+  
+  // Find the most recent lastChecked timestamp across all stacks
+  var latestCheck = 0;
+  for (var stackName in stacks) {
+    if (stacks[stackName].lastChecked && stacks[stackName].lastChecked > latestCheck) {
+      latestCheck = stacks[stackName].lastChecked;
+    }
+  }
+  
+  // If we have a lastChecked time and it's within the interval, don't check
+  if (latestCheck > 0 && (now - latestCheck) < intervalSeconds) {
+    needsCheck = false;
+    console.log('Auto-check: Last check was ' + Math.round((now - latestCheck) / 60) + ' minutes ago, interval is ' + Math.round(intervalSeconds / 60) + ' minutes. Skipping.');
+  }
+  
+  if (needsCheck) {
+    console.log('Auto-check: Running automatic update check...');
+    checkAllUpdates();
+  }
 }
 
 // Check for updates for all stacks
@@ -879,6 +932,31 @@ $(function() {
   
   // Load saved update status on page load
   loadSavedUpdateStatus();
+  
+  // Set up MutationObserver to detect when ebox (progress dialog) closes
+  // This is used to trigger update check after an update operation completes
+  var eboxObserver = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+      if (mutation.removedNodes.length > 0) {
+        mutation.removedNodes.forEach(function(node) {
+          // Check if the removed node is the ebox or contains it
+          if (node.id === 'ebox' || (node.querySelector && node.querySelector('#ebox'))) {
+            if (pendingUpdateCheck) {
+              pendingUpdateCheck = false;
+              // Delay slightly to let page state settle
+              setTimeout(function() {
+                console.log('Update completed, running check for updates...');
+                checkAllUpdates();
+              }, 1000);
+            }
+          }
+        });
+      }
+    });
+  });
+  
+  // Start observing the body for changes (ebox gets added/removed from body)
+  eboxObserver.observe(document.body, { childList: true, subtree: true });
 });
 
 function addStack() {
@@ -1387,9 +1465,15 @@ function ComposeDown(path, profile="") {
   showStackActionDialog('down', path, profile);
 }
 
+// Flag to track if an update was just performed
+var pendingUpdateCheck = false;
+
 function UpdateStackConfirmed(path, profile="") {
   var height = 800;
   var width = 1200;
+
+  // Set flag to trigger update check when dialog closes
+  pendingUpdateCheck = true;
 
   $.post(compURL,{action:'composeUpPullBuild',path:path,profile:profile},function(data) {
     if (data) {
