@@ -210,6 +210,58 @@ switch ($_POST['action']) {
         }
         echo json_encode( [ 'result' => 'success', 'fileName' => "$fileName", 'content' => $fileContents ] );
         break;
+    case 'getStackSettings':
+        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        if ( ! $script ) {
+            echo json_encode( [ 'result' => 'error', 'message' => 'Stack not specified.' ] );
+            break;
+        }
+        // Get env path
+        $envPathFile = "$compose_root/$script/envpath";
+        $envPath = is_file($envPathFile) ? trim(file_get_contents($envPathFile)) : "";
+        
+        // Get icon URL
+        $iconUrlFile = "$compose_root/$script/icon_url";
+        $iconUrl = is_file($iconUrlFile) ? trim(file_get_contents($iconUrlFile)) : "";
+        
+        echo json_encode([
+            'result' => 'success',
+            'envPath' => $envPath,
+            'iconUrl' => $iconUrl
+        ]);
+        break;
+    case 'setStackSettings':
+        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        if ( ! $script ) {
+            echo json_encode( [ 'result' => 'error', 'message' => 'Stack not specified.' ] );
+            break;
+        }
+        
+        // Set env path
+        $envPath = isset($_POST['envPath']) ? trim($_POST['envPath']) : "";
+        $envPathFile = "$compose_root/$script/envpath";
+        if (empty($envPath)) {
+            if (is_file($envPathFile)) @unlink($envPathFile);
+        } else {
+            file_put_contents($envPathFile, $envPath);
+        }
+        
+        // Set icon URL
+        $iconUrl = isset($_POST['iconUrl']) ? trim($_POST['iconUrl']) : "";
+        $iconUrlFile = "$compose_root/$script/icon_url";
+        if (empty($iconUrl)) {
+            if (is_file($iconUrlFile)) @unlink($iconUrlFile);
+        } else {
+            // Validate URL
+            if (!filter_var($iconUrl, FILTER_VALIDATE_URL) || (strpos($iconUrl, 'http://') !== 0 && strpos($iconUrl, 'https://') !== 0)) {
+                echo json_encode(['result' => 'error', 'message' => 'Invalid icon URL. Must be http:// or https://']);
+                break;
+            }
+            file_put_contents($iconUrlFile, $iconUrl);
+        }
+        
+        echo json_encode(['result' => 'success', 'message' => 'Settings saved']);
+        break;
     case 'saveProfiles':
         $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
         $scriptContents = isset($_POST['scriptContents']) ? $_POST['scriptContents'] : "";
@@ -228,6 +280,356 @@ switch ($_POST['action']) {
 
         file_put_contents("$fileName",$scriptContents);
         echo json_encode( [ 'result' => 'success', 'message' => "$fileName saved" ] );
+        break;
+    case 'getStackContainers':
+        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        if ( ! $script ) {
+            echo json_encode( [ 'result' => 'error', 'message' => 'Stack not specified.' ] );
+            break;
+        }
+        
+        // Get the project name (sanitized)
+        $projectName = $script;
+        if ( is_file("$compose_root/$script/name") ) {
+            $projectName = trim(file_get_contents("$compose_root/$script/name"));
+        }
+        $projectName = sanitizeStr($projectName);
+        
+        // Get containers for this compose project using docker compose ps
+        $basePath = getPath("$compose_root/$script");
+        $composeFile = "$basePath/docker-compose.yml";
+        $overrideFile = "$compose_root/$script/docker-compose.override.yml";
+        
+        $files = "-f " . escapeshellarg($composeFile);
+        if ( is_file($overrideFile) ) {
+            $files .= " -f " . escapeshellarg($overrideFile);
+        }
+        
+        $envFile = "";
+        if ( is_file("$compose_root/$script/envpath") ) {
+            $envPath = trim(file_get_contents("$compose_root/$script/envpath"));
+            if ( is_file($envPath) ) {
+                $envFile = "--env-file " . escapeshellarg($envPath);
+            }
+        }
+        
+        // Get container details in JSON format
+        $cmd = "docker compose $files $envFile -p " . escapeshellarg($projectName) . " ps --format json 2>/dev/null";
+        $output = shell_exec($cmd);
+        
+        $containers = [];
+        if ($output) {
+            // docker compose ps --format json outputs one JSON object per line
+            $lines = explode("\n", trim($output));
+            foreach ($lines as $line) {
+                if (!empty($line)) {
+                    $container = json_decode($line, true);
+                    if ($container) {
+                        // Get additional details using docker inspect
+                        $containerName = $container['Name'] ?? '';
+                        if ($containerName) {
+                            $inspectCmd = "docker inspect " . escapeshellarg($containerName) . " --format '{{json .}}' 2>/dev/null";
+                            $inspectOutput = shell_exec($inspectCmd);
+                            if ($inspectOutput) {
+                                $inspect = json_decode($inspectOutput, true);
+                                if ($inspect) {
+                                    // Extract useful info from inspect
+                                    $container['Image'] = $inspect['Config']['Image'] ?? '';
+                                    $container['Created'] = $inspect['Created'] ?? '';
+                                    $container['StartedAt'] = $inspect['State']['StartedAt'] ?? '';
+                                    
+                                    // Get ports
+                                    $ports = [];
+                                    $portBindings = $inspect['HostConfig']['PortBindings'] ?? [];
+                                    foreach ($portBindings as $containerPort => $bindings) {
+                                        if ($bindings) {
+                                            foreach ($bindings as $binding) {
+                                                $hostPort = $binding['HostPort'] ?? '';
+                                                $hostIp = $binding['HostIp'] ?? '0.0.0.0';
+                                                if ($hostPort) {
+                                                    $ports[] = "$hostIp:$hostPort->$containerPort";
+                                                }
+                                            }
+                                        }
+                                    }
+                                    $container['Ports'] = $ports;
+                                    
+                                    // Get volumes
+                                    $volumes = [];
+                                    $mounts = $inspect['Mounts'] ?? [];
+                                    foreach ($mounts as $mount) {
+                                        $src = $mount['Source'] ?? '';
+                                        $dst = $mount['Destination'] ?? '';
+                                        $type = $mount['Type'] ?? 'bind';
+                                        if ($src && $dst) {
+                                            $volumes[] = ['source' => $src, 'destination' => $dst, 'type' => $type];
+                                        }
+                                    }
+                                    $container['Volumes'] = $volumes;
+                                    
+                                    // Get network info
+                                    $networks = [];
+                                    $networkSettings = $inspect['NetworkSettings']['Networks'] ?? [];
+                                    foreach ($networkSettings as $netName => $netConfig) {
+                                        $networks[] = [
+                                            'name' => $netName,
+                                            'ip' => $netConfig['IPAddress'] ?? ''
+                                        ];
+                                    }
+                                    $container['Networks'] = $networks;
+                                    
+                                    // Get labels for WebUI
+                                    $labels = $inspect['Config']['Labels'] ?? [];
+                                    $container['WebUI'] = $labels[$docker_label_webui] ?? '';
+                                    $container['Icon'] = $labels[$docker_label_icon] ?? '';
+                                    $container['Shell'] = $labels[$docker_label_shell] ?? '/bin/bash';
+                                }
+                            }
+                        }
+                        $containers[] = $container;
+                    }
+                }
+            }
+        }
+        
+        echo json_encode([ 'result' => 'success', 'containers' => $containers, 'projectName' => $projectName ]);
+        break;
+    case 'containerAction':
+        $containerName = isset($_POST['container']) ? urldecode(($_POST['container'])) : "";
+        $containerAction = isset($_POST['containerAction']) ? urldecode(($_POST['containerAction'])) : "";
+        
+        if ( ! $containerName || ! $containerAction ) {
+            echo json_encode( [ 'result' => 'error', 'message' => 'Container or action not specified.' ] );
+            break;
+        }
+        
+        $allowedActions = ['start', 'stop', 'restart', 'pause', 'unpause'];
+        if ( !in_array($containerAction, $allowedActions) ) {
+            echo json_encode( [ 'result' => 'error', 'message' => 'Invalid action.' ] );
+            break;
+        }
+        
+        $cmd = "docker " . escapeshellarg($containerAction) . " " . escapeshellarg($containerName) . " 2>&1";
+        $output = shell_exec($cmd);
+        
+        echo json_encode([ 'result' => 'success', 'message' => trim($output) ]);
+        break;
+    case 'checkStackUpdates':
+        // Check for updates for all containers in a compose stack
+        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        if ( ! $script ) {
+            echo json_encode( [ 'result' => 'error', 'message' => 'Stack not specified.' ] );
+            break;
+        }
+        
+        // Include Docker manager classes for update checking
+        require_once("/usr/local/emhttp/plugins/dynamix.docker.manager/include/DockerClient.php");
+        
+        // Get the project name (sanitized)
+        $projectName = $script;
+        if ( is_file("$compose_root/$script/name") ) {
+            $projectName = trim(file_get_contents("$compose_root/$script/name"));
+        }
+        $projectName = sanitizeStr($projectName);
+        
+        // Get containers for this compose project
+        $basePath = getPath("$compose_root/$script");
+        $composeFile = "$basePath/docker-compose.yml";
+        $overrideFile = "$compose_root/$script/docker-compose.override.yml";
+        
+        $files = "-f " . escapeshellarg($composeFile);
+        if ( is_file($overrideFile) ) {
+            $files .= " -f " . escapeshellarg($overrideFile);
+        }
+        
+        $envFile = "";
+        if ( is_file("$compose_root/$script/envpath") ) {
+            $envPath = trim(file_get_contents("$compose_root/$script/envpath"));
+            if ( is_file($envPath) ) {
+                $envFile = "--env-file " . escapeshellarg($envPath);
+            }
+        }
+        
+        // Get container images
+        $cmd = "docker compose $files $envFile -p " . escapeshellarg($projectName) . " ps --format json 2>/dev/null";
+        $output = shell_exec($cmd);
+        
+        $updateResults = [];
+        $DockerUpdate = new DockerUpdate();
+        
+        // Load the update status file to get SHA values
+        $dockerManPaths = [
+            'update-status' => "/var/lib/docker/unraid-update-status.json"
+        ];
+        
+        if ($output) {
+            $lines = explode("\n", trim($output));
+            foreach ($lines as $line) {
+                if (!empty($line)) {
+                    $container = json_decode($line, true);
+                    if ($container) {
+                        $containerName = $container['Name'] ?? '';
+                        $image = $container['Image'] ?? '';
+                        
+                        if ($containerName && $image) {
+                            // Ensure image has a tag
+                            if (strpos($image, ':') === false) {
+                                $image .= ':latest';
+                            }
+                            
+                            // Check update status using Unraid's DockerUpdate class
+                            $DockerUpdate->reloadUpdateStatus($image);
+                            $updateStatus = $DockerUpdate->getUpdateStatus($image);
+                            
+                            // Get SHA values from the status file
+                            $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
+                            $localSha = '';
+                            $remoteSha = '';
+                            if (isset($updateStatusData[$image])) {
+                                $localSha = $updateStatusData[$image]['local'] ?? '';
+                                $remoteSha = $updateStatusData[$image]['remote'] ?? '';
+                                // Shorten SHA for display (first 12 chars after sha256:)
+                                if ($localSha && strpos($localSha, 'sha256:') === 0) {
+                                    $localSha = substr($localSha, 7, 12);
+                                }
+                                if ($remoteSha && strpos($remoteSha, 'sha256:') === 0) {
+                                    $remoteSha = substr($remoteSha, 7, 12);
+                                }
+                            }
+                            
+                            // null = unknown, true = up to date, false = update available
+                            $hasUpdate = ($updateStatus === false);
+                            $statusText = ($updateStatus === null) ? 'unknown' : ($updateStatus ? 'up-to-date' : 'update-available');
+                            
+                            $updateResults[] = [
+                                'container' => $containerName,
+                                'image' => $image,
+                                'hasUpdate' => $hasUpdate,
+                                'status' => $statusText,
+                                'localSha' => $localSha,
+                                'remoteSha' => $remoteSha
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+        
+        echo json_encode([ 'result' => 'success', 'updates' => $updateResults, 'projectName' => $projectName ]);
+        break;
+    case 'checkAllStacksUpdates':
+        // Check for updates for all compose stacks
+        require_once("/usr/local/emhttp/plugins/dynamix.docker.manager/include/DockerClient.php");
+        
+        $allUpdates = [];
+        $DockerUpdate = new DockerUpdate();
+        
+        // Path to update status file
+        $dockerManPaths = [
+            'update-status' => "/var/lib/docker/unraid-update-status.json"
+        ];
+        
+        // Iterate through all stacks
+        $stacks = glob("$compose_root/*/docker-compose.yml", GLOB_NOSORT);
+        $indirectStacks = glob("$compose_root/*/indirect", GLOB_NOSORT);
+        
+        foreach ($indirectStacks as $indirect) {
+            $indirectPath = file_get_contents($indirect);
+            if (is_file("$indirectPath/docker-compose.yml")) {
+                $stacks[] = "$indirectPath/docker-compose.yml";
+            }
+        }
+        
+        foreach ($stacks as $composeFile) {
+            $stackDir = dirname($composeFile);
+            $stackName = basename(dirname($composeFile));
+            
+            // For indirect stacks, find the actual stack folder
+            foreach (glob("$compose_root/*/indirect", GLOB_NOSORT) as $indirect) {
+                if (trim(file_get_contents($indirect)) == $stackDir) {
+                    $stackName = basename(dirname($indirect));
+                    break;
+                }
+            }
+            
+            // Get project name
+            $projectName = $stackName;
+            if ( is_file("$compose_root/$stackName/name") ) {
+                $projectName = trim(file_get_contents("$compose_root/$stackName/name"));
+            }
+            $projectName = sanitizeStr($projectName);
+            
+            // Get containers
+            $files = "-f " . escapeshellarg($composeFile);
+            $overrideFile = "$compose_root/$stackName/docker-compose.override.yml";
+            if ( is_file($overrideFile) ) {
+                $files .= " -f " . escapeshellarg($overrideFile);
+            }
+            
+            $cmd = "docker compose $files -p " . escapeshellarg($projectName) . " ps --format json 2>/dev/null";
+            $output = shell_exec($cmd);
+            
+            $stackUpdates = [];
+            $hasStackUpdate = false;
+            
+            if ($output) {
+                $lines = explode("\n", trim($output));
+                foreach ($lines as $line) {
+                    if (!empty($line)) {
+                        $container = json_decode($line, true);
+                        if ($container) {
+                            $containerName = $container['Name'] ?? '';
+                            $image = $container['Image'] ?? '';
+                            
+                            if ($containerName && $image) {
+                                if (strpos($image, ':') === false) {
+                                    $image .= ':latest';
+                                }
+                                
+                                $DockerUpdate->reloadUpdateStatus($image);
+                                $updateStatus = $DockerUpdate->getUpdateStatus($image);
+                                
+                                // Get SHA values from the status file
+                                $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
+                                $localSha = '';
+                                $remoteSha = '';
+                                if (isset($updateStatusData[$image])) {
+                                    $localSha = $updateStatusData[$image]['local'] ?? '';
+                                    $remoteSha = $updateStatusData[$image]['remote'] ?? '';
+                                    // Shorten SHA for display (first 12 chars after sha256:)
+                                    if ($localSha && strpos($localSha, 'sha256:') === 0) {
+                                        $localSha = substr($localSha, 7, 12);
+                                    }
+                                    if ($remoteSha && strpos($remoteSha, 'sha256:') === 0) {
+                                        $remoteSha = substr($remoteSha, 7, 12);
+                                    }
+                                }
+                                
+                                $hasUpdate = ($updateStatus === false);
+                                if ($hasUpdate) $hasStackUpdate = true;
+                                
+                                $stackUpdates[] = [
+                                    'container' => $containerName,
+                                    'image' => $image,
+                                    'hasUpdate' => $hasUpdate,
+                                    'status' => ($updateStatus === null) ? 'unknown' : ($updateStatus ? 'up-to-date' : 'update-available'),
+                                    'localSha' => $localSha,
+                                    'remoteSha' => $remoteSha
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+            
+            $allUpdates[$stackName] = [
+                'projectName' => $projectName,
+                'hasUpdate' => $hasStackUpdate,
+                'containers' => $stackUpdates
+            ];
+        }
+        
+        echo json_encode([ 'result' => 'success', 'stacks' => $allUpdates ]);
         break;
 }
 

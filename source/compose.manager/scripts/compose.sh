@@ -87,6 +87,13 @@ case $command in
     fi
     eval docker compose $envFile $files $options -p "$name" down  2>&1
     ;;
+
+  pull)
+    if [ "$debug" = true ]; then
+      logger "docker compose $envFile $files $options -p "$name" pull"
+    fi
+    eval docker compose $envFile $files $options -p "$name" pull 2>&1
+    ;;
     
   update)
     if [ "$debug" = true ]; then
@@ -146,6 +153,14 @@ case $command in
       logger "docker compose ls -a --format json"
     fi
     eval docker compose ls -a --format json 2>&1
+    ;;
+
+  ps)
+    # Get all compose containers with their status/uptime
+    if [ "$debug" = true ]; then
+      logger "docker ps -a --filter label=com.docker.compose.project --format json"
+    fi
+    eval docker ps -a --filter 'label=com.docker.compose.project' --format json 2>&1
     ;;
 
   logs)
