@@ -58,6 +58,22 @@ chmod -R +x $tmpdir/usr/local/emhttp/plugins/compose.manager/javascript/ace/
 rm -R /tmp/ace
 rm v${ACE_VERSION}.zip
 
+# Create slack-desc for package description
+mkdir -p $tmpdir/install
+cat > $tmpdir/install/slack-desc << 'EOF'
+compose.manager: Compose Manager - Docker Compose management for unRAID
+compose.manager:
+compose.manager: A plugin for managing Docker Compose stacks on unRAID.
+compose.manager: Provides a web UI to create, manage, and monitor your
+compose.manager: compose stacks directly from the unRAID dashboard.
+compose.manager:
+compose.manager: Features: Docker Compose CLI, web-based stack management,
+compose.manager: autostart support, environment file support, profiles,
+compose.manager: built-in YAML editor, and Docker UI integration patches.
+compose.manager:
+compose.manager: https://github.com/mstrhakr/compose_plugin
+EOF
+
 makepkg -l y -c y $OUTPUT_FOLDER/compose.manager-package-${version}.txz
 
 cd /

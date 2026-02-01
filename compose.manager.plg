@@ -25,23 +25,6 @@
          support="https://github.com/mstrhakr/compose_plugin/issues"
 >
 
-<!--
-Compose Manager - A plugin for managing Docker Compose stacks on unRAID.
-
-This plugin installs Docker Compose and provides a web UI to create, manage,
-and monitor your compose stacks directly from the unRAID dashboard.
-
-Features:
-- Docker Compose CLI integration
-- Web-based stack management (start, stop, update, remove)
-- Autostart support with optional force recreate
-- Environment file support
-- Compose profiles support
-- Built-in YAML editor
-- Override file support
-- Optional unRAID Docker UI integration patches
--->
-
 <CHANGES>
 ###0.1.0
 - Fork from dcflachs/compose_plugin
