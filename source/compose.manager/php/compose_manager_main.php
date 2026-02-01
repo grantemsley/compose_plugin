@@ -400,7 +400,7 @@ function initEditorModal() {
     editor.setTheme(aceTheme);
     editor.setShowPrintMargin(false);
     editor.setOptions({
-      fontSize: '0.875rem',
+      fontSize: '1.1rem',
       tabSize: 2,
       useSoftTabs: true,
       wrap: true
