@@ -10,6 +10,34 @@ function getElement($element) {
 }
 
 /**
+ * Check if an image is pinned with a SHA256 digest.
+ * Images like "redis:6.2-alpine@sha256:abc123..." are pinned to a specific version.
+ * 
+ * @param string $image The full image reference
+ * @return array|false Returns array with 'image' and 'digest' keys if pinned, false otherwise
+ */
+function isImagePinned($image) {
+    // Strip docker.io/ prefix first (docker compose adds this for Docker Hub images)
+    $normalizedImage = $image;
+    if (strpos($normalizedImage, 'docker.io/') === 0) {
+        $normalizedImage = substr($normalizedImage, 10); // Remove 'docker.io/'
+    }
+    
+    // Check for @sha256: digest suffix
+    if (($digestPos = strpos($normalizedImage, '@sha256:')) !== false) {
+        $baseImage = substr($normalizedImage, 0, $digestPos);
+        $digest = substr($normalizedImage, $digestPos + 1); // Includes "sha256:"
+        return [
+            'image' => $baseImage,
+            'digest' => $digest,
+            'shortDigest' => substr($digest, 7, 12) // First 12 chars after "sha256:"
+        ];
+    }
+    
+    return false;
+}
+
+/**
  * Normalize Docker image name for update checking.
  * Strips the docker.io/ prefix (docker compose adds this for Docker Hub images)
  * and @sha256: digest suffix, then uses Unraid's DockerUtil::ensureImageTag
@@ -529,55 +557,74 @@ switch ($_POST['action']) {
                     $container = json_decode($line, true);
                     if ($container) {
                         $containerName = $container['Name'] ?? '';
-                        $image = $container['Image'] ?? '';
+                        $originalImage = $container['Image'] ?? '';
                         
-                        if ($containerName && $image) {
-                            // Normalize image name (strip docker.io/ prefix, @sha256: digest, add library/ for official images)
-                            $image = normalizeImageForUpdateCheck($image);
+                        if ($containerName && $originalImage) {
+                            // Check if image is pinned with a SHA256 digest
+                            $pinnedInfo = isImagePinned($originalImage);
                             
-                            // Clear cached local SHA to force re-inspection of the actual image
-                            // This is needed because Unraid's reloadUpdateStatus uses cached values
-                            // which can be stale after docker compose pull
-                            $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
-                            if (isset($updateStatusData[$image])) {
-                                // Clear the local SHA to force fresh inspection
-                                $updateStatusData[$image]['local'] = null;
-                                DockerUtil::saveJSON($dockerManPaths['update-status'], $updateStatusData);
-                            }
+                            if ($pinnedInfo) {
+                                // Image is pinned - mark as pinned, don't check for updates
+                                // The pinned digest IS the version they want
+                                $updateResults[] = [
+                                    'container' => $containerName,
+                                    'image' => $pinnedInfo['image'],
+                                    'hasUpdate' => false,
+                                    'status' => 'pinned',
+                                    'isPinned' => true,
+                                    'pinnedDigest' => $pinnedInfo['shortDigest'],
+                                    'localSha' => $pinnedInfo['shortDigest'],
+                                    'remoteSha' => ''
+                                ];
+                            } else {
+                                // Not pinned - check for updates normally
+                                $image = normalizeImageForUpdateCheck($originalImage);
                             
-                            // Check update status using Unraid's DockerUpdate class
-                            $DockerUpdate->reloadUpdateStatus($image);
-                            $updateStatus = $DockerUpdate->getUpdateStatus($image);
-                            
-                            // Get SHA values from the status file
-                            $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
-                            $localSha = '';
-                            $remoteSha = '';
-                            
-                            if (isset($updateStatusData[$image])) {
-                                $localSha = $updateStatusData[$image]['local'] ?? '';
-                                $remoteSha = $updateStatusData[$image]['remote'] ?? '';
-                                // Shorten SHA for display (first 12 chars after sha256:)
-                                if ($localSha && strpos($localSha, 'sha256:') === 0) {
-                                    $localSha = substr($localSha, 7, 12);
+                                // Clear cached local SHA to force re-inspection of the actual image
+                                // This is needed because Unraid's reloadUpdateStatus uses cached values
+                                // which can be stale after docker compose pull
+                                $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
+                                if (isset($updateStatusData[$image])) {
+                                    // Clear the local SHA to force fresh inspection
+                                    $updateStatusData[$image]['local'] = null;
+                                    DockerUtil::saveJSON($dockerManPaths['update-status'], $updateStatusData);
                                 }
-                                if ($remoteSha && strpos($remoteSha, 'sha256:') === 0) {
-                                    $remoteSha = substr($remoteSha, 7, 12);
+                            
+                                // Check update status using Unraid's DockerUpdate class
+                                $DockerUpdate->reloadUpdateStatus($image);
+                                $updateStatus = $DockerUpdate->getUpdateStatus($image);
+                            
+                                // Get SHA values from the status file
+                                $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
+                                $localSha = '';
+                                $remoteSha = '';
+                            
+                                if (isset($updateStatusData[$image])) {
+                                    $localSha = $updateStatusData[$image]['local'] ?? '';
+                                    $remoteSha = $updateStatusData[$image]['remote'] ?? '';
+                                    // Shorten SHA for display (first 12 chars after sha256:)
+                                    if ($localSha && strpos($localSha, 'sha256:') === 0) {
+                                        $localSha = substr($localSha, 7, 12);
+                                    }
+                                    if ($remoteSha && strpos($remoteSha, 'sha256:') === 0) {
+                                        $remoteSha = substr($remoteSha, 7, 12);
+                                    }
                                 }
+                            
+                                // null = unknown, true = up to date, false = update available
+                                $hasUpdate = ($updateStatus === false);
+                                $statusText = ($updateStatus === null) ? 'unknown' : ($updateStatus ? 'up-to-date' : 'update-available');
+                            
+                                $updateResults[] = [
+                                    'container' => $containerName,
+                                    'image' => $image,
+                                    'hasUpdate' => $hasUpdate,
+                                    'status' => $statusText,
+                                    'isPinned' => false,
+                                    'localSha' => $localSha,
+                                    'remoteSha' => $remoteSha
+                                ];
                             }
-                            
-                            // null = unknown, true = up to date, false = update available
-                            $hasUpdate = ($updateStatus === false);
-                            $statusText = ($updateStatus === null) ? 'unknown' : ($updateStatus ? 'up-to-date' : 'update-available');
-                            
-                            $updateResults[] = [
-                                'container' => $containerName,
-                                'image' => $image,
-                                'hasUpdate' => $hasUpdate,
-                                'status' => $statusText,
-                                'localSha' => $localSha,
-                                'remoteSha' => $remoteSha
-                            ];
                         }
                     }
                 }
@@ -663,7 +710,7 @@ switch ($_POST['action']) {
                         $container = json_decode($line, true);
                         if ($container) {
                             $containerName = $container['Name'] ?? '';
-                            $image = $container['Image'] ?? '';
+                            $originalImage = $container['Image'] ?? '';
                             $state = $container['State'] ?? '';
                             
                             // Check if any container is running
@@ -672,51 +719,69 @@ switch ($_POST['action']) {
                             }
                             
                             // Only check updates for running containers
-                            if ($containerName && $image && $state === 'running') {
-                                // Normalize image name (strip docker.io/ prefix, @sha256: digest, add library/ for official images)
-                                $image = normalizeImageForUpdateCheck($image);
+                            if ($containerName && $originalImage && $state === 'running') {
+                                // Check if image is pinned with a SHA256 digest
+                                $pinnedInfo = isImagePinned($originalImage);
                                 
-                                // Clear cached local SHA to force re-inspection of the actual image
-                                // This is needed because Unraid's reloadUpdateStatus uses cached values
-                                // which can be stale after docker compose pull
-                                $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
-                                if (isset($updateStatusData[$image])) {
-                                    // Clear the local SHA to force fresh inspection
-                                    $updateStatusData[$image]['local'] = null;
-                                    DockerUtil::saveJSON($dockerManPaths['update-status'], $updateStatusData);
-                                }
+                                if ($pinnedInfo) {
+                                    // Image is pinned - mark as pinned, don't check for updates
+                                    $stackUpdates[] = [
+                                        'container' => $containerName,
+                                        'image' => $pinnedInfo['image'],
+                                        'hasUpdate' => false,
+                                        'status' => 'pinned',
+                                        'isPinned' => true,
+                                        'pinnedDigest' => $pinnedInfo['shortDigest'],
+                                        'localSha' => $pinnedInfo['shortDigest'],
+                                        'remoteSha' => ''
+                                    ];
+                                } else {
+                                    // Not pinned - check for updates normally
+                                    $image = normalizeImageForUpdateCheck($originalImage);
                                 
-                                $DockerUpdate->reloadUpdateStatus($image);
-                                $updateStatus = $DockerUpdate->getUpdateStatus($image);
-                                
-                                // Get SHA values from the status file
-                                $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
-                                $localSha = '';
-                                $remoteSha = '';
-                                
-                                if (isset($updateStatusData[$image])) {
-                                    $localSha = $updateStatusData[$image]['local'] ?? '';
-                                    $remoteSha = $updateStatusData[$image]['remote'] ?? '';
-                                    // Shorten SHA for display (first 12 chars after sha256:)
-                                    if ($localSha && strpos($localSha, 'sha256:') === 0) {
-                                        $localSha = substr($localSha, 7, 12);
+                                    // Clear cached local SHA to force re-inspection of the actual image
+                                    // This is needed because Unraid's reloadUpdateStatus uses cached values
+                                    // which can be stale after docker compose pull
+                                    $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
+                                    if (isset($updateStatusData[$image])) {
+                                        // Clear the local SHA to force fresh inspection
+                                        $updateStatusData[$image]['local'] = null;
+                                        DockerUtil::saveJSON($dockerManPaths['update-status'], $updateStatusData);
                                     }
-                                    if ($remoteSha && strpos($remoteSha, 'sha256:') === 0) {
-                                        $remoteSha = substr($remoteSha, 7, 12);
+                                
+                                    $DockerUpdate->reloadUpdateStatus($image);
+                                    $updateStatus = $DockerUpdate->getUpdateStatus($image);
+                                
+                                    // Get SHA values from the status file
+                                    $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
+                                    $localSha = '';
+                                    $remoteSha = '';
+                                
+                                    if (isset($updateStatusData[$image])) {
+                                        $localSha = $updateStatusData[$image]['local'] ?? '';
+                                        $remoteSha = $updateStatusData[$image]['remote'] ?? '';
+                                        // Shorten SHA for display (first 12 chars after sha256:)
+                                        if ($localSha && strpos($localSha, 'sha256:') === 0) {
+                                            $localSha = substr($localSha, 7, 12);
+                                        }
+                                        if ($remoteSha && strpos($remoteSha, 'sha256:') === 0) {
+                                            $remoteSha = substr($remoteSha, 7, 12);
+                                        }
                                     }
+                                
+                                    $hasUpdate = ($updateStatus === false);
+                                    if ($hasUpdate) $hasStackUpdate = true;
+                                
+                                    $stackUpdates[] = [
+                                        'container' => $containerName,
+                                        'image' => $image,
+                                        'hasUpdate' => $hasUpdate,
+                                        'status' => ($updateStatus === null) ? 'unknown' : ($updateStatus ? 'up-to-date' : 'update-available'),
+                                        'isPinned' => false,
+                                        'localSha' => $localSha,
+                                        'remoteSha' => $remoteSha
+                                    ];
                                 }
-                                
-                                $hasUpdate = ($updateStatus === false);
-                                if ($hasUpdate) $hasStackUpdate = true;
-                                
-                                $stackUpdates[] = [
-                                    'container' => $containerName,
-                                    'image' => $image,
-                                    'hasUpdate' => $hasUpdate,
-                                    'status' => ($updateStatus === null) ? 'unknown' : ($updateStatus ? 'up-to-date' : 'update-available'),
-                                    'localSha' => $localSha,
-                                    'remoteSha' => $remoteSha
-                                ];
                             }
                         }
                     }

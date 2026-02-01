@@ -514,13 +514,15 @@ function updateStackUpdateUI(stackName, stackInfo) {
     return;
   }
   
-  // Count updates
+  // Count updates and pinned containers
   var updateCount = 0;
+  var pinnedCount = 0;
   var totalContainers = stackInfo.containers ? stackInfo.containers.length : 0;
   
   if (stackInfo.containers) {
     stackInfo.containers.forEach(function(ct) {
       if (ct.hasUpdate) updateCount++;
+      if (ct.isPinned) pinnedCount++;
     });
   }
   
@@ -549,14 +551,32 @@ function updateStackUpdateUI(stackName, stackInfo) {
         updateHtml += '<div class="advanced" style="font-size:0.8em;color:#999;margin-top:2px;">Expand for details</div>';
       }
     }
+    
+    // Also show pinned count if any containers are pinned
+    if (pinnedCount > 0) {
+      updateHtml += '<div style="font-size:0.8em;color:#17a2b8;margin-top:2px;"><i class="fa fa-thumb-tack fa-fw"></i> ' + pinnedCount + ' pinned</div>';
+    }
     $updateCell.html(updateHtml);
   } else if (totalContainers > 0) {
-    // No updates - green "up-to-date" style (like Docker tab)
-    // Basic view: just shows up-to-date
-    // Advanced view: shows force update link
-    var html = '<span class="green-text" style="white-space:nowrap;"><i class="fa fa-check fa-fw"></i> up-to-date</span>';
-    html += '<div class="advanced"><a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + escapeAttr(stackName) + '\', \'' + escapeAttr(stackId) + '\');"><span style="white-space:nowrap;"><i class="fa fa-cloud-download fa-fw"></i> force update</span></a></div>';
-    $updateCell.html(html);
+    // No updates - check if all are pinned or up-to-date
+    if (pinnedCount > 0 && pinnedCount === totalContainers) {
+      // All containers are pinned
+      var html = '<span class="cyan-text" style="white-space:nowrap;"><i class="fa fa-thumb-tack fa-fw"></i> all pinned</span>';
+      $updateCell.html(html);
+    } else if (pinnedCount > 0) {
+      // Some containers pinned, rest up-to-date
+      var html = '<span class="green-text" style="white-space:nowrap;"><i class="fa fa-check fa-fw"></i> up-to-date</span>';
+      html += '<div style="font-size:0.8em;color:#17a2b8;margin-top:2px;"><i class="fa fa-thumb-tack fa-fw"></i> ' + pinnedCount + ' pinned</div>';
+      html += '<div class="advanced"><a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + escapeAttr(stackName) + '\', \'' + escapeAttr(stackId) + '\');"><span style="white-space:nowrap;"><i class="fa fa-cloud-download fa-fw"></i> force update</span></a></div>';
+      $updateCell.html(html);
+    } else {
+      // No updates, no pinned - green "up-to-date" style (like Docker tab)
+      // Basic view: just shows up-to-date
+      // Advanced view: shows force update link
+      var html = '<span class="green-text" style="white-space:nowrap;"><i class="fa fa-check fa-fw"></i> up-to-date</span>';
+      html += '<div class="advanced"><a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + escapeAttr(stackName) + '\', \'' + escapeAttr(stackId) + '\');"><span style="white-space:nowrap;"><i class="fa fa-cloud-download fa-fw"></i> force update</span></a></div>';
+      $updateCell.html(html);
+    }
   } else {
     // No containers found - show pull updates as clickable (for stacks that aren't running)
     $updateCell.html('<a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + escapeAttr(stackName) + '\', \'' + escapeAttr(stackId) + '\');"><i class="fa fa-cloud-download fa-fw"></i> pull updates</a>');
@@ -576,6 +596,8 @@ function updateStackUpdateUI(stackName, stackInfo) {
           cached.updateStatus = updated.status;
           cached.localSha = updated.localSha || '';
           cached.remoteSha = updated.remoteSha || '';
+          cached.isPinned = updated.isPinned || false;
+          cached.pinnedDigest = updated.pinnedDigest || '';
         }
       });
     });
@@ -2584,9 +2606,26 @@ function renderContainerDetails(stackId, containers, project) {
     var containerName = container.Name || container.Service || 'Unknown';
     var shortName = containerName.replace(/^[^-]+-/, ''); // Remove project prefix
     var image = container.Image || '';
-    var imageParts = image.split(':');
+    
+    // Parse image - handle docker.io/ prefix and @sha256: digest
+    // Format could be: docker.io/library/redis:6.2-alpine@sha256:abc123...
+    var imageForParsing = image;
+    if (imageForParsing.indexOf('docker.io/') === 0) {
+      imageForParsing = imageForParsing.substring(10);
+    }
+    
+    // Check for @sha256: digest suffix
+    var digestSuffix = '';
+    var digestPos = imageForParsing.indexOf('@sha256:');
+    if (digestPos !== -1) {
+      digestSuffix = '@' + imageForParsing.substring(digestPos + 1, digestPos + 20); // @sha256:xxxx (first 12 chars of digest)
+      imageForParsing = imageForParsing.substring(0, digestPos);
+    }
+    
+    // Now split by : for tag
+    var imageParts = imageForParsing.split(':');
     var imageSource = imageParts[0] || ''; // Image name without tag
-    var imageTag = imageParts[1] || 'latest';
+    var imageTag = (imageParts[1] || 'latest') + digestSuffix; // Include digest suffix if present
     var state = container.State || 'unknown';
     var containerId = (container.Id || containerName).substring(0, 12);
     var uniqueId = 'ct-' + stackId + '-' + idx;
@@ -2656,8 +2695,16 @@ function renderContainerDetails(stackId, containers, project) {
     var ctUpdateStatus = container.updateStatus || '';
     var ctLocalSha = container.localSha || '';
     var ctRemoteSha = container.remoteSha || '';
+    var ctIsPinned = container.isPinned || false;
+    var ctPinnedDigest = container.pinnedDigest || '';
     
-    if (ctHasUpdate) {
+    if (ctIsPinned) {
+      // Image is pinned with SHA256 digest - show pinned status
+      html += '<span class="cyan-text" style="white-space:nowrap;"><i class="fa fa-thumb-tack fa-fw"></i> pinned</span>';
+      if (ctPinnedDigest) {
+        html += '<div style="font-family:monospace;font-size:0.85em;color:#17a2b8;margin-top:2px;">' + escapeHtml(ctPinnedDigest) + '</div>';
+      }
+    } else if (ctHasUpdate) {
       // Update available - orange "update ready" style with SHA diff
       html += '<a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + escapeAttr(project) + '\', \'' + escapeAttr(stackId) + '\');">';
       html += '<span class="orange-text" style="white-space:nowrap;"><i class="fa fa-flash fa-fw"></i> update ready</span>';
