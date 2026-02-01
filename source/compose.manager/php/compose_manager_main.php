@@ -873,8 +873,9 @@ $(function() {
   $(".tabs").append('<span class="status"><span><input type="checkbox" class="advancedview"></span></span>');
   $('.advancedview').switchButton({labels_placement:'left', on_label:'Advanced View', off_label:'Basic View', checked:$.cookie('compose_listview_mode')==='advanced'});
   $('.advancedview').change(function(){
-    $('.advanced').toggle('slow');
-    $('.basic').toggle('slow');
+    // Use instant toggle to avoid text wrapping issues during animation
+    $('.advanced').toggle();
+    $('.basic').toggle();
     $.cookie('compose_listview_mode', $('.advancedview').is(':checked') ? 'advanced' : 'basic', {expires:3650});
   });
   
