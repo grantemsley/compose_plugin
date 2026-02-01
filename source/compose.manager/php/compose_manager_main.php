@@ -451,15 +451,20 @@ function initEditorModal() {
     updateTabModifiedState();
   });
   
-  // Icon preview update
+  // Icon preview update with debounce
+  var settingsIconDebounce = null;
   $('#settings-icon-url').on('input', function() {
-    var url = $(this).val().trim();
-    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-      $('#settings-icon-preview-img').attr('src', url);
-      $('#settings-icon-preview').show();
-    } else {
-      $('#settings-icon-preview').hide();
-    }
+    var $input = $(this);
+    clearTimeout(settingsIconDebounce);
+    settingsIconDebounce = setTimeout(function() {
+      var url = $input.val().trim();
+      if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+        $('#settings-icon-preview-img').attr('src', url);
+        $('#settings-icon-preview').show();
+      } else {
+        $('#settings-icon-preview').hide();
+      }
+    }, 300);
   });
   
   // Keyboard shortcuts - use namespaced event to avoid duplicates
@@ -1943,9 +1948,10 @@ function renderLabelsUI(mainDoc, overrideDoc) {
     editorModal.originalLabels[serviceKey + '_webui'] = webuiValue;
     editorModal.originalLabels[serviceKey + '_shell'] = shellValue;
     
+    var iconSrc = iconValue || '/plugins/dynamix.docker.manager/images/question.png';
     html += '<div class="labels-service" data-service="' + escapeAttr(serviceKey) + '">';
     html += '<div class="labels-service-header">';
-    html += '<img class="labels-service-icon" src="/plugins/dynamix.docker.manager/images/question.png" alt="">';
+    html += '<img class="labels-service-icon" id="label-icon-preview-' + escapeAttr(serviceKey) + '" src="' + escapeAttr(iconSrc) + '" alt="" onerror="this.src=\'/plugins/dynamix.docker.manager/images/question.png\'">';
     html += '<span class="labels-service-name">' + escapeHtml(containerName) + '</span>';
     html += '</div>';
     html += '<div class="labels-service-fields">';
@@ -1975,9 +1981,10 @@ function renderLabelsUI(mainDoc, overrideDoc) {
       var webuiValue = findLabelValue(overrideService, {}, webui_label);
       var shellValue = findLabelValue(overrideService, {}, shell_label);
       
+      var deletedIconSrc = iconValue || '/plugins/dynamix.docker.manager/images/question.png';
       deletedHtml += '<div class="labels-service deleted" data-service="' + escapeAttr(serviceKey) + '" data-deleted="true">';
       deletedHtml += '<div class="labels-service-header">';
-      deletedHtml += '<img class="labels-service-icon" src="/plugins/dynamix.docker.manager/images/question.png" alt="">';
+      deletedHtml += '<img class="labels-service-icon" src="' + escapeAttr(deletedIconSrc) + '" alt="" onerror="this.src=\'/plugins/dynamix.docker.manager/images/question.png\'">';
       deletedHtml += '<span class="labels-service-name">' + escapeHtml(containerName) + ' <span style="color:#f44336;font-size:0.8em;">(will be removed)</span></span>';
       deletedHtml += '</div>';
       deletedHtml += '<div class="labels-service-fields">';
@@ -2014,6 +2021,21 @@ function renderLabelsUI(mainDoc, overrideDoc) {
       editorModal.modifiedLabels.add(key);
     } else {
       editorModal.modifiedLabels.delete(key);
+    }
+    
+    // Live icon preview with debounce
+    if (field === 'icon') {
+      var $input = $(this);
+      clearTimeout($input.data('iconDebounce'));
+      $input.data('iconDebounce', setTimeout(function() {
+        var iconUrl = $input.val().trim();
+        var $preview = $('#label-icon-preview-' + service);
+        if (iconUrl) {
+          $preview.attr('src', iconUrl);
+        } else {
+          $preview.attr('src', '/plugins/dynamix.docker.manager/images/question.png');
+        }
+      }, 300));
     }
     
     updateSaveButtonState();
