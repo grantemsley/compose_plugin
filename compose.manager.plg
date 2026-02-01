@@ -5,7 +5,7 @@
 <!ENTITY version     "0.1.0">
 <!ENTITY launch      "Settings/&name;">
 <!ENTITY packageVER  "&version;">
-<!ENTITY packageMD5  "f69698567a8060a2261aa2a5b0db4878">
+<!ENTITY packageMD5  "183f11c8bc93cae561d412a96036e7b0">
 <!ENTITY packageName "&name;-package-&packageVER;">
 <!ENTITY packagefile "&packageName;.txz">
 <!ENTITY github      "mstrhakr/compose_plugin">
