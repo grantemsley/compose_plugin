@@ -2972,45 +2972,10 @@ function addComposeStackContext(elementId) {
   
   opts.push({divider: true});
   
-  // Edit Files
-  opts.push({text: 'Edit Stack', icon: 'fa-edit', action: function(e) {
-    e.preventDefault();
-    openEditorModalByProject(project, projectName);
-  }});
-  
-  // Settings
-  opts.push({text: 'Settings', icon: 'fa-cog', action: function(e) {
-    e.preventDefault();
-    editStackSettingsByProject(project);
-  }});
-  
-  // WebUI Labels
-  opts.push({text: 'WebUI Labels', icon: 'fa-tag', action: function(e) {
-    e.preventDefault();
-    // Open modal on Labels tab
-    openEditorModalByProject(project, projectName, 'labels');
-  }});
-  
-  opts.push({divider: true});
-  
   // View Logs
   opts.push({text: 'View Logs', icon: 'fa-navicon', action: function(e) {
     e.preventDefault();
     ComposeLogs(project);
-  }});
-  
-  opts.push({divider: true});
-  
-  // Edit Name
-  opts.push({text: 'Edit Name', icon: 'fa-pencil', action: function(e) {
-    e.preventDefault();
-    showEditNameDialog(stackId, project, projectName);
-  }});
-  
-  // Edit Description
-  opts.push({text: 'Edit Description', icon: 'fa-pencil-square-o', action: function(e) {
-    e.preventDefault();
-    showEditDescDialog(stackId, project);
   }});
   
   opts.push({divider: true});
