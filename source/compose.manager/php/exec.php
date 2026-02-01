@@ -585,6 +585,7 @@ switch ($_POST['action']) {
             
             $stackUpdates = [];
             $hasStackUpdate = false;
+            $isRunning = false;
             
             if ($output) {
                 $lines = explode("\n", trim($output));
@@ -594,8 +595,15 @@ switch ($_POST['action']) {
                         if ($container) {
                             $containerName = $container['Name'] ?? '';
                             $image = $container['Image'] ?? '';
+                            $state = $container['State'] ?? '';
                             
-                            if ($containerName && $image) {
+                            // Check if any container is running
+                            if ($state === 'running') {
+                                $isRunning = true;
+                            }
+                            
+                            // Only check updates for running containers
+                            if ($containerName && $image && $state === 'running') {
                                 if (strpos($image, ':') === false) {
                                     $image .= ':latest';
                                 }
@@ -639,6 +647,7 @@ switch ($_POST['action']) {
             $allUpdates[$stackName] = [
                 'projectName' => $projectName,
                 'hasUpdate' => $hasStackUpdate,
+                'isRunning' => $isRunning,
                 'containers' => $stackUpdates
             ];
         }

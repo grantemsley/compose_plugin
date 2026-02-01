@@ -532,11 +532,14 @@ function loadSavedUpdateStatus() {
 function checkAllUpdates() {
   $('#checkUpdatesBtn').prop('disabled', true).val('Checking...');
   
-  // Show checking indicator on all update columns
-  $('.updatecolumn').each(function() {
-    var $link = $(this).find('a');
-    if ($link.length) {
-      $link.html('<i class="fa fa-refresh fa-spin"></i> checking...');
+  // Show checking indicator only on running stack update columns (not stopped ones)
+  $('tr.sortable').each(function() {
+    var $row = $(this);
+    var isRunning = $row.find('.state').text().indexOf('started') !== -1 || 
+                   $row.find('.state').text().indexOf('partial') !== -1;
+    if (isRunning) {
+      var $updateCell = $row.find('.updatecolumn');
+      $updateCell.html('<span style="color:#267CA8"><i class="fa fa-refresh fa-spin"></i> checking...</span>');
     }
   });
   
@@ -579,6 +582,20 @@ function updateStackUpdateUI(stackName, stackInfo) {
   
   var stackId = $stackRow.attr('id').replace('stack-row-', '');
   var $updateCell = $stackRow.find('.updatecolumn');
+  
+  // Check if the stack is running - use server response or DOM state
+  var isRunning = stackInfo.isRunning;
+  if (isRunning === undefined) {
+    // Fallback to DOM state check
+    var stateText = $stackRow.find('.state').text();
+    isRunning = stateText.indexOf('started') !== -1 || stateText.indexOf('partial') !== -1;
+  }
+  
+  if (!isRunning) {
+    // Stack is not running - show stopped status
+    $updateCell.html('<span class="grey-text" style="white-space:nowrap;"><i class="fa fa-stop fa-fw"></i> stopped</span>');
+    return;
+  }
   
   // Count updates
   var updateCount = 0;
