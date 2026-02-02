@@ -75,9 +75,9 @@ function checkProjectFolder() {
 function toggleAutoCheckInterval() {
   var autoCheckEnabled = $('#AUTO_CHECK_UPDATES').val() === 'true';
   if (autoCheckEnabled) {
-    $('#auto_check_interval_row').show();
+    $('#auto_check_interval_row').slideDown();
   } else {
-    $('#auto_check_interval_row').hide();
+    $('#auto_check_interval_row').slideUp();
   }
 }
 
@@ -158,16 +158,17 @@ _(Auto Check for Updates)_:
   Updates will only be checked if the interval has elapsed since the last check.
 </blockquote>
 
-<span id="auto_check_interval_row" style="display: <?=$cfg['AUTO_CHECK_UPDATES'] == 'true' ? '' : 'none'?>;">
+<div id="auto_check_interval_row" style="display: <?=$cfg['AUTO_CHECK_UPDATES'] == 'true' ? 'block' : 'none'?>;">
 _(Auto Check Interval (days))_:
 : <input type="number" name="AUTO_CHECK_UPDATES_DAYS" id="AUTO_CHECK_UPDATES_DAYS" min="0.04" max="30" step="0.01" value="<?=$cfg['AUTO_CHECK_UPDATES_DAYS'] ?? '1'?>" style="width:80px;">
+  <span class="fa fa-question-circle fa-fw" onclick="HelpButton();return false;"></span>
 
 <blockquote class="inline_help" style="display: none;">
   How often to automatically check for updates (in days).<br>
   Examples: 0.04 (hourly), 1 (daily), 7 (weekly), 30 (monthly).<br>
   Minimum: 0.04 days (about 1 hour). Maximum: 30 days.
 </blockquote>
-</span>
+</div>
 
 _(Clear Update Cache)_:
 : <input type="button" value="_(Clear Cache)_" onclick="clearUpdateCache()">
