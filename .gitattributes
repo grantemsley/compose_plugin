@@ -1,0 +1,21 @@
+# Force LF line endings for all plugin files (Unraid runs Linux)
+* text=auto eol=lf
+
+# Explicitly mark shell scripts
+*.sh text eol=lf
+
+# Page files must use LF
+*.page text eol=lf
+
+# PHP files
+*.php text eol=lf
+
+# Config files
+*.cfg text eol=lf
+
+# Patch files
+*.patch text eol=lf
+
+# Keep Windows batch files as CRLF
+*.bat text eol=crlf
+*.ps1 text eol=crlf
