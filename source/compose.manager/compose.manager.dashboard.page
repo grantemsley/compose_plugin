@@ -184,16 +184,17 @@ $script = <<<'EOT'
                 if (response.containers && response.containers.length > 0) {
                     var html = '';
                     response.containers.forEach(function(ct) {
-                        var state = ct.running ? 'started' : 'stopped';
-                        var stateIcon = ct.running ? 'fa-play green-text' : 'fa-square red-text';
-                        var ctId = 'dash-ct-' + ct.id.substring(0, 12);
-                        var imgSrc = ct.icon || '/plugins/dynamix.docker.manager/images/question.png';
+                        // API returns capitalized property names: State, ID, Icon, Name, WebUI
+                        var isRunning = ct.State === 'running';
+                        var stateIcon = isRunning ? 'fa-play green-text' : 'fa-square red-text';
+                        var ctId = 'dash-ct-' + ct.ID.substring(0, 12);
+                        var imgSrc = ct.Icon || '/plugins/dynamix.docker.manager/images/question.png';
                         
                         html += '<div class="compose-dash-container">';
                         html += '<span class="compose-dash-ct-icon" id="' + ctId + '">';
                         html += '<img src="' + imgSrc + '" onerror="this.src=\'/plugins/dynamix.docker.manager/images/question.png\';">';
                         html += '</span>';
-                        html += '<span class="compose-dash-ct-name">' + ct.name + '</span>';
+                        html += '<span class="compose-dash-ct-name">' + ct.Name + '</span>';
                         html += '<span class="compose-dash-ct-status"><i class="fa ' + stateIcon + '"></i></span>';
                         html += '</div>';
                     });
@@ -201,25 +202,26 @@ $script = <<<'EOT'
                     
                     // Attach context menus using docker.js function
                     response.containers.forEach(function(ct) {
-                        var ctId = '#dash-ct-' + ct.id.substring(0, 12);
+                        var ctId = '#dash-ct-' + ct.ID.substring(0, 12);
+                        var isRunning = ct.State === 'running';
                         if (typeof addDockerContainerContext === 'function') {
                             // addDockerContainerContext(name, imageId, template, started, paused, update, autostart, webui, tswebui, shell, id, support, project, registry, donateLink, readme)
                             $(ctId).on('click', function(e) {
                                 e.stopPropagation();
                                 addDockerContainerContext(
-                                    ct.name,           // container name
-                                    ct.imageId || '',  // image id
+                                    ct.Name,           // container name
+                                    ct.Image || '',    // image id
                                     '',                // template (empty for compose)
-                                    ct.running ? 1 : 0,// started
+                                    isRunning ? 1 : 0, // started
                                     0,                 // paused
                                     0,                 // update status
                                     0,                 // autostart
-                                    ct.webui || '',    // webui
+                                    ct.WebUI || '',    // webui
                                     '',                // tailscale webui
-                                    'sh',              // shell
-                                    ct.id.substring(0, 12), // container id
+                                    ct.Shell || 'sh',  // shell
+                                    ct.ID.substring(0, 12), // container id
                                     '',                // support
-                                    '',                // project
+                                    ct.Project || '',  // project
                                     '',                // registry
                                     '',                // donate
                                     ''                 // readme
@@ -233,6 +235,7 @@ $script = <<<'EOT'
                     $container.html('<div class="compose-dash-loading">No containers</div>');
                 }
             } catch(e) {
+                console.error('Error parsing containers:', e);
                 $container.html('<div class="compose-dash-loading">Error loading containers</div>');
             }
         });
