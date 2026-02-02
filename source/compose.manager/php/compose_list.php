@@ -240,7 +240,7 @@ foreach ($composeProjects as $project) {
   }
 
   // Main row - Docker tab structure with expand arrow on left
-  $o .= "<tr class='sortable' id='stack-row-$id' data-project='$projectHtml' data-projectname='$projectNameHtml' data-path='$pathHtml' data-isup='$isup' data-profiles='$profilesJson'>";
+  $o .= "<tr class='compose-sortable' id='stack-row-$id' data-project='$projectHtml' data-projectname='$projectNameHtml' data-path='$pathHtml' data-isup='$isup' data-profiles='$profilesJson'>";
   
   // Name column: expand arrow, then icon with context menu, then name
   $o .= "<td class='ct-name' style='width:220px;padding:8px'>";
@@ -265,7 +265,7 @@ foreach ($composeProjects as $project) {
   $o .= "</td>";
   
   // Update column (like Docker tab) - default to "not checked" until update check runs
-  $o .= "<td class='updatecolumn'>";
+  $o .= "<td class='compose-updatecolumn'>";
   if ($isrunning) {
     $o .= "<span class='grey-text' style='white-space:nowrap;cursor:default;' title='Click Check for Updates to check'><i class='fa fa-question-circle fa-fw'></i> not checked</span>";
   } else {

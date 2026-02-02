@@ -454,12 +454,12 @@ function checkAllUpdates() {
   $('#updateAllBtn').prop('disabled', true);
   
   // Show checking indicator only on running stack update columns (not stopped ones)
-  $('tr.sortable').each(function() {
+  $('#compose_stacks tr.compose-sortable').each(function() {
     var $row = $(this);
     var isRunning = $row.find('.state').text().indexOf('started') !== -1 || 
                    $row.find('.state').text().indexOf('partial') !== -1;
     if (isRunning) {
-      var $updateCell = $row.find('.updatecolumn');
+      var $updateCell = $row.find('.compose-updatecolumn');
       $updateCell.html('<span style="color:#267CA8"><i class="fa fa-refresh fa-spin"></i> checking...</span>');
     }
   });
@@ -489,7 +489,7 @@ function checkAllUpdates() {
     $('#checkUpdatesBtn').prop('disabled', false).val('Check for Updates');
     $('#updateAllBtn').prop('disabled', true);
     // Reset update columns to not checked state - scope to compose_stacks
-    $('#compose_stacks .updatecolumn').each(function() {
+    $('#compose_stacks .compose-updatecolumn').each(function() {
       var $cell = $(this);
       if (!$cell.find('.grey-text').length || $cell.find('.fa-docker').length === 0) {
         // Only reset running stacks (not the "stopped" ones)
@@ -520,7 +520,7 @@ function updateAllStacks() {
   for (var stackName in stackUpdateStatus) {
     var stackInfo = stackUpdateStatus[stackName];
     if (stackInfo.hasUpdate && stackInfo.isRunning) {
-      var $stackRow = $('[data-project="' + stackName + '"]').filter('tr.sortable');
+      var $stackRow = $('#compose_stacks tr.compose-sortable[data-project="' + stackName + '"]');
       if ($stackRow.length === 0) continue;
       
       var autostart = $stackRow.find('.autostart').is(':checked');
@@ -583,12 +583,12 @@ function executeUpdateAllStacks(stacks) {
 
 // Update UI for a single stack's update status
 function updateStackUpdateUI(stackName, stackInfo) {
-  // Find the stack row by project name
-  var $stackRow = $('[data-project="' + stackName + '"]').filter('tr.sortable');
+  // Find the stack row by project name (scoped to compose_stacks to avoid Docker tab conflicts)
+  var $stackRow = $('#compose_stacks tr.compose-sortable[data-project="' + stackName + '"]');
   if ($stackRow.length === 0) return;
   
   var stackId = $stackRow.attr('id').replace('stack-row-', '');
-  var $updateCell = $stackRow.find('.updatecolumn');
+  var $updateCell = $stackRow.find('.compose-updatecolumn');
   
   // Check if the stack is running - use server response or DOM state
   var isRunning = stackInfo.isRunning;
@@ -701,10 +701,10 @@ function updateStackUpdateUI(stackName, stackInfo) {
 
 // Check updates for a single stack
 function checkStackUpdates(stackName) {
-  var $stackRow = $('[data-project="' + stackName + '"]').filter('tr.sortable');
+  var $stackRow = $('#compose_stacks tr.compose-sortable[data-project="' + stackName + '"]');
   if ($stackRow.length === 0) return;
   
-  var $updateCell = $stackRow.find('.updatecolumn');
+  var $updateCell = $stackRow.find('.compose-updatecolumn');
   $updateCell.html('<span style="color:#267CA8"><i class="fa fa-refresh fa-spin"></i> checking...</span>');
   
   $.post(caURL, {action: 'checkStackUpdates', script: stackName}, function(data) {
@@ -1360,7 +1360,7 @@ function startAllStacks() {
   var stacks = [];
   
   // Collect all stacks from the table
-  $('tr.sortable').each(function() {
+  $('#compose_stacks tr.compose-sortable').each(function() {
     var $row = $(this);
     var project = $row.data('project');
     var projectName = $row.data('projectname');
@@ -1431,7 +1431,7 @@ function stopAllStacks() {
   var stacks = [];
   
   // Collect all stacks from the table
-  $('tr.sortable').each(function() {
+  $('#compose_stacks tr.compose-sortable').each(function() {
     var $row = $(this);
     var project = $row.data('project');
     var projectName = $row.data('projectname');
@@ -1519,8 +1519,8 @@ function showStackActionDialog(action, path, profile) {
   var stackName = basename(path);
   var project = stackName;
   
-  // Find the stack row
-  var $stackRow = $('[data-project="' + project + '"]').filter('tr.sortable');
+  // Find the stack row (scoped to compose_stacks)
+  var $stackRow = $('#compose_stacks tr.compose-sortable[data-project="' + project + '"]');
   var stackId = '';
   if ($stackRow.length > 0) {
     stackId = $stackRow.attr('id').replace('stack-row-', '');
@@ -3132,14 +3132,14 @@ $(document).on('click', '.docker-action[data-action]', function(e) {
 });
 
 // Row click handler - expand/collapse stack details
-$(document).on('click', 'tr.sortable[id^="stack-row-"]', function(e) {
+$(document).on('click', 'tr.compose-sortable[id^="stack-row-"]', function(e) {
   var $target = $(e.target);
   
   // Don't expand if clicking on interactive elements
   if ($target.closest('[data-stackid]').length ||      // Stack icon (context menu)
       $target.closest('.expand-icon').length ||        // Expand arrow
-      $target.closest('.updatecolumn a').length ||     // Update links
-      $target.closest('.updatecolumn .exec').length || // Update actions
+      $target.closest('.compose-updatecolumn a').length ||     // Update links
+      $target.closest('.compose-updatecolumn .exec').length || // Update actions
       $target.closest('.auto_start').length ||         // Autostart toggle
       $target.closest('.switchButton').length ||       // Switch button wrapper
       $target.closest('a').length ||                   // Any link
