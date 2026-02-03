@@ -1,38 +1,125 @@
 #!/bin/bash
+# Compose Manager - Docker Stopping Event Handler
+# Gracefully stops all compose stacks before Docker shuts down
+# Features: timeout protection, logging, graceful degradation
 
 source /usr/local/emhttp/plugins/compose.manager/default.cfg
 source /boot/config/plugins/compose.manager/compose.manager.cfg
 
 COMPOSE_ROOT=$PROJECTS_FOLDER
-COMPOSE_WRAPPER=/usr/local/emhttp/plugins/compose.manager/scripts/compose.sh
+LOG_FILE="/var/log/compose.manager.log"
+
+# Configuration with defaults
+SHUTDOWN_TIMEOUT=${SHUTDOWN_TIMEOUT:-60}
+
+# Logging helper
+log() {
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    echo "$msg" >> "$LOG_FILE"
+    logger -t "compose.manager" "$1"
+}
+
+sanitize() {
+   local s="${1?need a string}"
+   s="${s// /_}"
+   s="${s/./_}"
+   s="${s/-/_}"
+   echo "${s,,}" # convert to lowercase
+}
+
+# Stop a single stack with timeout
+stop_stack() {
+    local dir="$1"
+    local stack_name="$2"
+    local sanitized_name="$3"
+    local start_time=$(date +%s)
+    
+    log "Stopping stack: $stack_name"
+    
+    # Build command arguments
+    local files=""
+    if [ -f "$dir/indirect" ]; then
+        local indirect=$(< "$dir/indirect")
+        for file in $(find "$indirect" -maxdepth 1 -type f -name '*compose*.yml' 2>/dev/null); do
+            files="$files -f $file"
+        done
+    else
+        files="-f $dir/docker-compose.yml"
+    fi
+    
+    local override=""
+    if [ -f "$dir/docker-compose.override.yml" ]; then
+        override="-f $dir/docker-compose.override.yml"
+    fi
+    
+    local envpath=""
+    if [ -f "$dir/envpath" ]; then
+        envpath="--env-file $(< "$dir/envpath")"
+    fi
+    
+    # Try graceful stop first with timeout
+    local exit_code
+    timeout $SHUTDOWN_TIMEOUT docker compose $files $override $envpath -p "$sanitized_name" stop 2>&1
+    exit_code=$?
+    
+    local duration=$(($(date +%s) - start_time))
+    
+    if [ $exit_code -eq 0 ]; then
+        log "Stack $stack_name stopped successfully in ${duration}s"
+        return 0
+    elif [ $exit_code -eq 124 ]; then
+        log "WARNING: Stack $stack_name stop timed out after ${SHUTDOWN_TIMEOUT}s, forcing..."
+        # Force kill containers if graceful stop times out
+        docker compose $files $override $envpath -p "$sanitized_name" kill 2>&1
+        log "Stack $stack_name force killed"
+        return 124
+    else
+        log "ERROR: Stack $stack_name failed to stop (exit code: $exit_code)"
+        return $exit_code
+    fi
+}
+
+# Main execution
+log "=== Compose Manager Shutdown Begin ==="
+
+# Collect all stacks (not just autostart ones - we need to stop everything)
+declare -a stacks_to_stop
 
 for dir in $COMPOSE_ROOT/*; do
     if [ -d "$dir" ]; then
         if [ -f "$dir/docker-compose.yml" ] || [ -f "$dir/indirect" ]; then
-            name=${dir}/name
-            name=$(< "${name}")
-            override=""
-            if [ -f "$dir/docker-compose.override.yml" ]; then
-                override="$dir/docker-compose.override.yml"
-                override="-f ${override@Q}"
-            fi
-            envpath=""
-            if [ -f "$dir/envpath" ]; then
-                envpath="$dir/envpath"
-                envpath="$(< "${envpath}" )"
-                envpath="-e ${envpath@Q}"
-            fi
-            logger "Stopping compose stack: ${name// /_}"
-            if [ -f "$dir/indirect" ]; then
-                indirect=${dir}/indirect
-                indirect=$(< "${indirect}")
-                eval $COMPOSE_WRAPPER -c stop -d ${indirect@Q} -p "${name// /_}" $override $envpath > /dev/null &
+            # Get stack name
+            local_name=""
+            if [ -f "$dir/name" ]; then
+                local_name=$(< "$dir/name")
             else
-                dir="$dir/docker-compose.yml"
-                eval $COMPOSE_WRAPPER -c stop -f ${dir@Q} -p "${name// /_}" $override $envpath > /dev/null &
+                local_name=$(basename "$dir")
             fi
+            
+            stacks_to_stop+=("$dir|$local_name")
         fi
     fi
 done
 
+total_stacks=${#stacks_to_stop[@]}
+log "Found $total_stacks stacks to stop"
+
+if [ $total_stacks -eq 0 ]; then
+    log "=== Compose Manager Shutdown Complete (no stacks) ==="
+    exit 0
+fi
+
+# Stop stacks in parallel for faster shutdown
+# (Unlike startup, we want shutdown to be quick)
+for stack_entry in "${stacks_to_stop[@]}"; do
+    dir="${stack_entry%%|*}"
+    stack_name="${stack_entry#*|}"
+    sanitized_name=$(sanitize "$stack_name")
+    
+    stop_stack "$dir" "$stack_name" "$sanitized_name" &
+done
+
+# Wait for all stops to complete
 wait
+
+log "=== Compose Manager Shutdown Complete ==="
