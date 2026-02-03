@@ -28,6 +28,22 @@
 >
 
 <CHANGES>
+###2026.02.02c
+- Features (release): Add category grouping with type and scope parsing
+  - Group commits by conventional commit type (feat, fix, docs, etc.)
+  - Show scope in parentheses when present
+  - Major commits (with body) show bullet points
+  - Uncategorized commits listed after categorized ones
+- Features (release): Add categorized changelog generation from conventional commits
+  - Parse conventional commit format (type(scope): message)
+  - Categorize commits by type (feat, fix, docs, refactor, etc.)
+  - Display scope in bold when present
+  - Filter out release and changelog commits
+- Move documentation images to docs/images folder
+  - Move screenshots from source/compose.manager/images/ to docs/images/
+  - Update all image references in README and docs
+  - Remove unused compose-manager-ui.png
+- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.02.02b...v2026.02.02c)
 ###2026.02.01j
 - Scope UI initialization and updates to avoid conflicts with Docker tab
 ###2026.02.01i
