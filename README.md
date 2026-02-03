@@ -2,7 +2,20 @@
 
 A plugin for [unRAID](https://unraid.net/) that installs Docker Compose and adds a management interface to the web UI.
 
-![Compose Manager UI](source/compose.manager/images/compose-manager-ui.png)
+## Screenshots
+
+### Main Compose Manager Interface
+![Compose Manager UI](source/compose.manager/images/compose.png)
+
+### Dashboard Integration
+![Dashboard Stacks](source/compose.manager/images/dashboard.png)
+
+### Stack Editor
+The built-in editor provides multiple tabs for managing your compose stack:
+
+| Compose File | Settings | Web UI Labels |
+|:------------:|:--------:|:-------------:|
+| ![Editor - Compose File](source/compose.manager/images/editor-composeFile.png) | ![Editor - Settings](source/compose.manager/images/editor-settings.png) | ![Editor - Web UI](source/compose.manager/images/editor-webUI.png) |
 
 ## Features
 
@@ -153,13 +166,13 @@ Profiles are stored in the stack's configuration directory:
 
 ## Support
 
-- [GitHub Issues](https://github.com/dcflachs/compose_plugin/issues)
+- [GitHub Issues](https://github.com/mstrhakr/compose_plugin/issues)
 - [unRAID Forums](https://forums.unraid.net/)
 
 ## License
 
 This project is open source. See the repository for license details.
 
-## Author
+## Credits
 
-**dcflachs**
+Originally created by **dcflachs**. This fork maintained by **mstrhakr**.
