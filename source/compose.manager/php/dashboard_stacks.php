@@ -24,6 +24,13 @@ if (!is_dir($compose_root)) {
     exit;
 }
 
+// Load saved update status from central JSON file
+$composeUpdateStatusFile = "/boot/config/plugins/compose.manager/update-status.json";
+$savedUpdateStatus = [];
+if (is_file($composeUpdateStatusFile)) {
+    $savedUpdateStatus = json_decode(file_get_contents($composeUpdateStatusFile), true) ?: [];
+}
+
 $projects = @array_diff(@scandir($compose_root), ['.', '..']);
 if (!is_array($projects)) {
     header('Content-Type: application/json');
@@ -109,10 +116,13 @@ foreach ($projects as $project) {
         }
     }
     
-    // Check update status from cache file (set by "Check for Updates" button)
+    // Check update status from central update-status.json file (set by "Check for Updates" button)
     $updateStatus = 'unknown';
-    if (is_file("$compose_root/$project/update_status")) {
-        $updateStatus = trim(@file_get_contents("$compose_root/$project/update_status"));
+    if (isset($savedUpdateStatus[$project])) {
+        $stackUpdateInfo = $savedUpdateStatus[$project];
+        if (isset($stackUpdateInfo['hasUpdate'])) {
+            $updateStatus = $stackUpdateInfo['hasUpdate'] ? 'update-available' : 'up-to-date';
+        }
     }
     
     $summary['stacks'][] = [
