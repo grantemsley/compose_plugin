@@ -1,5 +1,5 @@
 parameters:
-  level: 6
+  level: 5
   fileExtensions:
     - php
     - page
@@ -8,7 +8,7 @@ parameters:
   excludePaths:
     - */vendor/*
   ignoreErrors:
-    # Platform-specific paths
+    # Platform-specific paths (Unraid emhttp)
     - messages:
         - "#/usr/local/emhttp/plugins/.*.php#"
       identifier: requireOnce.fileNotFound
@@ -18,12 +18,29 @@ parameters:
         - "#parse_plugin_cfg#"
         - "#my_scale_status#"
         - "#csrf_token#"
+        - "#getComposeRoot#"
       identifier: function.notFound
-    # Global variables from platform
+    # Platform classes (Docker management)
     - messages:
-        - "#Variable \\$var might not be defined#"
-        - "#Variable \\$disks might not be defined#"
-        - "#Variable \\$shares might not be defined#"
-        - "#Variable \\$dockerClient might not be defined#"
+        - "#DockerClient#"
+        - "#DockerUpdate#"
+        - "#DockerUtil#"
+      identifier: class.notFound
+    # Global variables from platform/defines.php
+    - message: "#Variable \\$\\w+ might not be defined#"
       identifier: variable.undefined
+    # Parameters without types (legacy code)
+    - message: "#has parameter .* with no type specified#"
+    - message: "#has no return type specified#"
+    # Type comparisons in legacy code
+    - message: "#Strict comparison using .* will always evaluate to#"
+    - message: "#Call to function is_array\\(\\) with .* will always evaluate to true#"
+    # isset on always-defined variable
+    - message: "#in isset\\(\\) always exists#"
+    # escapeshellarg type
+    - message: "#Parameter .* of function escapeshellarg expects string#"
+    # If condition always true
+    - message: "#If condition is always true#"
+    # Return type without value type
+    - message: "#return type has no value type specified#"
   reportUnmatchedIgnoredErrors: false

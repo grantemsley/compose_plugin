@@ -25,14 +25,13 @@ function getPath($basePath) {
  * Prevents concurrent operations on the same stack
  */
 
-/** @var string|null Override lock directory for testing */
-$GLOBALS['compose_lock_dir'] = null;
+// Lock directory override for testing - set via $GLOBALS['compose_lock_dir']
 
 /**
  * Get the lock directory path
  * @return string
  */
-function getLockDir() {
+function getLockDir(): string {
     return $GLOBALS['compose_lock_dir'] ?? "/var/run/compose.manager";
 }
 
