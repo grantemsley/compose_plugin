@@ -78,21 +78,16 @@ foreach ($projects as $project) {
     
     $runningCount = 0;
     $totalContainers = count($projectContainers);
-    $uptime = '';
     $startedAt = '';
+    
+    // Read stack started_at timestamp from file
+    if (is_file("$compose_root/$project/started_at")) {
+        $startedAt = trim(file_get_contents("$compose_root/$project/started_at"));
+    }
     
     foreach ($projectContainers as $ct) {
         if (($ct['State'] ?? '') === 'running') {
             $runningCount++;
-            // Get StartedAt from first running container via docker inspect
-            if (empty($startedAt) && isset($ct['Names'])) {
-                $containerName = trim($ct['Names']);
-                $inspectCmd = "docker inspect " . escapeshellarg($containerName) . " --format '{{.State.StartedAt}}' 2>/dev/null";
-                $inspectOutput = trim(shell_exec($inspectCmd) ?? '');
-                if (!empty($inspectOutput)) {
-                    $startedAt = $inspectOutput;
-                }
-            }
         }
     }
     

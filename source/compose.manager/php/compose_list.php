@@ -223,23 +223,38 @@ foreach ($composeProjects as $project) {
     $statusLabel = "partial ($runningCount/$containerCount)";
   }
 
-  // Calculate stack uptime from containers
+  // Get stack started_at timestamp from file for uptime calculation
+  $stackStartedAt = '';
+  if (is_file("$compose_root/$project/started_at")) {
+    $stackStartedAt = trim(file_get_contents("$compose_root/$project/started_at"));
+  }
+  
+  // Calculate uptime display from started_at timestamp
   $stackUptime = '';
-  $sanitizedProjectName = sanitizeStr($projectName);
-  if (isset($containersByProject[$sanitizedProjectName])) {
-    $projectContainers = $containersByProject[$sanitizedProjectName];
-    $longestUptime = '';
-    foreach ($projectContainers as $ct) {
-      if (isset($ct['Status']) && strpos($ct['Status'], 'Up') === 0) {
-        // Extract uptime from Status like "Up 6 months (healthy)"
-        if (preg_match('/Up ([^(]+)/', $ct['Status'], $uptimeMatch)) {
-          $longestUptime = trim($uptimeMatch[1]);
-          break; // Use first running container's uptime
-        }
+  if ($stackStartedAt && $isrunning) {
+    $startTime = strtotime($stackStartedAt);
+    if ($startTime) {
+      $diffSecs = time() - $startTime;
+      $mins = floor($diffSecs / 60);
+      $hours = floor($diffSecs / 3600);
+      $days = floor($diffSecs / 86400);
+      $weeks = floor($days / 7);
+      $months = floor($days / 30);
+      $years = floor($days / 365);
+      
+      if ($mins < 120) {
+        $stackUptime = "Uptime: " . $mins . " min" . ($mins !== 1 ? "s" : "");
+      } elseif ($hours < 48) {
+        $stackUptime = "Uptime: " . $hours . " hour" . ($hours !== 1 ? "s" : "");
+      } elseif ($days < 14) {
+        $stackUptime = "Uptime: " . $days . " day" . ($days !== 1 ? "s" : "");
+      } elseif ($weeks < 8) {
+        $stackUptime = "Uptime: " . $weeks . " week" . ($weeks !== 1 ? "s" : "");
+      } elseif ($months < 24) {
+        $stackUptime = "Uptime: " . $months . " month" . ($months !== 1 ? "s" : "");
+      } else {
+        $stackUptime = "Uptime: " . $years . " year" . ($years !== 1 ? "s" : "");
       }
-    }
-    if ($longestUptime) {
-      $stackUptime = "Uptime: " . $longestUptime;
     }
   }
   if (!$stackUptime && $isrunning) {

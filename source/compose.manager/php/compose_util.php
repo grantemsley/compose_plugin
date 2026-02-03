@@ -86,6 +86,9 @@ function echoComposeCommand($action)
 			}
 		}
 
+		// Pass stack path for timestamp saving
+		$composeCommand[] = "-s$path";
+
 		if( $debug ) {
 			$composeCommand[] = "--debug";
 		}
@@ -191,6 +194,9 @@ function echoComposeCommandMultiple($action, $paths)
 				}
 			}
 		}
+
+		// Pass stack path for timestamp saving
+		$composeCommand[] = "-s$path";
 
 		if( $debug ) {
 			$composeCommand[] = "--debug";

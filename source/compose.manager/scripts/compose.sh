@@ -1,8 +1,8 @@
 #!/bin/bash
 export HOME=/root
 
-SHORT=e:,c:,f:,p:,d:,o:,g:
-LONG=env,command:,file:,project_name:,project_dir:,override:,profile:,debug,recreate
+SHORT=e:,c:,f:,p:,d:,o:,g:,s:
+LONG=env,command:,file:,project_name:,project_dir:,override:,profile:,debug,recreate,stack-path:
 OPTS=$(getopt -a -n compose --options $SHORT --longoptions $LONG -- "$@")
 
 eval set -- "$OPTS"
@@ -10,6 +10,7 @@ eval set -- "$OPTS"
 envFile=""
 files=""
 project_dir=""
+stack_path=""
 options=""
 command_options=""
 debug=false
@@ -58,6 +59,10 @@ do
       command_options="${command_options} --force-recreate"
       shift;
       ;;
+    -s | --stack-path )
+      stack_path="$2"
+      shift 2
+      ;;
     --debug )
       debug=true
       shift;
@@ -79,6 +84,10 @@ case $command in
       logger "docker compose $envFile $files $options -p "$name" up $command_options -d"
     fi
     eval docker compose $envFile $files $options -p "$name" up $command_options -d 2>&1
+    # Save stack started timestamp
+    if [ -n "$stack_path" ] && [ -d "$stack_path" ]; then
+      date -Iseconds > "$stack_path/started_at"
+    fi
     ;;
 
   down)
@@ -138,6 +147,10 @@ case $command in
         logger "docker rmi ${images[*]}"
       fi
       eval docker rmi ${images[*]}
+    fi
+    # Save stack started timestamp after update
+    if [ -n "$stack_path" ] && [ -d "$stack_path" ]; then
+      date -Iseconds > "$stack_path/started_at"
     fi
     ;;
 

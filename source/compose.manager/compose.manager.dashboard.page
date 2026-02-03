@@ -82,11 +82,11 @@ $styles = <<<EOT
 :root {
     --compose-expand-width: 20px;
     --compose-icon-area: 48px;   /* 32px icon + 16px margins */
-    --compose-name-width: 120px;
-    --compose-update-width: 70px;
-    --compose-count-width: 30px;
-    --compose-image-width: 80px;
-    --compose-uptime-width: 90px;
+    --compose-name-width: 140px;
+    --compose-update-width: 80px;
+    --compose-count-width: 35px;
+    --compose-image-width: 120px;
+    --compose-runtime-width: 100px;
 }
 .compose-dash-stack { 
     display: flex; 
@@ -119,7 +119,7 @@ $styles = <<<EOT
 .compose-dash-col.update { width: var(--compose-update-width); }
 .compose-dash-col.containers { width: var(--compose-count-width); text-align: center; }
 .compose-dash-col.spacer { width: var(--compose-image-width); } /* Spacer to align with container image column */
-.compose-dash-col.uptime { width: var(--compose-uptime-width); color: #888; text-align: right; }
+.compose-dash-col.runtime { width: var(--compose-runtime-width); color: #888; text-align: right; }
 .compose-dash-containers {
     display: none;
     padding: 4px 0 8px 0;
@@ -142,7 +142,7 @@ $styles = <<<EOT
 .compose-dash-ct-update { width: var(--compose-update-width); white-space: nowrap; flex-shrink: 0; }
 .compose-dash-ct-update .sha { font-family: monospace; font-size: 0.9em; }
 .compose-dash-ct-image { width: calc(var(--compose-count-width) + var(--compose-image-width) + 8px); color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
-.compose-dash-ct-uptime { width: var(--compose-uptime-width); color: #888; text-align: right; white-space: nowrap; flex-shrink: 0; }
+.compose-dash-ct-runtime { width: var(--compose-runtime-width); color: #888; text-align: right; white-space: nowrap; flex-shrink: 0; }
 .compose-dash-loading { color: #888; font-style: italic; padding: 8px; }
 </style>
 EOT;
@@ -423,7 +423,7 @@ $script = <<<'EOT'
                         html += '<span class="compose-dash-ct-cols">';
                         html += '<span class="compose-dash-ct-update">' + updateHtml + '</span>';
                         html += '<span class="compose-dash-ct-image" title="' + image + '">' + imageDisplay + '</span>';
-                        html += '<span class="compose-dash-ct-uptime">' + ctUptime + '</span>';
+                        html += '<span class="compose-dash-ct-runtime">' + ctUptime + '</span>';
                         html += '</span>';
                         html += '</div>';
                     });
@@ -494,7 +494,7 @@ $script = <<<'EOT'
                     html += '<span class="compose-dash-col update ' + updateColor + '" title="Update status"><i class="fa ' + updateIcon + '"></i> ' + updateText + '</span>';
                     html += '<span class="compose-dash-col containers" title="Running/Total containers">' + containerText + '</span>';
                     html += '<span class="compose-dash-col spacer"></span>';
-                    html += '<span class="compose-dash-col uptime" title="Uptime">' + uptimeText + '</span>';
+                    html += '<span class="compose-dash-col runtime" title="Uptime">' + uptimeText + '</span>';
                     html += '</span>';
                     html += '</div>';
                     html += '<div class="compose-dash-containers" id="compose-dash-ct-' + stackId + '"></div>';
