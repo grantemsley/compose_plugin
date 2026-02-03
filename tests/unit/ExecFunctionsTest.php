@@ -185,4 +185,82 @@ class ExecFunctionsTest extends TestCase
         $result = normalizeImageForUpdateCheck('docker.io/library/nginx@sha256:abc123def456');
         $this->assertEquals('library/nginx:latest', $result);
     }
+
+    // ===========================================
+    // Additional Edge Case Tests
+    // ===========================================
+
+    /**
+     * Test normalizeImageForUpdateCheck with lscr.io (Linuxserver new registry)
+     */
+    public function testNormalizeImageLscrRegistry(): void
+    {
+        $result = normalizeImageForUpdateCheck('lscr.io/linuxserver/plex:latest');
+        $this->assertEquals('lscr.io/linuxserver/plex:latest', $result);
+    }
+
+    /**
+     * Test normalizeImageForUpdateCheck with port in registry
+     */
+    public function testNormalizeImageRegistryWithPort(): void
+    {
+        $result = normalizeImageForUpdateCheck('registry.local:5000/myapp:v1');
+        $this->assertEquals('registry.local:5000/myapp:v1', $result);
+    }
+
+    /**
+     * Test normalizeImageForUpdateCheck with deeply nested path
+     */
+    public function testNormalizeImageDeepPath(): void
+    {
+        $result = normalizeImageForUpdateCheck('gcr.io/google-containers/kube-apiserver:v1.28.0');
+        $this->assertEquals('gcr.io/google-containers/kube-apiserver:v1.28.0', $result);
+    }
+
+    /**
+     * Test normalizeImageForUpdateCheck with sha256 in middle of tag (edge case)
+     */
+    public function testNormalizeImageSha256InTag(): void
+    {
+        // A tag that happens to contain "sha256" shouldn't be stripped
+        $result = normalizeImageForUpdateCheck('myuser/myapp:sha256test');
+        $this->assertEquals('myuser/myapp:sha256test', $result);
+    }
+
+    /**
+     * Test normalizeImageForUpdateCheck handles empty string gracefully
+     */
+    public function testNormalizeImageEmptyString(): void
+    {
+        $result = normalizeImageForUpdateCheck('');
+        $this->assertEquals('library/:latest', $result);
+    }
+
+    /**
+     * Test normalizeImageForUpdateCheck with uppercase in image name
+     */
+    public function testNormalizeImageUppercase(): void
+    {
+        // Docker image names should be lowercase but we don't change case
+        $result = normalizeImageForUpdateCheck('MyUser/MyApp:Latest');
+        $this->assertEquals('MyUser/MyApp:Latest', $result);
+    }
+
+    /**
+     * Test getElement with edge cases
+     */
+    public function testGetElementOnlyDots(): void
+    {
+        $result = getElement('...');
+        $this->assertEquals('---', $result);
+    }
+
+    /**
+     * Test getElement with mixed special chars
+     */
+    public function testGetElementMixedChars(): void
+    {
+        $result = getElement('my.stack name-test_123');
+        $this->assertEquals('my-stackname-test_123', $result);
+    }
 }
