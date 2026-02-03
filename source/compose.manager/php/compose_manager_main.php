@@ -3025,7 +3025,7 @@ function addComposeContainerContext(elementId) {
   opts.push({text: 'Logs', icon: 'fa-navicon', action: function(e) {
     e.preventDefault();
     if (typeof openTerminal === 'function') {
-      openTerminal('docker', containerName, '.log');
+      openTerminal('docker_logs', containerName);
     } else {
       swal({title: 'Logs', text: 'Terminal not available', type: 'info'});
     }

@@ -203,9 +203,19 @@ $script = <<<'EOT'
     }
     
     function openStackLogs(stackName) {
-        // Open combined logs for the stack using the Compose page's log viewer
+        // Open combined logs for the stack using the same approach as the Compose page
         var projectPath = '/boot/config/plugins/compose.manager/projects/' + stackName;
-        window.open('/Docker/ComposeLog?project=' + encodeURIComponent(projectPath), '_blank');
+        $.post('/plugins/compose.manager/php/compose_util.php', {
+            action: 'composeLogs',
+            path: projectPath
+        }, function(data) {
+            if (data && typeof openBox === 'function') {
+                openBox(data, 'Stack ' + stackName + ' Logs', 800, 1200, true);
+            } else if (data) {
+                // Fallback: open in shadowbox or new window
+                Shadowbox.open({content: data, player: 'iframe', title: 'Stack ' + stackName + ' Logs', height: 800, width: 1200});
+            }
+        });
     }
     
     // Container context menu
@@ -233,11 +243,11 @@ $script = <<<'EOT'
             }
             opts.push({text:'Console', icon:'fa-terminal', action:function(e){
                 e.preventDefault();
-                openTerminal('docker', ctName, shell || 'sh');
+                openDockerTerminal(ctName, false, shell || 'sh');
             }});
             opts.push({text:'Logs', icon:'fa-file-text-o', action:function(e){
                 e.preventDefault();
-                openTerminal('docker_logs', ctName);
+                openDockerTerminal(ctName, true);
             }});
             opts.push({divider:true});
             opts.push({text:'Stop', icon:'fa-stop', action:function(e){
@@ -272,15 +282,17 @@ $script = <<<'EOT'
         });
     }
     
-    // Open terminal using Unraid's built-in function
-    function openTerminal(type, name, shell) {
+    // Open terminal - call global openTerminal (from Unraid's HeadInlineJS.php)
+    // For logs: openTerminal('docker', containerName, '.log')
+    // For console: openTerminal('docker', containerName, shell)
+    function openDockerTerminal(name, isLogs, shell) {
         if (typeof window.openTerminal === 'function') {
-            window.openTerminal(type, name, shell);
+            window.openTerminal('docker', name, isLogs ? '.log' : (shell || 'sh'));
         } else {
-            // Fallback - open docker logs/exec in new window
-            var url = type === 'docker_logs' 
-                ? '/Docker/Log?container=' + encodeURIComponent(name)
-                : '/Docker/Exec?container=' + encodeURIComponent(name) + '&shell=' + encodeURIComponent(shell || 'sh');
+            // Fallback if global function not available
+            var url = isLogs
+                ? '/logterminal/' + name.replace(/[ #]/g, '_') + '.log/'
+                : '/webterminal/docker/';
             window.open(url, '_blank');
         }
     }
