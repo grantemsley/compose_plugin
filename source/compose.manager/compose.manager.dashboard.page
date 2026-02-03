@@ -137,8 +137,8 @@ $script = <<<'EOT'
     }
     
     // Stack context menu - called onclick like Docker pattern
-    function addStackContext(elementId, stackName, isRunning) {
-        debugLog('addStackContext called:', elementId, stackName, isRunning);
+    function addStackContext(elementId, stackName, isRunning, webui) {
+        debugLog('addStackContext called:', elementId, stackName, isRunning, 'webui:', webui);
         
         // Check if menu is already open for this element - if so, just close it
         var dropdownId = 'dropdown-' + elementId;
@@ -153,6 +153,12 @@ $script = <<<'EOT'
         context.settings({right:false, above:false});
         
         if (isRunning) {
+            if (webui && webui !== '') {
+                opts.push({text:'WebUI', icon:'fa-globe', action:function(e){
+                    e.preventDefault();
+                    window.open(webui, '_blank');
+                }});
+            }
             opts.push({text:'Logs', icon:'fa-file-text-o', action:function(e){
                 e.preventDefault();
                 openStackLogs(stackName);
@@ -376,10 +382,13 @@ $script = <<<'EOT'
                     // Uptime
                     var uptimeText = stack.uptime || (state === 'stopped' ? 'stopped' : '');
                     
+                    // WebUI
+                    var webui = (stack.webui || '').replace(/'/g, "\\'");
+                    
                     var escapedFolder = stack.folder.replace(/'/g, "\\'");
                     html += '<div class="compose-dash-stack" data-stackid="' + stackId + '" data-folder="' + escapedFolder + '">';
                     html += '<i class="fa fa-chevron-right compose-dash-expand" id="compose-dash-exp-' + stackId + '"></i>';
-                    html += '<span class="compose-dash-icon" id="compose-dash-icon-' + stackId + '" onclick="addStackContext(\'compose-dash-icon-' + stackId + '\',\'' + escapedFolder + '\',' + isRunning + ')"><img src="' + imgSrc + '" onerror="this.src=\'/plugins/dynamix.docker.manager/images/question.png\';"></span>';
+                    html += '<span class="compose-dash-icon" id="compose-dash-icon-' + stackId + '" onclick="addStackContext(\'compose-dash-icon-' + stackId + '\',\'' + escapedFolder + '\',' + isRunning + ',\'' + webui + '\')"><img src="' + imgSrc + '" onerror="this.src=\'/plugins/dynamix.docker.manager/images/question.png\';"></span>';
                     html += '<span class="compose-dash-info">';
                     html += '<div class="compose-dash-name">' + $('<div>').text(stack.name).html() + '</div>';
                     html += '<div class="compose-dash-state ' + stateColor + '"><i class="fa ' + stateIcon + '"></i> ' + stateText + '</div>';

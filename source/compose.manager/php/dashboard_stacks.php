@@ -116,6 +116,15 @@ foreach ($projects as $project) {
         }
     }
     
+    // Check for stack webui URL
+    $webui = '';
+    if (is_file("$compose_root/$project/webui_url")) {
+        $webuiUrl = trim(@file_get_contents("$compose_root/$project/webui_url"));
+        if (!empty($webuiUrl)) {
+            $webui = $webuiUrl;
+        }
+    }
+    
     // Check update status from central update-status.json file (set by "Check for Updates" button)
     $updateStatus = 'unknown';
     if (isset($savedUpdateStatus[$project])) {
@@ -132,6 +141,7 @@ foreach ($projects as $project) {
         'running' => $runningCount,
         'total' => $totalContainers,
         'icon' => $icon,
+        'webui' => $webui,
         'uptime' => $uptime,
         'update' => $updateStatus
     ];
