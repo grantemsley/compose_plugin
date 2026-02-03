@@ -1,0 +1,20 @@
+{
+    "name": "mstrhakr/compose-manager-tests",
+    "description": "Tests for Compose Manager plugin",
+    "type": "project",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "PluginTests\\": "tests/framework/src/php/"
+        }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0",
+        "phpstan/phpstan": "^2.1"
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test:unit": "phpunit --testsuite unit",
+        "analyse": "phpstan analyse"
+    }
+}

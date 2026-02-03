@@ -1,0 +1,133 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  php-tests:
+    name: PHP Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: json, curl, mbstring
+          coverage: xdebug
+      
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+      
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+      
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+      
+      - name: Create test output directories
+        run: mkdir -p tests/results tests/coverage
+      
+      - name: Run PHPUnit tests
+        run: vendor/bin/phpunit --coverage-clover tests/coverage/clover.xml --log-junit tests/results/junit.xml
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: php-test-results
+          path: tests/results/
+      
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: php-coverage
+          path: tests/coverage/
+      
+      - name: Test Report
+        uses: dorny/test-reporter@v1
+        if: success() || failure()
+        with:
+          name: PHPUnit Results
+          path: tests/results/junit.xml
+          reporter: java-junit
+
+  bash-tests:
+    name: BATS Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Setup BATS
+        uses: mig4/setup-bats@v1
+        with:
+          bats-version: 1.10.0
+      
+      - name: Install BATS helpers
+        run: |
+          # Install bats-support and bats-assert
+          git clone https://github.com/bats-core/bats-support.git tests/bats-support
+          git clone https://github.com/bats-core/bats-assert.git tests/bats-assert
+      
+      - name: Create test output directory
+        run: mkdir -p tests/results
+      
+      - name: Run BATS tests
+        run: |
+          bats tests/unit/*.bats --formatter junit > tests/results/bats-junit.xml || true
+          bats tests/unit/*.bats --formatter tap
+      
+      - name: Upload BATS results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bats-test-results
+          path: tests/results/
+      
+      - name: Test Report
+        uses: dorny/test-reporter@v1
+        if: success() || failure()
+        with:
+          name: BATS Results
+          path: tests/results/bats-junit.xml
+          reporter: java-junit
+
+  lint:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: phpstan
+      
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+      
+      - name: Run PHPStan
+        run: vendor/bin/phpstan analyse --error-format=github

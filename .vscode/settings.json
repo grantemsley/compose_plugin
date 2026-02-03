@@ -5,5 +5,29 @@
     },
     "[php]": {
         "files.eol": "\n"
-    }
+    },
+    
+    // PHPUnit Test Explorer settings
+    "phpunit.php": "php",
+    "phpunit.phpunit": "vendor/bin/phpunit",
+    "phpunit.args": ["--testdox"],
+    
+    // PHP settings
+    "php.validate.enable": true,
+    
+    // Test Explorer UI
+    "testing.automaticallyOpenPeekView": "failureVisible",
+    "testing.defaultGutterClickAction": "run",
+    "testing.followRunningTest": true,
+    "testing.gutterEnabled": true,
+    "testing.showAllMessages": true,
+    
+    // File associations
+    "files.associations": {
+        "*.page": "php",
+        "*.cfg": "ini"
+    },
+    
+    // BATS
+    "bats-test-runner.testPattern": "**/*.bats"
 }

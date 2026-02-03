@@ -1,2 +1,19 @@
+# Build artifacts
 /archive
 /build
+/tmp
+
+# PHP dependencies (install via composer install)
+/vendor/
+
+# PHPUnit
+/.phpunit.cache/
+/tests/coverage/
+/tests/results/
+
+# IDE
+/.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
