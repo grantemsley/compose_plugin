@@ -61,6 +61,42 @@ class UtilTest extends TestCase
     }
 
     /**
+     * Test sanitizeStr with empty string
+     */
+    public function testSanitizeStrEmptyString(): void
+    {
+        $result = sanitizeStr('');
+        $this->assertEquals('', $result);
+    }
+
+    /**
+     * Test sanitizeStr with underscores (should be preserved)
+     */
+    public function testSanitizeStrPreservesUnderscores(): void
+    {
+        $result = sanitizeStr('my_stack_name');
+        $this->assertEquals('my_stack_name', $result);
+    }
+
+    /**
+     * Test sanitizeStr with numbers
+     */
+    public function testSanitizeStrWithNumbers(): void
+    {
+        $result = sanitizeStr('Stack123.Test');
+        $this->assertEquals('stack123_test', $result);
+    }
+
+    /**
+     * Test sanitizeStr with multiple consecutive special chars
+     */
+    public function testSanitizeStrMultipleSpecialChars(): void
+    {
+        $result = sanitizeStr('my..stack--name  here');
+        $this->assertEquals('my__stack__name__here', $result);
+    }
+
+    /**
      * Test isIndirect returns false when no indirect file exists
      */
     public function testIsIndirectReturnsFalseWhenNoFile(): void
@@ -156,5 +192,101 @@ class UtilTest extends TestCase
         $result = getStackLastResult($tempDir);
         
         $this->assertNull($result);
+    }
+
+    // ===========================================
+    // Stack Locking Tests
+    // ===========================================
+
+    /**
+     * Test acquireStackLock creates lock directory if needed
+     */
+    public function testAcquireStackLockCreatesDirectory(): void
+    {
+        $lockDir = '/var/run/compose.manager';
+        
+        // Clean up any existing lock
+        @unlink("$lockDir/test_stack.lock");
+        
+        $fp = acquireStackLock('test_stack', 1);
+        
+        $this->assertIsResource($fp);
+        $this->assertDirectoryExists($lockDir);
+        
+        releaseStackLock($fp);
+    }
+
+    /**
+     * Test acquireStackLock writes lock info
+     */
+    public function testAcquireStackLockWritesInfo(): void
+    {
+        $lockDir = '/var/run/compose.manager';
+        $lockFile = "$lockDir/test_stack_2.lock";
+        
+        // Clean up any existing lock
+        @unlink($lockFile);
+        
+        $fp = acquireStackLock('test_stack_2', 1);
+        $this->assertIsResource($fp);
+        
+        // Release the lock first so we can read the file
+        releaseStackLock($fp);
+        
+        // Read lock content - file should still exist with the info
+        $this->assertFileExists($lockFile);
+        $content = file_get_contents($lockFile);
+        $info = json_decode($content, true);
+        
+        $this->assertIsArray($info);
+        $this->assertArrayHasKey('pid', $info);
+        $this->assertArrayHasKey('time', $info);
+        $this->assertArrayHasKey('stack', $info);
+        $this->assertEquals('test_stack_2', $info['stack']);
+    }
+
+    /**
+     * Test isStackLocked returns false when not locked
+     */
+    public function testIsStackLockedReturnsFalseWhenNotLocked(): void
+    {
+        // Use a unique stack name that shouldn't have a lock
+        $result = isStackLocked('nonexistent_stack_' . time());
+        
+        $this->assertFalse($result);
+    }
+
+    /**
+     * Test releaseStackLock releases the lock
+     */
+    public function testReleaseStackLockReleasesLock(): void
+    {
+        $fp = acquireStackLock('release_test', 1);
+        $this->assertIsResource($fp);
+        
+        releaseStackLock($fp);
+        
+        // Should be able to acquire again immediately
+        $fp2 = acquireStackLock('release_test', 1);
+        $this->assertIsResource($fp2);
+        releaseStackLock($fp2);
+    }
+
+    /**
+     * Test sanitizeStr is used for lock file naming
+     */
+    public function testLockFileUsesSanitizedName(): void
+    {
+        $lockDir = '/var/run/compose.manager';
+        
+        // Stack name with special chars that sanitizeStr handles
+        $fp = acquireStackLock('My.Stack-Name', 1);
+        $this->assertIsResource($fp);
+        
+        // Lock file should use sanitized name
+        $expectedFile = "$lockDir/my_stack_name.lock";
+        $this->assertFileExists($expectedFile);
+        
+        releaseStackLock($fp);
     }
 }
