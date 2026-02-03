@@ -13,9 +13,13 @@ A plugin for [unRAID](https://unraid.net/) that installs Docker Compose and adds
 ### Stack Editor
 The built-in editor provides multiple tabs for managing your compose stack:
 
-| Compose File | Settings | Web UI Labels |
-|:------------:|:--------:|:-------------:|
-| ![Editor - Compose File](source/compose.manager/images/editor-composeFile.png) | ![Editor - Settings](source/compose.manager/images/editor-settings.png) | ![Editor - Web UI](source/compose.manager/images/editor-webUI.png) |
+| Compose File | Settings |
+|:------------:|:--------:|
+| ![Editor - Compose File](source/compose.manager/images/editor-composeFile.png) | ![Editor - Settings](source/compose.manager/images/editor-settings.png) |
+
+| Env | Web UI Labels |
+|:---:|:-------------:|
+| ![Editor - Env](source/compose.manager/images/editor-env.png) | ![Editor - Web UI](source/compose.manager/images/editor-webUI.png) |
 
 ## Features
 

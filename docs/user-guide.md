@@ -12,17 +12,20 @@
 
 ### Stack Editor
 
-The editor provides three tabs for managing your stack:
+The editor provides four tabs for managing your stack:
 
 | Tab | Purpose |
 |-----|---------|
 | **Compose File** | Edit your `docker-compose.yml` with syntax highlighting |
 | **Settings** | Configure autostart, profiles, and environment files |
+| **Env** | Edit environment variables for your stack |
 | **Web UI** | Add Unraid-specific labels for web UI integration |
 
 ![Editor - Compose File](../source/compose.manager/images/editor-composeFile.png)
 
 ![Editor - Settings](../source/compose.manager/images/editor-settings.png)
+
+![Editor - Env](../source/compose.manager/images/editor-env.png)
 
 ![Editor - Web UI Labels](../source/compose.manager/images/editor-webUI.png)
 
