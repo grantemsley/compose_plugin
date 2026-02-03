@@ -140,6 +140,15 @@ $script = <<<'EOT'
     function addStackContext(elementId, stackName, isRunning) {
         debugLog('addStackContext called:', elementId, stackName, isRunning);
         
+        // Check if menu is already open for this element - if so, just close it
+        var dropdownId = 'dropdown-' + elementId;
+        var $dropdown = $('#' + dropdownId);
+        if ($dropdown.length && $dropdown.is(':visible')) {
+            debugLog('Menu already open, closing');
+            $dropdown.hide();
+            return;
+        }
+        
         var opts = [];
         context.settings({right:false, above:false});
         
@@ -167,11 +176,7 @@ $script = <<<'EOT'
         // Destroy and re-attach like Docker pattern
         context.destroy('#' + elementId);
         context.attach('#' + elementId, opts);
-        
-        // Debug: Check if dropdown was created
-        var dropdownId = 'dropdown-' + elementId;
-        var $dropdown = $('#' + dropdownId);
-        debugLog('Context menu attached to #' + elementId, 'dropdown exists:', $dropdown.length > 0, 'dropdown HTML:', $dropdown.length ? $dropdown[0].outerHTML.substring(0, 200) : 'N/A');
+        debugLog('Context menu attached to #' + elementId);
     }
     
     function stackAction(stackName, action) {
