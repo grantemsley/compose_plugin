@@ -153,6 +153,11 @@ $script = <<<'EOT'
         context.settings({right:false, above:false});
         
         if (isRunning) {
+            opts.push({text:'Logs', icon:'fa-file-text-o', action:function(e){
+                e.preventDefault();
+                openStackLogs(stackName);
+            }});
+            opts.push({divider:true});
             opts.push({text:'Stop', icon:'fa-stop', action:function(e){
                 e.preventDefault();
                 stackAction(stackName, 'stop');
@@ -189,6 +194,12 @@ $script = <<<'EOT'
         }, function() {
             setTimeout(loadComposeStacks, 1000);
         });
+    }
+    
+    function openStackLogs(stackName) {
+        // Open combined logs for the stack using the Compose page's log viewer
+        var projectPath = '/boot/config/plugins/compose.manager/projects/' + stackName;
+        window.open('/Docker/ComposeLog?project=' + encodeURIComponent(projectPath), '_blank');
     }
     
     // Container context menu
