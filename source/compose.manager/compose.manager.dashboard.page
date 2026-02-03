@@ -191,6 +191,83 @@ $script = <<<'EOT'
         });
     }
     
+    // Container context menu
+    function addContainerContext(elementId, ctName, ctId, isRunning, webui, shell) {
+        debugLog('addContainerContext called:', elementId, ctName, isRunning);
+        
+        // Check if menu is already open - toggle off
+        var dropdownId = 'dropdown-' + elementId;
+        var $dropdown = $('#' + dropdownId);
+        if ($dropdown.length && $dropdown.is(':visible')) {
+            debugLog('Container menu already open, closing');
+            $dropdown.hide();
+            return;
+        }
+        
+        var opts = [];
+        context.settings({right:false, above:false});
+        
+        if (isRunning) {
+            if (webui && webui !== '' && webui !== '#') {
+                opts.push({text:'WebUI', icon:'fa-globe', action:function(e){
+                    e.preventDefault();
+                    window.open(webui, '_blank');
+                }});
+            }
+            opts.push({text:'Console', icon:'fa-terminal', action:function(e){
+                e.preventDefault();
+                openTerminal('docker', ctName, shell || 'sh');
+            }});
+            opts.push({text:'Logs', icon:'fa-file-text-o', action:function(e){
+                e.preventDefault();
+                openTerminal('docker_logs', ctName);
+            }});
+            opts.push({divider:true});
+            opts.push({text:'Stop', icon:'fa-stop', action:function(e){
+                e.preventDefault();
+                dockerAction(ctId, 'stop');
+            }});
+            opts.push({text:'Restart', icon:'fa-refresh', action:function(e){
+                e.preventDefault();
+                dockerAction(ctId, 'restart');
+            }});
+        } else {
+            opts.push({text:'Start', icon:'fa-play', action:function(e){
+                e.preventDefault();
+                dockerAction(ctId, 'start');
+            }});
+        }
+        
+        context.destroy('#' + elementId);
+        context.attach('#' + elementId, opts);
+        debugLog('Container context menu attached to #' + elementId);
+    }
+    window.addContainerContext = addContainerContext;
+    
+    function dockerAction(ctId, action) {
+        debugLog('dockerAction:', ctId, action);
+        $.post('/plugins/dynamix.docker.manager/include/Events.php', {
+            action: 'docker_' + action,
+            container: ctId
+        }, function() {
+            // Refresh after a short delay
+            setTimeout(loadComposeStacks, 1500);
+        });
+    }
+    
+    // Open terminal using Unraid's built-in function
+    function openTerminal(type, name, shell) {
+        if (typeof window.openTerminal === 'function') {
+            window.openTerminal(type, name, shell);
+        } else {
+            // Fallback - open docker logs/exec in new window
+            var url = type === 'docker_logs' 
+                ? '/Docker/Log?container=' + encodeURIComponent(name)
+                : '/Docker/Exec?container=' + encodeURIComponent(name) + '&shell=' + encodeURIComponent(shell || 'sh');
+            window.open(url, '_blank');
+        }
+    }
+    
     function toggleStack(stackId, stackName) {
         var $containers = $('#compose-dash-ct-' + stackId);
         var $icon = $('#compose-dash-exp-' + stackId);
@@ -223,11 +300,15 @@ $script = <<<'EOT'
                         // API returns capitalized property names: State, ID, Icon, Name, WebUI
                         var isRunning = ct.State === 'running';
                         var stateIcon = isRunning ? 'fa-play green-text' : 'fa-square red-text';
-                        var ctId = 'dash-ct-' + ct.ID.substring(0, 12);
+                        var ctElId = 'dash-ct-' + ct.ID.substring(0, 12);
                         var imgSrc = ct.Icon || '/plugins/dynamix.docker.manager/images/question.png';
+                        var escapedName = ct.Name.replace(/'/g, "\\'");
+                        var webui = (ct.WebUI || '').replace(/'/g, "\\'");
+                        var shell = (ct.Shell || 'sh').replace(/'/g, "\\'");
+                        var shortId = ct.ID.substring(0, 12);
                         
                         html += '<div class="compose-dash-container">';
-                        html += '<span class="compose-dash-ct-icon" id="' + ctId + '">';
+                        html += '<span class="compose-dash-ct-icon" id="' + ctElId + '" onclick="addContainerContext(\'' + ctElId + '\',\'' + escapedName + '\',\'' + shortId + '\',' + isRunning + ',\'' + webui + '\',\'' + shell + '\')">';
                         html += '<img src="' + imgSrc + '" onerror="this.src=\'/plugins/dynamix.docker.manager/images/question.png\';">';
                         html += '</span>';
                         html += '<span class="compose-dash-ct-name">' + ct.Name + '</span>';
@@ -235,36 +316,6 @@ $script = <<<'EOT'
                         html += '</div>';
                     });
                     $container.html(html);
-                    
-                    // Attach context menus using docker.js function
-                    response.containers.forEach(function(ct) {
-                        var ctId = '#dash-ct-' + ct.ID.substring(0, 12);
-                        var isRunning = ct.State === 'running';
-                        if (typeof addDockerContainerContext === 'function') {
-                            // addDockerContainerContext(name, imageId, template, started, paused, update, autostart, webui, tswebui, shell, id, support, project, registry, donateLink, readme)
-                            $(ctId).on('click', function(e) {
-                                e.stopPropagation();
-                                addDockerContainerContext(
-                                    ct.Name,           // container name
-                                    ct.Image || '',    // image id
-                                    '',                // template (empty for compose)
-                                    isRunning ? 1 : 0, // started
-                                    0,                 // paused
-                                    0,                 // update status
-                                    0,                 // autostart
-                                    ct.WebUI || '',    // webui
-                                    '',                // tailscale webui
-                                    ct.Shell || 'sh',  // shell
-                                    ct.ID.substring(0, 12), // container id
-                                    '',                // support
-                                    ct.Project || '',  // project
-                                    '',                // registry
-                                    '',                // donate
-                                    ''                 // readme
-                                );
-                            });
-                        }
-                    });
                     
                     stackContainerCache[stackId] = true;
                 } else {
