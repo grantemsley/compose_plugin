@@ -574,6 +574,14 @@ function executeUpdateAllStacks(stacks) {
   // Create a list of paths to update
   var paths = stacks.map(function(s) { return s.path; });
   
+  // Track all stacks for update check when dialog closes
+  stacks.forEach(function(s) {
+    var stackName = s.project;
+    if (pendingUpdateCheckStacks.indexOf(stackName) === -1) {
+      pendingUpdateCheckStacks.push(stackName);
+    }
+  });
+  
   $.post(compURL, {action:'composeUpdateMultiple', paths:JSON.stringify(paths)}, function(data) {
     if (data) {
       openBox(data, 'Update All Stacks', height, width, true);
@@ -715,13 +723,16 @@ function checkStackUpdates(stackName) {
           var stackInfo = {
             projectName: response.projectName,
             hasUpdate: false,
-            containers: response.updates
+            containers: response.updates,
+            isRunning: true  // Stack was just updated, so it's running
           };
           response.updates.forEach(function(u) {
             if (u.hasUpdate) stackInfo.hasUpdate = true;
           });
           stackUpdateStatus[stackName] = stackInfo;
           updateStackUpdateUI(stackName, stackInfo);
+          // Update the Update All button state
+          updateUpdateAllButton();
         }
       } catch(e) {
         console.error('Failed to parse update check response:', e);
@@ -817,12 +828,18 @@ $(function() {
         mutation.removedNodes.forEach(function(node) {
           // Check if the removed node is the ebox or contains it
           if (node.id === 'ebox' || (node.querySelector && node.querySelector('#ebox'))) {
-            if (pendingUpdateCheck) {
-              pendingUpdateCheck = false;
+            if (pendingUpdateCheckStacks.length > 0) {
+              // Copy and clear the list before processing
+              var stacksToCheck = pendingUpdateCheckStacks.slice();
+              pendingUpdateCheckStacks = [];
+              
               // Delay slightly to let page state settle
               setTimeout(function() {
-                console.log('Update completed, running check for updates...');
-                checkAllUpdates();
+                console.log('Update completed, running check for updates on stacks:', stacksToCheck);
+                // Check each stack that was updated
+                stacksToCheck.forEach(function(stackName) {
+                  checkStackUpdates(stackName);
+                });
               }, 1000);
             }
           }
@@ -1343,15 +1360,19 @@ function ComposeDown(path, profile="") {
   showStackActionDialog('down', path, profile);
 }
 
-// Flag to track if an update was just performed
-var pendingUpdateCheck = false;
+// Track stacks that need update check after operation completes
+// Using array to support Update All Stacks operation
+var pendingUpdateCheckStacks = [];
 
 function UpdateStackConfirmed(path, profile="") {
   var height = 800;
   var width = 1200;
 
-  // Set flag to trigger update check when dialog closes
-  pendingUpdateCheck = true;
+  // Track this stack for update check when dialog closes
+  var stackName = basename(path);
+  if (pendingUpdateCheckStacks.indexOf(stackName) === -1) {
+    pendingUpdateCheckStacks.push(stackName);
+  }
 
   $.post(compURL,{action:'composeUpPullBuild',path:path,profile:profile},function(data) {
     if (data) {
