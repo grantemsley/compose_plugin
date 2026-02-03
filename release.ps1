@@ -97,58 +97,94 @@ if ($lastTag) {
     $commitRange = "HEAD"
 }
 
-# Get commit messages, filtering out merge commits and formatting
-$commits = git log $commitRange --pretty=format:"%s" --no-merges 2>$null | Where-Object { 
-    # Filter out common noise
-    $_ -and 
-    $_ -notmatch "^Merge " -and
-    $_ -notmatch "^v\d{4}\." -and
-    $_ -notmatch "^Release v" -and
-    $_ -notmatch "^Update changelog" -and
-    $_ -notmatch "^\[skip ci\]"
+# Get commit messages with full body, using a delimiter to separate commits
+$commitDelimiter = "---COMMIT-SEPARATOR---"
+$rawCommits = git log $commitRange --pretty=format:"%s%n%b$commitDelimiter" --no-merges 2>$null
+
+# Split into individual commits and parse
+$commitBlocks = ($rawCommits -join "`n") -split [regex]::Escape($commitDelimiter) | Where-Object { $_.Trim() }
+
+# Category definitions for conventional commits
+$categoryTitles = @{
+    'feat' = 'Features'
+    'fix' = 'Bug Fixes'
+    'docs' = 'Documentation'
+    'style' = 'Styles'
+    'refactor' = 'Refactoring'
+    'perf' = 'Performance'
+    'test' = 'Tests'
+    'build' = 'Build'
+    'ci' = 'CI/CD'
+    'chore' = 'Chores'
 }
 
-# Categorize commits by conventional commit type
-$categories = @{
-    'feat' = @{ title = 'Features'; commits = @() }
-    'fix' = @{ title = 'Bug Fixes'; commits = @() }
-    'docs' = @{ title = 'Documentation'; commits = @() }
-    'style' = @{ title = 'Styles'; commits = @() }
-    'refactor' = @{ title = 'Refactoring'; commits = @() }
-    'perf' = @{ title = 'Performance'; commits = @() }
-    'test' = @{ title = 'Tests'; commits = @() }
-    'build' = @{ title = 'Build'; commits = @() }
-    'ci' = @{ title = 'CI/CD'; commits = @() }
-    'chore' = @{ title = 'Chores'; commits = @() }
-    'other' = @{ title = 'Other Changes'; commits = @() }
-}
+# Parse commits into categorized structure
+$categorizedCommits = @{}
+$uncategorizedMajor = @()
+$uncategorizedMinor = @()
 
-# Parse each commit
-foreach ($commit in $commits) {
-    if (-not $commit) { continue }
+foreach ($block in $commitBlocks) {
+    $lines = @($block.Trim() -split "`n" | Where-Object { $_.Trim() })
+    if ($lines.Count -eq 0) { continue }
     
-    # Match conventional commit format: type(scope): message or type: message
-    if ($commit -match '^(\w+)(?:\(([^)]+)\))?:\s*(.+)$') {
+    $subject = $lines[0].Trim()
+    
+    # Filter out noise
+    if (-not $subject -or 
+        $subject -match "^Merge " -or
+        $subject -match "^v\d{4}\." -or
+        $subject -match "^Release v" -or
+        $subject -match "^Update changelog" -or
+        $subject -match "^\[skip ci\]") {
+        continue
+    }
+    
+    # Extract bullet points from body (lines starting with -)
+    $bodyBullets = @()
+    for ($i = 1; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i].Trim()
+        if ($line -match "^-\s*(.+)$") {
+            $bodyBullets += $matches[1].Trim()
+        }
+    }
+    
+    # Parse conventional commit format: type(scope): message
+    $type = $null
+    $scope = $null
+    $message = $subject
+    
+    if ($subject -match '^(\w+)(?:\(([^)]+)\))?:\s*(.+)$') {
         $type = $matches[1].ToLower()
         $scope = $matches[2]
         $message = $matches[3].Trim()
-        
-        # Format message with scope if present
+    }
+    
+    $commitObj = @{
+        Subject = $subject
+        Type = $type
+        Scope = $scope
+        Message = $message
+        Bullets = $bodyBullets
+        IsMajor = ($bodyBullets.Count -gt 0)
+    }
+    
+    if ($type -and $categoryTitles.ContainsKey($type)) {
+        # Categorized commit
+        $categoryKey = $type
         if ($scope) {
-            $formattedMsg = "**$scope**: $message"
-        } else {
-            $formattedMsg = $message
+            $categoryKey = "$type|$scope"
         }
-        
-        # Add to appropriate category
-        if ($categories.ContainsKey($type)) {
-            $categories[$type].commits += $formattedMsg
-        } else {
-            $categories['other'].commits += $formattedMsg
+        if (-not $categorizedCommits.ContainsKey($categoryKey)) {
+            $categorizedCommits[$categoryKey] = @()
         }
+        $categorizedCommits[$categoryKey] += $commitObj
     } else {
-        # Non-conventional commit goes to 'other'
-        $categories['other'].commits += $commit.Trim()
+        # Uncategorized commit
+        if ($commitObj.IsMajor) {
+            $uncategorizedMajor += $commitObj
+        } else {
+            $uncategorizedMinor += $commitObj
+        }
     }
 }
 
@@ -156,17 +192,57 @@ foreach ($commit in $commits) {
 $releaseNotes = @()
 $releaseNotes += "###$versionNumber"
 
-# Output categories in order (only if they have commits)
-$categoryOrder = @('feat', 'fix', 'perf', 'refactor', 'docs', 'style', 'test', 'build', 'ci', 'chore', 'other')
 $hasContent = $false
 
-foreach ($cat in $categoryOrder) {
-    if ($categories[$cat].commits.Count -gt 0) {
-        $hasContent = $true
-        foreach ($msg in $categories[$cat].commits) {
-            $releaseNotes += "- $($categories[$cat].title): $msg"
+# Group by type, then by scope within type
+$typeOrder = @('feat', 'fix', 'perf', 'refactor', 'docs', 'style', 'test', 'build', 'ci', 'chore')
+
+foreach ($type in $typeOrder) {
+    # Get all keys for this type (with and without scopes)
+    $typeKeys = $categorizedCommits.Keys | Where-Object { $_ -eq $type -or $_ -like "$type|*" } | Sort-Object
+    
+    if ($typeKeys.Count -eq 0) { continue }
+    
+    $hasContent = $true
+    $typeTitle = $categoryTitles[$type]
+    
+    foreach ($key in $typeKeys) {
+        $commits = $categorizedCommits[$key]
+        $scope = $null
+        if ($key -match '\|(.+)$') {
+            $scope = $matches[1]
+        }
+        
+        foreach ($commit in $commits) {
+            # Build the line with optional scope prefix
+            if ($scope) {
+                $line = "- $typeTitle ($scope): $($commit.Message)"
+            } else {
+                $line = "- $typeTitle`: $($commit.Message)"
+            }
+            $releaseNotes += $line
+            
+            # Add bullet points for major commits
+            foreach ($bullet in $commit.Bullets) {
+                $releaseNotes += "  - $bullet"
+            }
         }
     }
+}
+
+# Add uncategorized major commits
+foreach ($commit in $uncategorizedMajor) {
+    $hasContent = $true
+    $releaseNotes += "- $($commit.Subject)"
+    foreach ($bullet in $commit.Bullets) {
+        $releaseNotes += "  - $bullet"
+    }
+}
+
+# Add uncategorized minor commits
+foreach ($commit in $uncategorizedMinor) {
+    $hasContent = $true
+    $releaseNotes += "- $($commit.Subject)"
 }
 
 if (-not $hasContent) {
