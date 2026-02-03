@@ -2,12 +2,14 @@
 export HOME=/root
 
 # Compose Manager - Docker Compose wrapper script
-# Provides retry logic, error handling, and result tracking
+# Provides retry logic, error handling, result tracking, and operation locking
 
 # Configuration - can be overridden via environment
 MAX_RETRIES=${COMPOSE_MAX_RETRIES:-3}
 RETRY_DELAY=${COMPOSE_RETRY_DELAY:-5}
 PULL_TIMEOUT=${COMPOSE_PULL_TIMEOUT:-600}
+LOCK_TIMEOUT=${COMPOSE_LOCK_TIMEOUT:-30}
+LOCK_DIR="/var/run/compose.manager"
 
 SHORT=e:,c:,f:,p:,d:,o:,g:,s:
 LONG=env,command:,file:,project_name:,project_dir:,override:,profile:,debug,recreate,stack-path:
@@ -22,6 +24,7 @@ stack_path=""
 options=""
 command_options=""
 debug=false
+lock_fd=""
 
 # Logging helper
 log_msg() {
@@ -32,6 +35,53 @@ log_msg() {
         echo "[$level] $msg"
     fi
 }
+
+# Locking functions to prevent concurrent operations on the same stack
+acquire_lock() {
+    local lock_name="$1"
+    
+    # Create lock directory if needed
+    mkdir -p "$LOCK_DIR" 2>/dev/null
+    
+    local lock_file="$LOCK_DIR/${lock_name}.lock"
+    
+    # Open lock file for writing (fd 9)
+    exec 9>"$lock_file"
+    
+    # Try to acquire lock with timeout
+    local waited=0
+    while ! flock -n 9 2>/dev/null; do
+        if [ $waited -ge $LOCK_TIMEOUT ]; then
+            log_msg "ERROR" "Could not acquire lock for $lock_name after ${LOCK_TIMEOUT}s - another operation may be in progress"
+            echo "✗ Another operation is already in progress for this stack. Please wait and try again."
+            return 1
+        fi
+        
+        if [ $waited -eq 0 ]; then
+            echo "⏳ Waiting for another operation to complete..."
+        fi
+        
+        sleep 1
+        waited=$((waited + 1))
+    done
+    
+    # Write lock info
+    echo "{\"pid\":$$,\"command\":\"$command\",\"time\":\"$(date -Iseconds)\"}" >&9
+    
+    lock_fd=9
+    return 0
+}
+
+release_lock() {
+    if [ -n "$lock_fd" ]; then
+        flock -u $lock_fd 2>/dev/null
+        exec 9>&-
+        lock_fd=""
+    fi
+}
+
+# Ensure lock is released on exit
+trap release_lock EXIT
 
 # Save operation result to stack directory
 save_result() {
@@ -155,6 +205,17 @@ do
       ;;
   esac
 done
+
+# Acquire lock for operations that modify state (not for read-only commands)
+case $command in
+  up|down|pull|update|stop)
+    # Sanitize name for lock file (same as PHP sanitizeStr)
+    lock_name=$(echo "$name" | tr ' .-' '___' | tr '[:upper:]' '[:lower:]')
+    if ! acquire_lock "$lock_name"; then
+      exit 1
+    fi
+    ;;
+esac
 
 case $command in
 

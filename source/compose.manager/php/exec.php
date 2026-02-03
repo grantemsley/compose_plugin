@@ -905,6 +905,46 @@ switch ($_POST['action']) {
             'count' => count($logs)
         ]);
         break;
+    
+    case 'checkStackLock':
+        // Check if a stack is currently locked (operation in progress)
+        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        if ( ! $script ) {
+            echo json_encode( [ 'result' => 'error', 'message' => 'Stack not specified.' ] );
+            break;
+        }
+        
+        $lockInfo = isStackLocked($script);
+        if ($lockInfo) {
+            echo json_encode([
+                'result' => 'success',
+                'locked' => true,
+                'info' => $lockInfo
+            ]);
+        } else {
+            echo json_encode([
+                'result' => 'success',
+                'locked' => false
+            ]);
+        }
+        break;
+    
+    case 'getStackResult':
+        // Get the last operation result for a stack
+        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        if ( ! $script ) {
+            echo json_encode( [ 'result' => 'error', 'message' => 'Stack not specified.' ] );
+            break;
+        }
+        
+        $stackPath = "$compose_root/$script";
+        $lastResult = getStackLastResult($stackPath);
+        
+        echo json_encode([
+            'result' => 'success',
+            'lastResult' => $lastResult
+        ]);
+        break;
 }
 
 ?>
