@@ -876,30 +876,34 @@ $(function() {
 });
 
 function addStack() {
+  var formHtml = '<div class="swal-text" style="font-weight: bold; padding-left: 0px; margin-top: 0px;">Stack Name</div>';
+  formHtml += '<br>';
+  formHtml += "<input type='text' id='swal-stack-name' class='swal-input-show' placeholder='Stack Name' style='width:100%;'>";
+  formHtml += '<br><br>';
+  formHtml += '<div class="swal-text" style="font-weight: bold; padding-left: 0px; margin-top: 0px;">Description (optional)</div>';
+  formHtml += '<br>';
+  formHtml += "<input type='text' id='swal-stack-desc' class='swal-input-show' placeholder='Description' style='width:100%;'>";
+  
   swal({
     title: "Add New Compose Stack",
-    text: "Enter a name for your new stack:",
-    type: "input",
-    inputPlaceholder: "Stack Name",
+    text: formHtml,
+    html: true,
     showCancelButton: true,
-    closeOnConfirm: false,
-    inputValidator: function(value) {
-      if (!value || !value.trim()) {
-        return "Please enter a stack name";
-      }
-    }
-  }, function(inputValue) {
-    if (inputValue === false) return; // User cancelled
+    closeOnConfirm: false
+  }, function(isConfirm) {
+    if (!isConfirm) return; // User cancelled
     
-    var new_stack_name = inputValue.trim();
+    var new_stack_name = document.getElementById('swal-stack-name').value.trim();
+    var new_stack_desc = document.getElementById('swal-stack-desc').value.trim();
+    
     if (!new_stack_name) {
-      swal.showInputError("Please enter a stack name");
+      swal("Error", "Please enter a stack name", "error");
       return false;
     }
     
     $.post(
       caURL,
-      {action:'addStack', stackName:new_stack_name},
+      {action:'addStack', stackName:new_stack_name, stackDesc:new_stack_desc},
       function(data) {
         if (data) {
           var response = JSON.parse(data);

@@ -79,7 +79,15 @@ switch ($_POST['action']) {
 
         file_put_contents("$folder/name",$stackName);
 
-        echo json_encode( [ 'result' => 'success', 'message' => '' ] );
+        // Save description if provided
+        $stackDesc = isset($_POST['stackDesc']) ? urldecode(($_POST['stackDesc'])) : "";
+        if (!empty($stackDesc)) {
+            file_put_contents("$folder/description", trim($stackDesc));
+        }
+
+        // Return project info for opening the editor
+        $projectName = basename($folder);
+        echo json_encode( [ 'result' => 'success', 'message' => '', 'project' => $folder, 'projectName' => $projectName ] );
         break;
     case 'deleteStack':
         $stackName = isset($_POST['stackName']) ? urldecode(($_POST['stackName'])) : "";
