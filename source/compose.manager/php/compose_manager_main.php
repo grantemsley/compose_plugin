@@ -1364,6 +1364,18 @@ function ComposeUpConfirmed(path, profile="") {
   })
 }
 
+// Recreate containers without pulling (for label changes)
+function ComposeRecreateConfirmed(path, profile="") {
+  var height = 800;
+  var width = 1200;
+  
+  $.post(compURL,{action:'composeUpRecreate',path:path,profile:profile},function(data) {
+    if (data) {
+      openBox(data,"Recreate Stack "+basename(path),height,width,true);
+    }
+  })
+}
+
 function ComposeUp(path, profile="") {
   showStackActionDialog('up', path, profile);
 }
@@ -1381,6 +1393,71 @@ function ComposeDownConfirmed(path, profile="") {
 
 function ComposeDown(path, profile="") {
   showStackActionDialog('down', path, profile);
+}
+
+// Prompt user to recreate containers after label changes
+function promptRecreateContainers() {
+  var project = editorModal.currentProject;
+  if (!project) {
+    swal({
+      title: "Saved!",
+      text: "All changes have been saved.",
+      type: "success",
+      timer: 1500,
+      showConfirmButton: false
+    });
+    return;
+  }
+  
+  // Find the stack row and check if it's running
+  var $stackRow = $('#compose_stacks tr.compose-sortable[data-project="' + project + '"]');
+  var isUp = $stackRow.length > 0 && $stackRow.data('isup') == "1";
+  
+  if (!isUp) {
+    // Stack is not running, close editor and show saved message
+    doCloseEditorModal();
+    swal({
+      title: "Saved!",
+      text: "All changes have been saved. Container labels will take effect when you start the stack.",
+      type: "success"
+    }, function() {
+      location.reload();
+    });
+    return;
+  }
+  
+  // Stack is running, ask if user wants to recreate
+  var path = compose_root + '/' + project;
+  swal({
+    title: "Recreate Containers?",
+    text: '<div style="text-align:left;max-width:400px;margin:0 auto;">' +
+          '<p>Container labels (icon, WebUI) have been saved.</p>' +
+          '<p style="color:#f80;"><i class="fa fa-exclamation-triangle"></i> <strong>Containers must be recreated</strong> for these changes to take effect.</p>' +
+          '<p style="font-size:0.9em;color:#999;">This will briefly restart the affected containers. Your data will be preserved.</p>' +
+          '</div>',
+    html: true,
+    type: "warning",
+    showCancelButton: true,
+    confirmButtonText: "Recreate Now",
+    cancelButtonText: "Later",
+    closeOnConfirm: false
+  }, function(confirmed) {
+    doCloseEditorModal();
+    if (confirmed) {
+      swal.close();
+      ComposeRecreateConfirmed(path, "");
+    } else {
+      swal({
+        title: "Saved!",
+        text: "Changes saved. Remember to restart or recreate containers to apply label changes.",
+        type: "info",
+        timer: 2000,
+        showConfirmButton: false
+      }, function() {
+        location.reload();
+      });
+    }
+  });
 }
 
 // Track stacks that need update check after operation completes
@@ -2394,6 +2471,9 @@ function saveAllChanges() {
     return;
   }
   
+  // Track if labels are being modified (need to offer recreate)
+  var labelsWereModified = editorModal.modifiedLabels.size > 0;
+  
   // Save modified file tabs
   editorModal.modifiedTabs.forEach(function(tabName) {
     savePromises.push(saveTab(tabName));
@@ -2416,13 +2496,23 @@ function saveAllChanges() {
     });
     
     if (allSucceeded) {
-      swal({
-        title: "Saved!",
-        text: "All changes have been saved.",
-        type: "success",
-        timer: 1500,
-        showConfirmButton: false
-      });
+      // Check if we should offer to recreate containers
+      if (labelsWereModified) {
+        promptRecreateContainers();
+      } else {
+        // Close editor and reload page
+        doCloseEditorModal();
+        swal({
+          title: "Saved!",
+          text: "All changes have been saved.",
+          type: "success",
+          timer: 1500,
+          showConfirmButton: false
+        });
+        setTimeout(function() {
+          location.reload();
+        }, 1600);
+      }
     } else {
       swal({
         title: "Partial Save",

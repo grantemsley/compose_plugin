@@ -12,6 +12,9 @@ switch ($_POST['action']) {
     case 'composeUp':
         echoComposeCommand('up');
         break;
+    case 'composeUpRecreate':
+        echoComposeCommand('up', true);
+        break;
     case 'composeDown':
         echoComposeCommand('down');
         break;

@@ -46,8 +46,9 @@ function execComposeCommandInTTY($cmd, $debug)
  * Build and echo a compose command for a single stack.
  *
  * @param string $action The compose action (up, down, update, pull, stop, logs)
+ * @param bool $recreate Whether to force recreate containers (adds --force-recreate flag)
  */
-function echoComposeCommand($action)
+function echoComposeCommand($action, $recreate = false)
 {
     global $plugin_root;
     global $sName;
@@ -107,6 +108,11 @@ function echoComposeCommand($action)
 
         // Pass stack path for timestamp saving
         $composeCommand[] = "-s$path";
+
+        // Add recreate flag if requested
+        if ($recreate) {
+            $composeCommand[] = "--recreate";
+        }
 
         if ($debug) {
             $composeCommand[] = "--debug";
