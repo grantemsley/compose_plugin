@@ -1440,12 +1440,14 @@ function promptRecreateContainers() {
     showCancelButton: true,
     confirmButtonText: "Recreate Now",
     cancelButtonText: "Later",
-    closeOnConfirm: false
+    closeOnConfirm: true
   }, function(confirmed) {
     doCloseEditorModal();
     if (confirmed) {
-      swal.close();
-      ComposeRecreateConfirmed(path, "");
+      // Use setTimeout to ensure swal is fully closed before opening ttyd dialog
+      setTimeout(function() {
+        ComposeRecreateConfirmed(path, "");
+      }, 300);
     } else {
       swal({
         title: "Saved!",

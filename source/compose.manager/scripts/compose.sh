@@ -110,10 +110,11 @@ run_with_retry() {
             log_msg "DEBUG" "Attempt $attempt/$MAX_RETRIES: $desc"
         fi
         
-        # Run command and capture output + exit code
-        eval "$cmd" 2>&1 | tee "$temp_file"
-        exit_code=${PIPESTATUS[0]}
-        output=$(cat "$temp_file")
+        # Run command directly (preserves terminal escape sequences for progress bars)
+        # Use script to capture output while preserving TTY behavior
+        script -q -c "eval $cmd" "$temp_file" 2>&1
+        exit_code=$?
+        output=$(cat "$temp_file" | tr -d '\r')
         
         if [ $exit_code -eq 0 ]; then
             rm -f "$temp_file"
