@@ -1091,145 +1091,6 @@ function editStack(myID) {
   openEditorModalByProject(project, projectName);
 }
 
-function build_override_input_table( id, value, label, placeholder, disable=false) {
-  var disabled = disable ? `disabled` : ``;
-  html = `<div style="display:table; width:100%;">`;
-  html += `<label for="${id}" style="width:75px; display:table-cell;">${label}</label>`;
-  html += `<input type="text" id="${id}" class="swal-content__input" placeholder="${placeholder}" value="${value}" style="width:100%; display:table-cell;" ${disabled}>`;
-  html += `</div>`;
-  html += `<br>`;
-
-  return html;
-}
-
-function override_find_labels( primary, secondary, label ) {
-  var value = primary.labels[label] || "";
-  if( !value && "labels" in secondary ) {
-    value = secondary.labels[label] || "";
-  }
-
-  return value;
-}
-
-function generateOverride(myID, myProject=null) {
-  var project = myProject;
-  if( myID ) {
-    $("#"+myID).tooltipster("close");
-    project = $("#"+myID).attr("data-scriptname");
-  }
-    
-  $.post(caURL,{action:'getOverride',script:project},function(rawOverride) {
-    if (rawOverride) {
-      var rawOverride = JSON.parse(rawOverride);
-      $.post(caURL,{action:'getYml',script:project},function(rawComposefile) {
-        if (rawComposefile) {
-          var rawComposefile = JSON.parse(rawComposefile);
-
-          if( (rawOverride.result == 'success') && (rawComposefile.result == 'success') ) {
-            var override_doc = jsyaml.load(rawOverride.content);
-            if( !override_doc ) {
-              override_doc = { services: {} };
-            }
-            var main_doc = jsyaml.load(rawComposefile.content);
-
-            for( var service_key in main_doc.services ) {
-              if( !(service_key in override_doc.services) ) {
-                override_doc.services[service_key] = { 
-                  labels: {  
-                    <?php echo json_encode($docker_label_managed); ?>: <?php echo json_encode($docker_label_managed_name); ?>,
-                  } 
-                };
-              }
-            }
-
-            var html = ``;
-            for( var service_key in override_doc.services ) {
-              if( service_key in main_doc.services ) {
-                var name = main_doc.services[service_key].container_name || service_key;
-                html += `<div class="swal-text" style="font-weight: bold; padding-left: 0px; margin-top: 0px;">Service: ${name}</div>`;
-                html += `<br>`;
-
-                var icon_value = override_find_labels(override_doc.services[service_key], main_doc.services[service_key], icon_label);
-                html += build_override_input_table(`${service_key}_icon`, icon_value, "Icon", "icon");
-                
-                var webui_value = override_find_labels(override_doc.services[service_key], main_doc.services[service_key], webui_label);
-                html += build_override_input_table(`${service_key}_webui`, webui_value, "Web UI", "web ui");
-
-                var shell_value = override_find_labels(override_doc.services[service_key], main_doc.services[service_key], shell_label);
-                html += build_override_input_table(`${service_key}_shell`, shell_value, "Shell", "shell");
-              }
-            }
-            var deleted_entries = ``;
-            for( var service_key in override_doc.services ) {
-              if( !(service_key in main_doc.services) ) {
-                var name = override_doc.services[service_key].container_name || service_key;
-                deleted_entries += `<div class="swal-text" style="font-weight: bold; padding-left: 0px; margin-top: 0px;">Service: ${name}</div>`;
-                deleted_entries += `<br>`;
-
-                var icon_value = override_find_labels(override_doc.services[service_key], override_doc.services[service_key], icon_label);
-                deleted_entries += build_override_input_table(`${service_key}_icon_d`, icon_value, "Icon", "", true);
-                
-                var webui_value = override_find_labels(override_doc.services[service_key], override_doc.services[service_key], webui_label);
-                deleted_entries += build_override_input_table(`${service_key}_webui_d`, webui_value, "Web UI", "", true);
-
-                var shell_value = override_find_labels(override_doc.services[service_key], override_doc.services[service_key], shell_label);
-                deleted_entries += build_override_input_table(`${service_key}_shell_d`, shell_value, "Shell", "", true);
-              }
-            }
-            if( deleted_entries ) {
-              html += `<details>
-                       <summary style="text-align: left; font-weight: bold;">Entries to be Deleted</summary>
-                       <br>`;
-              html += deleted_entries;
-              html += `</details>`;
-            }
-
-            var form = document.createElement("div");
-            form.style["text-align"] = "left";
-            form.innerHTML = html;
-            swal({
-              title: "Edit Stack UI Labels",
-              text: html,
-              html: true,
-              showCancelButton: true,
-              confirmButtonText: "Save",
-              cancelButtonText: "Cancel"
-            }, function(confirmed) {
-              if(confirmed) {
-                for( var service_key in override_doc.services ) {
-                  if( service_key in main_doc.services ) {
-                    var new_icon = document.getElementById(`${service_key}_icon`).value;
-                    var new_webui = document.getElementById(`${service_key}_webui`).value;
-                    var new_shell = document.getElementById(`${service_key}_shell`).value;
-
-                    override_doc.services[service_key].labels[icon_label] = new_icon;
-                    override_doc.services[service_key].labels[webui_label] = new_webui;
-                    override_doc.services[service_key].labels[shell_label] = new_shell;
-                  }
-                  else {
-                    delete override_doc.services[service_key];
-                  }
-                }
-
-                rawOverride = jsyaml.dump(override_doc, {'forceQuotes': true});
-                // console.log(rawOverride);
-                $.post(caURL,{action:"saveOverride",script:project,scriptContents:rawOverride},function(data) {
-                  if (!data) {
-                    swal({
-                      title: "Failed to update labels.",
-                      type: "error"
-                    });
-                  }
-                });
-              }
-            });
-          }
-        }
-      });
-    }
-  });
-}
-
 function generateProfiles(myID, myProject=null) {
   var project = myProject;
   if( myID ) {
@@ -1341,7 +1202,6 @@ function saveEdit() {
     if (data) {
       $(".editing").hide();
       if (actionStr == 'saveYml') {
-        generateOverride(null,project);
         generateProfiles(null,project);
       }
     }
@@ -2499,9 +2359,8 @@ function saveTab(tabName) {
       updateSaveButtonState();
       updateTabModifiedState();
       
-      // Regenerate override and profiles if compose file was saved
+      // Regenerate profiles if compose file was saved
       if (tabName === 'compose') {
-        generateOverride(null, project);
         generateProfiles(null, project);
       }
       

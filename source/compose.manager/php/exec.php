@@ -52,6 +52,15 @@ switch ($_POST['action']) {
         } else {
             file_put_contents("$folder/docker-compose.yml","services:\n");
         }
+        
+        // Create initial override file if it doesn't exist (for UI labels)
+        $overrideFile = "$folder/docker-compose.override.yml";
+        if ( !is_file($overrideFile) ) {
+            $overrideContent = "# Override file for UI labels (icon, webui, shell)\n";
+            $overrideContent .= "# This file is managed by Compose Manager\n";
+            $overrideContent .= "services: {}\n";
+            file_put_contents($overrideFile, $overrideContent);
+        }
 
         file_put_contents("$folder/name",$stackName);
 
