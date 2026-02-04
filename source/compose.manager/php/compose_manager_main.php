@@ -381,6 +381,7 @@ var stackUpdateStatus = {};
 
 // Load saved update status from server (called on page load)
 // If auto-check is enabled and interval has elapsed, trigger a fresh check
+// Also checks for pending rechecks from recent update operations
 function loadSavedUpdateStatus() {
   $.post(caURL, {action: 'getSavedUpdateStatus'}, function(data) {
     if (data) {
@@ -398,25 +399,67 @@ function loadSavedUpdateStatus() {
           // Enable/disable Update All button based on saved status
           updateUpdateAllButton();
           
-          // Check if auto-check should run based on interval
-          if (autoCheckUpdates) {
-            checkAutoUpdateIfNeeded(response.stacks);
-          }
-        } else if (autoCheckUpdates) {
-          // No saved status, run check immediately if auto-check enabled
-          checkAllUpdates();
+          // Check for pending rechecks first (from recent updates)
+          // This takes priority over auto-check interval
+          checkPendingRechecks(function(hadPendingRechecks) {
+            // Only run auto-check if there were no pending rechecks
+            if (!hadPendingRechecks && autoCheckUpdates) {
+              checkAutoUpdateIfNeeded(response.stacks);
+            }
+          });
+        } else {
+          // No saved status, check for pending rechecks or run auto-check
+          checkPendingRechecks(function(hadPendingRechecks) {
+            if (!hadPendingRechecks && autoCheckUpdates) {
+              checkAllUpdates();
+            }
+          });
         }
       } catch(e) {
         console.error('Failed to load saved update status:', e);
-        if (autoCheckUpdates) {
-          // On error, run check if auto-check enabled
+        checkPendingRechecks(function(hadPendingRechecks) {
+          if (!hadPendingRechecks && autoCheckUpdates) {
+            checkAllUpdates();
+          }
+        });
+      }
+    } else {
+      // No data, check for pending rechecks or run auto-check
+      checkPendingRechecks(function(hadPendingRechecks) {
+        if (!hadPendingRechecks && autoCheckUpdates) {
           checkAllUpdates();
         }
-      }
-    } else if (autoCheckUpdates) {
-      // No data, run check if auto-check enabled
-      checkAllUpdates();
+      });
     }
+  });
+}
+
+// Check for pending rechecks from recent update operations
+// These stacks need to be rechecked regardless of auto-check interval
+function checkPendingRechecks(callback) {
+  $.post(caURL, {action: 'getPendingRecheckStacks'}, function(data) {
+    var hadPendingRechecks = false;
+    if (data) {
+      try {
+        var response = JSON.parse(data);
+        if (response.result === 'success' && response.pending) {
+          var pendingStacks = Object.keys(response.pending);
+          if (pendingStacks.length > 0) {
+            hadPendingRechecks = true;
+            console.log('Found pending rechecks for stacks:', pendingStacks);
+            
+            // Check each pending stack
+            pendingStacks.forEach(function(stackName) {
+              console.log('Running recheck for recently updated stack:', stackName);
+              checkStackUpdates(stackName);
+            });
+          }
+        }
+      } catch(e) {
+        console.error('Failed to check pending rechecks:', e);
+      }
+    }
+    if (callback) callback(hadPendingRechecks);
   });
 }
 
@@ -575,17 +618,22 @@ function executeUpdateAllStacks(stacks) {
   var paths = stacks.map(function(s) { return s.path; });
   
   // Track all stacks for update check when dialog closes
+  var stackNames = [];
   stacks.forEach(function(s) {
     var stackName = s.project;
     if (pendingUpdateCheckStacks.indexOf(stackName) === -1) {
       pendingUpdateCheckStacks.push(stackName);
     }
+    stackNames.push(stackName);
   });
   
-  $.post(compURL, {action:'composeUpdateMultiple', paths:JSON.stringify(paths)}, function(data) {
-    if (data) {
-      openBox(data, 'Update All Stacks', height, width, true);
-    }
+  // Mark stacks for recheck server-side (persists across page reload)
+  $.post(caURL, {action:'markStackForRecheck', stacks:JSON.stringify(stackNames)}, function() {
+    $.post(compURL, {action:'composeUpdateMultiple', paths:JSON.stringify(paths)}, function(data) {
+      if (data) {
+        openBox(data, 'Update All Stacks', height, width, true);
+      }
+    });
   });
 }
 
@@ -743,6 +791,9 @@ function checkStackUpdates(stackName) {
           updateStackUpdateUI(stackName, stackInfo);
           // Update the Update All button state
           updateUpdateAllButton();
+          
+          // Clear the pending recheck flag for this stack (if any)
+          $.post(caURL, {action: 'clearStackRecheck', stacks: JSON.stringify([stackName])});
         }
       } catch(e) {
         console.error('Failed to parse update check response:', e);
@@ -1476,11 +1527,14 @@ function UpdateStackConfirmed(path, profile="") {
     pendingUpdateCheckStacks.push(stackName);
   }
 
-  $.post(compURL,{action:'composeUpPullBuild',path:path,profile:profile},function(data) {
-    if (data) {
-      openBox(data,"Update Stack "+basename(path),height,width,true);
-    }
-  })
+  // Mark stack for recheck server-side (persists across page reload)
+  $.post(caURL, {action:'markStackForRecheck', stacks:JSON.stringify([stackName])}, function() {
+    $.post(compURL,{action:'composeUpPullBuild',path:path,profile:profile},function(data) {
+      if (data) {
+        openBox(data,"Update Stack "+basename(path),height,width,true);
+      }
+    });
+  });
 }
 
 function UpdateStack(path, profile="") {

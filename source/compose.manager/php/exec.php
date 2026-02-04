@@ -921,6 +921,69 @@ switch ($_POST['action']) {
             'lastResult' => $lastResult
         ]);
         break;
+    
+    case 'markStackForRecheck':
+        // Mark one or more stacks for recheck after update
+        // This persists across page reloads so the recheck happens even if page refreshes
+        $stacks = isset($_POST['stacks']) ? $_POST['stacks'] : "";
+        if (is_string($stacks)) {
+            $stacks = json_decode($stacks, true);
+        }
+        if (!is_array($stacks) || empty($stacks)) {
+            echo json_encode(['result' => 'error', 'message' => 'No stacks specified.']);
+            break;
+        }
+        
+        $pendingRecheckFile = "/boot/config/plugins/compose.manager/pending-recheck.json";
+        $pending = [];
+        if (is_file($pendingRecheckFile)) {
+            $pending = json_decode(file_get_contents($pendingRecheckFile), true) ?: [];
+        }
+        
+        // Add stacks to pending list with timestamp
+        foreach ($stacks as $stackName) {
+            $pending[$stackName] = time();
+        }
+        
+        file_put_contents($pendingRecheckFile, json_encode($pending, JSON_PRETTY_PRINT));
+        echo json_encode(['result' => 'success', 'pending' => array_keys($pending)]);
+        break;
+    
+    case 'getPendingRecheckStacks':
+        // Get list of stacks that need recheck
+        $pendingRecheckFile = "/boot/config/plugins/compose.manager/pending-recheck.json";
+        $pending = [];
+        if (is_file($pendingRecheckFile)) {
+            $pending = json_decode(file_get_contents($pendingRecheckFile), true) ?: [];
+        }
+        echo json_encode(['result' => 'success', 'pending' => $pending]);
+        break;
+    
+    case 'clearStackRecheck':
+        // Clear recheck flag for one or more stacks
+        $stacks = isset($_POST['stacks']) ? $_POST['stacks'] : "";
+        if (is_string($stacks)) {
+            $stacks = json_decode($stacks, true);
+        }
+        if (!is_array($stacks) || empty($stacks)) {
+            echo json_encode(['result' => 'error', 'message' => 'No stacks specified.']);
+            break;
+        }
+        
+        $pendingRecheckFile = "/boot/config/plugins/compose.manager/pending-recheck.json";
+        $pending = [];
+        if (is_file($pendingRecheckFile)) {
+            $pending = json_decode(file_get_contents($pendingRecheckFile), true) ?: [];
+        }
+        
+        // Remove stacks from pending list
+        foreach ($stacks as $stackName) {
+            unset($pending[$stackName]);
+        }
+        
+        file_put_contents($pendingRecheckFile, json_encode($pending, JSON_PRETTY_PRINT));
+        echo json_encode(['result' => 'success', 'remaining' => array_keys($pending)]);
+        break;
 }
 
 ?>
