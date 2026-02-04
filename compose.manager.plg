@@ -28,6 +28,31 @@
 >
 
 <CHANGES>
+###2026.02.03b
+- Bug Fixes: Update tests to not depend on shell rm command
+- Refactoring: split functions into separate files for testability
+  - Extract functions from exec.php to exec_functions.php
+  - Extract functions from compose_list.php to compose_list_functions.php
+  - Extract functions from compose_util.php to compose_util_functions.php
+  - Update tests to use real source files instead of reimplementing logic
+  - Rewrite ExecActionsTest to test actual exec.php switch statements
+- Tests: Migrate to plugin-tests framework with PluginBootstrap
+  - Use PluginBootstrap for automatic path mapping and globals setup
+  - Remove custom mock files (compose_util_functions.php, exec_functions.php)
+  - Add DefinesTest for LOCATE_COMPOSE_ROOT function
+  - Update all test files to use framework's TestCase
+  - Add local bootstrap.php and UnraidStreamWrapper.php wrappers
+  - Update phpunit.xml for new bootstrap
+  - 91 tests passing with 15.79% coverage
+- Chores: Remove .github/compose_plugin.code-workspace and update .gitignore
+- Chores: Update plugin-tests submodule to v0.2 floating tag
+- Add comprehensive unit tests for compose plugin
+  - IconTest: Tests icon file discovery, MIME type detection, sanitization
+  - ExecActionsTest: Tests simple exec.php actions (changeName, changeDesc, etc.)
+  - ExecStackManagementTest: Tests stack creation/deletion and file operations
+  - ComposeListTest: Tests stack list generation helpers
+  - DashboardStacksTest: Tests dashboard tile data generation
+- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.02.03a...v2026.02.03b)
 ###2026.02.03a
 - Features: Add Docker update tests and update plugin-tests to v0.1.1
 - Features: add comprehensive test infrastructure
