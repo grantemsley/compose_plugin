@@ -1,9 +1,10 @@
 <?php
 
 /**
- * Unit Tests for Compose Utility Functions (compose_util.php)
+ * Unit Tests for Compose Utility Functions (REAL SOURCE)
  * 
- * Tests utility functions used for building compose commands.
+ * Tests the actual source: source/compose.manager/php/compose_util.php
+ * The file is loaded via includeWithSwitch() to safely bypass the switch($_POST['action']) block.
  */
 
 declare(strict_types=1);
@@ -13,8 +14,21 @@ namespace ComposeManager\Tests;
 use PluginTests\TestCase;
 use PluginTests\Mocks\FunctionMocks;
 
+// Load the actual source file via stream wrapper using includeWithSwitch()
+// This safely includes compose_util.php which has a switch($_POST['action']) block
+includeWithSwitch('/usr/local/emhttp/plugins/compose.manager/php/compose_util.php');
+
 /**
- * Tests for compose_util.php extracted functions
+ * Tests for compose_util.php functions
+ * 
+ * Note: compose_util.php contains these functions:
+ * - logger($string) - calls system logger
+ * - execComposeCommandInTTY($cmd, $debug) - runs ttyd
+ * - echoComposeCommand($action) - echoes compose command
+ * - echoComposeCommandMultiple($action, $paths) - echoes multiple compose commands
+ * 
+ * These functions mostly echo output and execute external commands, so we test
+ * with output capturing and mock filesystem setup.
  */
 class ComposeUtilTest extends TestCase
 {
@@ -22,203 +36,338 @@ class ComposeUtilTest extends TestCase
     {
         parent::setUp();
         
-        // Define extracted functions if not already defined
-        if (!function_exists('buildComposeCommandArgs')) {
-            require_once __DIR__ . '/compose_util_functions.php';
-        }
+        // Set up required globals for compose_util functions
+        global $plugin_root, $sName, $socket_name;
+        $plugin_root = '/usr/local/emhttp/plugins/compose.manager';
+        $sName = 'compose.manager';
+        $socket_name = 'compose_test';
+        
+        // Set up plugin config
+        FunctionMocks::setPluginConfig('compose.manager', [
+            'DEBUG_TO_LOG' => 'false',
+            'OUTPUTSTYLE' => 'nchan',
+        ]);
     }
 
     // ===========================================
-    // buildComposeCommandArgs() Tests
+    // echoComposeCommand() Tests
     // ===========================================
 
     /**
-     * Test building basic compose command args
+     * Test echoComposeCommand when array is not started
      */
-    public function testBuildComposeCommandArgsBasic(): void
+    public function testEchoComposeCommandArrayNotStarted(): void
     {
+        global $compose_root;
         $tempDir = $this->createTempDir();
-        file_put_contents("$tempDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
-        file_put_contents("$tempDir/name", "My Stack");
+        $compose_root = $tempDir;
         
-        $result = buildComposeCommandArgs($tempDir, 'up', null, false);
+        // Create mock var.ini with stopped array
+        $varIniDir = sys_get_temp_dir() . '/emhttp_test_' . uniqid();
+        mkdir($varIniDir, 0755, true);
+        file_put_contents("$varIniDir/var.ini", "mdState=STOPPED\nfsState=Stopped\n");
         
-        $this->assertIsArray($result);
-        $this->assertContains('-cup', $result);
-        $this->assertContains('-pmy_stack', $result);
+        // Update the stream wrapper mapping
+        \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
+        
+        // Set POST data
+        $_POST['path'] = urlencode($tempDir . '/test-stack');
+        
+        // Capture output
+        ob_start();
+        echoComposeCommand('up');
+        $output = ob_get_clean();
+        
+        // Should return arrayNotStarted script path
+        $this->assertStringContainsString('arrayNotStarted.sh', $output);
+        
+        // Cleanup
+        unlink("$varIniDir/var.ini");
+        rmdir($varIniDir);
+        unset($_POST['path']);
     }
 
     /**
-     * Test building compose command with profile
+     * Test echoComposeCommand generates proper command format for nchan
      */
-    public function testBuildComposeCommandArgsWithProfile(): void
+    public function testEchoComposeCommandNchanFormat(): void
     {
+        global $compose_root, $plugin_root;
         $tempDir = $this->createTempDir();
-        file_put_contents("$tempDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
-        file_put_contents("$tempDir/name", "TestStack");
+        $compose_root = $tempDir;
         
-        $result = buildComposeCommandArgs($tempDir, 'up', 'dev', false);
+        // Create stack directory with compose file
+        $stackDir = "$tempDir/test-stack";
+        mkdir($stackDir, 0755, true);
+        file_put_contents("$stackDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
+        file_put_contents("$stackDir/name", "TestStack");
         
-        $this->assertContains('-g dev', $result);
+        // Ensure array is started
+        $varIniDir = sys_get_temp_dir() . '/emhttp_test_' . uniqid();
+        mkdir($varIniDir, 0755, true);
+        file_put_contents("$varIniDir/var.ini", "mdState=STARTED\nfsState=Started\n");
+        \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
+        
+        // Set POST data
+        $_POST['path'] = urlencode($stackDir);
+        $_POST['profile'] = '';
+        
+        // Capture output
+        ob_start();
+        echoComposeCommand('up');
+        $output = ob_get_clean();
+        
+        // Should be nchan format with arg parameters
+        $this->assertStringContainsString('&arg', $output);
+        $this->assertStringContainsString('-cup', $output);
+        
+        // Cleanup
+        unlink("$varIniDir/var.ini");
+        rmdir($varIniDir);
+        unset($_POST['path'], $_POST['profile']);
     }
 
     /**
-     * Test building compose command with multiple profiles
+     * Test echoComposeCommand with profile
      */
-    public function testBuildComposeCommandArgsMultipleProfiles(): void
+    public function testEchoComposeCommandWithProfile(): void
     {
+        global $compose_root;
         $tempDir = $this->createTempDir();
-        file_put_contents("$tempDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
-        file_put_contents("$tempDir/name", "TestStack");
+        $compose_root = $tempDir;
         
-        $result = buildComposeCommandArgs($tempDir, 'up', 'dev,prod', false);
+        // Create stack directory
+        $stackDir = "$tempDir/test-stack";
+        mkdir($stackDir, 0755, true);
+        file_put_contents("$stackDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
+        file_put_contents("$stackDir/name", "TestStack");
         
-        $this->assertContains('-g dev', $result);
-        $this->assertContains('-g prod', $result);
+        // Ensure array is started
+        $varIniDir = sys_get_temp_dir() . '/emhttp_test_' . uniqid();
+        mkdir($varIniDir, 0755, true);
+        file_put_contents("$varIniDir/var.ini", "mdState=STARTED\nfsState=Started\n");
+        \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
+        
+        // Set POST data with profile
+        $_POST['path'] = urlencode($stackDir);
+        $_POST['profile'] = urlencode('dev');
+        
+        // Capture output
+        ob_start();
+        echoComposeCommand('up');
+        $output = ob_get_clean();
+        
+        // Should include profile flag
+        $this->assertStringContainsString('-g dev', $output);
+        
+        // Cleanup
+        unlink("$varIniDir/var.ini");
+        rmdir($varIniDir);
+        unset($_POST['path'], $_POST['profile']);
     }
 
     /**
-     * Test building compose command with override file
+     * Test echoComposeCommand with multiple profiles
      */
-    public function testBuildComposeCommandArgsWithOverride(): void
+    public function testEchoComposeCommandWithMultipleProfiles(): void
     {
+        global $compose_root;
         $tempDir = $this->createTempDir();
-        file_put_contents("$tempDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
-        file_put_contents("$tempDir/docker-compose.override.yml", "services:\n  web:\n    ports:\n      - 80:80\n");
-        file_put_contents("$tempDir/name", "TestStack");
+        $compose_root = $tempDir;
         
-        $result = buildComposeCommandArgs($tempDir, 'up', null, false);
+        // Create stack directory
+        $stackDir = "$tempDir/test-stack";
+        mkdir($stackDir, 0755, true);
+        file_put_contents("$stackDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
+        file_put_contents("$stackDir/name", "TestStack");
         
-        // Should include the override file
-        $hasOverride = false;
-        foreach ($result as $arg) {
-            if (strpos($arg, 'docker-compose.override.yml') !== false) {
-                $hasOverride = true;
-                break;
-            }
-        }
-        $this->assertTrue($hasOverride, 'Override file should be included');
+        // Ensure array is started
+        $varIniDir = sys_get_temp_dir() . '/emhttp_test_' . uniqid();
+        mkdir($varIniDir, 0755, true);
+        file_put_contents("$varIniDir/var.ini", "mdState=STARTED\nfsState=Started\n");
+        \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
+        
+        // Set POST data with multiple profiles
+        $_POST['path'] = urlencode($stackDir);
+        $_POST['profile'] = urlencode('dev,prod');
+        
+        // Capture output
+        ob_start();
+        echoComposeCommand('up');
+        $output = ob_get_clean();
+        
+        // Should include both profile flags
+        $this->assertStringContainsString('-g dev', $output);
+        $this->assertStringContainsString('-g prod', $output);
+        
+        // Cleanup
+        unlink("$varIniDir/var.ini");
+        rmdir($varIniDir);
+        unset($_POST['path'], $_POST['profile']);
     }
 
     /**
-     * Test building compose command with custom env path
+     * Test echoComposeCommand with indirect stack
      */
-    public function testBuildComposeCommandArgsWithEnvPath(): void
+    public function testEchoComposeCommandWithIndirect(): void
     {
+        global $compose_root;
         $tempDir = $this->createTempDir();
-        file_put_contents("$tempDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
-        file_put_contents("$tempDir/name", "TestStack");
-        file_put_contents("$tempDir/envpath", "/custom/path/.env");
+        $compose_root = $tempDir;
         
-        $result = buildComposeCommandArgs($tempDir, 'up', null, false);
-        
-        $this->assertContains('-e/custom/path/.env', $result);
-    }
-
-    /**
-     * Test building compose command with indirect path
-     */
-    public function testBuildComposeCommandArgsWithIndirect(): void
-    {
-        $tempDir = $this->createTempDir();
+        // Create indirect target directory
         $indirectDir = $this->createTempDir();
-        
         file_put_contents("$indirectDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
-        file_put_contents("$tempDir/indirect", $indirectDir);
-        file_put_contents("$tempDir/name", "TestStack");
         
-        $result = buildComposeCommandArgs($tempDir, 'up', null, false);
+        // Create stack directory with indirect pointer
+        $stackDir = "$tempDir/test-stack";
+        mkdir($stackDir, 0755, true);
+        file_put_contents("$stackDir/indirect", $indirectDir);
+        file_put_contents("$stackDir/name", "TestStack");
         
-        // Should use -d flag for directory
-        $hasDir = false;
-        foreach ($result as $arg) {
-            if (strpos($arg, '-d') === 0) {
-                $hasDir = true;
-                break;
-            }
-        }
-        $this->assertTrue($hasDir, 'Should use -d flag for indirect');
+        // Ensure array is started
+        $varIniDir = sys_get_temp_dir() . '/emhttp_test_' . uniqid();
+        mkdir($varIniDir, 0755, true);
+        file_put_contents("$varIniDir/var.ini", "mdState=STARTED\nfsState=Started\n");
+        \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
+        
+        // Set POST data
+        $_POST['path'] = urlencode($stackDir);
+        $_POST['profile'] = '';
+        
+        // Capture output
+        ob_start();
+        echoComposeCommand('up');
+        $output = ob_get_clean();
+        
+        // Should use -d flag for directory path
+        $this->assertStringContainsString('-d', $output);
+        $this->assertStringContainsString($indirectDir, $output);
+        
+        // Cleanup
+        unlink("$varIniDir/var.ini");
+        rmdir($varIniDir);
+        unset($_POST['path'], $_POST['profile']);
     }
 
     /**
-     * Test building compose command with debug flag
+     * Test echoComposeCommand with override file
      */
-    public function testBuildComposeCommandArgsWithDebug(): void
+    public function testEchoComposeCommandWithOverrideFile(): void
     {
+        global $compose_root;
         $tempDir = $this->createTempDir();
-        file_put_contents("$tempDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
-        file_put_contents("$tempDir/name", "TestStack");
+        $compose_root = $tempDir;
         
-        $result = buildComposeCommandArgs($tempDir, 'up', null, true);
+        // Create stack directory with compose and override files
+        $stackDir = "$tempDir/test-stack";
+        mkdir($stackDir, 0755, true);
+        file_put_contents("$stackDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
+        file_put_contents("$stackDir/docker-compose.override.yml", "services:\n  web:\n    ports:\n      - 80:80\n");
+        file_put_contents("$stackDir/name", "TestStack");
         
-        $this->assertContains('--debug', $result);
-    }
-
-    // ===========================================
-    // Project Name Sanitization Tests
-    // ===========================================
-
-    /**
-     * Test project name is sanitized from folder name
-     */
-    public function testProjectNameFromFolder(): void
-    {
-        $tempDir = $this->createTempDir();
-        // Don't create a name file - should use folder name
-        file_put_contents("$tempDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
+        // Ensure array is started
+        $varIniDir = sys_get_temp_dir() . '/emhttp_test_' . uniqid();
+        mkdir($varIniDir, 0755, true);
+        file_put_contents("$varIniDir/var.ini", "mdState=STARTED\nfsState=Started\n");
+        \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
         
-        $result = buildComposeCommandArgs($tempDir, 'up', null, false);
+        // Set POST data
+        $_POST['path'] = urlencode($stackDir);
+        $_POST['profile'] = '';
         
-        // Project name should be based on the temp dir basename, sanitized
-        $hasProjectName = false;
-        foreach ($result as $arg) {
-            if (strpos($arg, '-p') === 0) {
-                $hasProjectName = true;
-                // Should be lowercase and have special chars replaced
-                $this->assertMatchesRegularExpression('/^-p[a-z0-9_]+$/', $arg);
-                break;
-            }
-        }
-        $this->assertTrue($hasProjectName, 'Should have project name argument');
+        // Capture output
+        ob_start();
+        echoComposeCommand('up');
+        $output = ob_get_clean();
+        
+        // Should include override file
+        $this->assertStringContainsString('docker-compose.override.yml', $output);
+        
+        // Cleanup
+        unlink("$varIniDir/var.ini");
+        rmdir($varIniDir);
+        unset($_POST['path'], $_POST['profile']);
     }
 
     /**
-     * Test project name special characters handling
+     * Test echoComposeCommand with custom env path
      */
-    public function testProjectNameSpecialChars(): void
+    public function testEchoComposeCommandWithEnvPath(): void
     {
+        global $compose_root;
         $tempDir = $this->createTempDir();
-        file_put_contents("$tempDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
-        file_put_contents("$tempDir/name", "My.Stack-Name Here");
+        $compose_root = $tempDir;
         
-        $result = buildComposeCommandArgs($tempDir, 'up', null, false);
+        // Create stack directory with envpath file
+        $stackDir = "$tempDir/test-stack";
+        mkdir($stackDir, 0755, true);
+        file_put_contents("$stackDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
+        file_put_contents("$stackDir/name", "TestStack");
+        file_put_contents("$stackDir/envpath", "/custom/path/.env");
         
-        // Find project name arg
-        foreach ($result as $arg) {
-            if (strpos($arg, '-p') === 0) {
-                // Should be sanitized: lowercase, dots/dashes/spaces replaced with underscore
-                $this->assertEquals('-pmy_stack_name_here', $arg);
-                break;
-            }
-        }
+        // Ensure array is started
+        $varIniDir = sys_get_temp_dir() . '/emhttp_test_' . uniqid();
+        mkdir($varIniDir, 0755, true);
+        file_put_contents("$varIniDir/var.ini", "mdState=STARTED\nfsState=Started\n");
+        \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
+        
+        // Set POST data
+        $_POST['path'] = urlencode($stackDir);
+        $_POST['profile'] = '';
+        
+        // Capture output
+        ob_start();
+        echoComposeCommand('up');
+        $output = ob_get_clean();
+        
+        // Should include env path
+        $this->assertStringContainsString('-e/custom/path/.env', $output);
+        
+        // Cleanup
+        unlink("$varIniDir/var.ini");
+        rmdir($varIniDir);
+        unset($_POST['path'], $_POST['profile']);
     }
-
-    // ===========================================
-    // Action Tests
-    // ===========================================
 
     /**
      * @dataProvider actionsProvider
+     * Test various compose actions
      */
-    public function testVariousActions(string $action, string $expectedArg): void
+    public function testEchoComposeCommandActions(string $action, string $expectedArg): void
     {
+        global $compose_root;
         $tempDir = $this->createTempDir();
-        file_put_contents("$tempDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
-        file_put_contents("$tempDir/name", "test");
+        $compose_root = $tempDir;
         
-        $result = buildComposeCommandArgs($tempDir, $action, null, false);
+        // Create stack directory
+        $stackDir = "$tempDir/test-stack";
+        mkdir($stackDir, 0755, true);
+        file_put_contents("$stackDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
+        file_put_contents("$stackDir/name", "TestStack");
         
-        $this->assertContains($expectedArg, $result);
+        // Ensure array is started
+        $varIniDir = sys_get_temp_dir() . '/emhttp_test_' . uniqid();
+        mkdir($varIniDir, 0755, true);
+        file_put_contents("$varIniDir/var.ini", "mdState=STARTED\nfsState=Started\n");
+        \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
+        
+        // Set POST data
+        $_POST['path'] = urlencode($stackDir);
+        $_POST['profile'] = '';
+        
+        // Capture output
+        ob_start();
+        echoComposeCommand($action);
+        $output = ob_get_clean();
+        
+        // Should include the expected action arg
+        $this->assertStringContainsString($expectedArg, $output);
+        
+        // Cleanup
+        unlink("$varIniDir/var.ini");
+        rmdir($varIniDir);
+        unset($_POST['path'], $_POST['profile']);
     }
 
     /**
@@ -230,112 +379,9 @@ class ComposeUtilTest extends TestCase
             'up action' => ['up', '-cup'],
             'down action' => ['down', '-cdown'],
             'pull action' => ['pull', '-cpull'],
-            'restart action' => ['restart', '-crestart'],
-            'build action' => ['build', '-cbuild'],
+            'stop action' => ['stop', '-cstop'],
+            'logs action' => ['logs', '-clogs'],
+            'update action' => ['update', '-cupdate'],
         ];
-    }
-
-    // ===========================================
-    // sanitizeStackName() Tests
-    // ===========================================
-
-    /**
-     * Test sanitizeStackName removes quotes
-     */
-    public function testSanitizeStackNameRemovesQuotes(): void
-    {
-        $result = sanitizeStackName('My "Stack" Name');
-        $this->assertEquals('My_Stack_Name', $result);
-    }
-
-    /**
-     * Test sanitizeStackName removes single quotes
-     */
-    public function testSanitizeStackNameRemovesSingleQuotes(): void
-    {
-        $result = sanitizeStackName("My 'Stack' Name");
-        $this->assertEquals('My_Stack_Name', $result);
-    }
-
-    /**
-     * Test sanitizeStackName removes ampersands
-     */
-    public function testSanitizeStackNameRemovesAmpersands(): void
-    {
-        $result = sanitizeStackName('Tom & Jerry');
-        // Ampersand is removed, leaving "Tom  Jerry" which collapses to "Tom_Jerry"
-        $this->assertEquals('Tom_Jerry', $result);
-    }
-
-    /**
-     * Test sanitizeStackName removes parentheses
-     */
-    public function testSanitizeStackNameRemovesParentheses(): void
-    {
-        $result = sanitizeStackName('Stack (test)');
-        $this->assertEquals('Stack_test', $result);
-    }
-
-    /**
-     * Test sanitizeStackName collapses multiple spaces
-     */
-    public function testSanitizeStackNameCollapsesSpaces(): void
-    {
-        $result = sanitizeStackName('My    Stack    Name');
-        $this->assertEquals('My_Stack_Name', $result);
-    }
-
-    /**
-     * Test sanitizeStackName with all special chars combined
-     */
-    public function testSanitizeStackNameCombined(): void
-    {
-        $result = sanitizeStackName('My "Test" & (Stack)  Name');
-        // All special chars removed, multiple spaces collapsed to single underscore
-        $this->assertEquals('My_Test_Stack_Name', $result);
-    }
-
-    // ===========================================
-    // formatComposeCommandForOutput() Tests
-    // ===========================================
-
-    /**
-     * Test formatComposeCommandForOutput basic formatting
-     */
-    public function testFormatComposeCommandForOutputBasic(): void
-    {
-        $args = ['-cup', '-pmystack', '-f/path/to/compose.yml'];
-        
-        $result = formatComposeCommandForOutput($args);
-        
-        $this->assertStringContainsString('&arg1=-cup', $result);
-        $this->assertStringContainsString('&arg2=-pmystack', $result);
-        $this->assertStringContainsString('&arg3=-f/path/to/compose.yml', $result);
-    }
-
-    /**
-     * Test formatComposeCommandForOutput with profile args
-     */
-    public function testFormatComposeCommandForOutputWithProfiles(): void
-    {
-        $args = ['-cup', '-pmystack', '-g dev', '-g prod'];
-        
-        $result = formatComposeCommandForOutput($args);
-        
-        // Profile args don't start with - so they get appended
-        $this->assertStringContainsString('-g dev', $result);
-        $this->assertStringContainsString('-g prod', $result);
-    }
-
-    /**
-     * Test formatComposeCommandForOutput empty array
-     */
-    public function testFormatComposeCommandForOutputEmpty(): void
-    {
-        $args = [];
-        
-        $result = formatComposeCommandForOutput($args);
-        
-        $this->assertEquals('', $result);
     }
 }

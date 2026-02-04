@@ -1,7 +1,10 @@
 <?php
 
 /**
- * Unit Tests for Compose Manager Utility Functions
+ * Unit Tests for Compose Manager Utility Functions (REAL SOURCE)
+ * 
+ * Tests the actual source file: source/compose.manager/php/util.php
+ * Uses stream wrapper to redirect Unraid paths to local files.
  */
 
 declare(strict_types=1);
@@ -10,8 +13,8 @@ namespace ComposeManager\Tests;
 
 use PluginTests\TestCase;
 
-// Include the util.php file to test its functions
-require_once __DIR__ . '/../../source/compose.manager/php/util.php';
+// Load the actual source file via stream wrapper
+require_once '/usr/local/emhttp/plugins/compose.manager/php/util.php';
 
 class UtilTest extends TestCase
 {

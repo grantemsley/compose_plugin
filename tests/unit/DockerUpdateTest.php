@@ -13,8 +13,9 @@ namespace ComposeManager\Tests;
 use PluginTests\TestCase;
 use PluginTests\Mocks\DockerUtilMock;
 
-// Load the testable functions
-require_once __DIR__ . '/exec_functions.php';
+// Load the actual source file via stream wrapper using includeWithSwitch()
+// This safely includes exec.php which has a switch($_POST['action']) block
+includeWithSwitch('/usr/local/emhttp/plugins/compose.manager/php/exec.php');
 
 class DockerUpdateTest extends TestCase
 {
@@ -236,5 +237,318 @@ class DockerUpdateTest extends TestCase
         
         $this->assertIsArray($result);
         $this->assertEmpty($result);
+    }
+
+    // ===========================================
+    // DockerClient Container Operations Tests
+    // ===========================================
+
+    /**
+     * Test DockerClient.doesContainerExist returns true when container exists
+     */
+    public function testDockerClientContainerExists(): void
+    {
+        $this->mockContainers([
+            'my_container' => [
+                'Name' => 'my_container',
+                'Image' => 'nginx:latest',
+                'State' => 'running',
+            ],
+        ]);
+        
+        $client = new \DockerClient();
+        
+        $this->assertTrue($client->doesContainerExist('my_container'));
+        $this->assertFalse($client->doesContainerExist('nonexistent_container'));
+    }
+
+    /**
+     * Test DockerClient.getContainerID returns correct ID
+     */
+    public function testDockerClientGetContainerID(): void
+    {
+        $this->mockContainers([
+            'webserver' => [
+                'Name' => 'webserver',
+                'Id' => 'abc123def456',
+                'Image' => 'nginx:latest',
+                'State' => 'running',
+            ],
+        ]);
+        
+        $client = new \DockerClient();
+        
+        $this->assertEquals('abc123def456', $client->getContainerID('webserver'));
+        $this->assertNull($client->getContainerID('unknown'));
+    }
+
+    /**
+     * Test DockerClient container operations return success
+     */
+    public function testDockerClientContainerOperations(): void
+    {
+        $this->mockContainers([
+            'test_container' => [
+                'Name' => 'test_container',
+                'Id' => 'container123',
+                'Image' => 'nginx:latest',
+                'State' => 'running',
+            ],
+        ]);
+        
+        $client = new \DockerClient();
+        
+        // Test start
+        $this->assertTrue($client->startContainer('container123'));
+        
+        // Test stop
+        $this->assertTrue($client->stopContainer('container123'));
+        
+        // Test restart
+        $this->assertTrue($client->restartContainer('container123'));
+        
+        // Test pause/resume
+        $this->assertTrue($client->pauseContainer('container123'));
+        $this->assertTrue($client->resumeContainer('container123'));
+        
+        // Test remove
+        $this->assertTrue($client->removeContainer('test_container', 'container123'));
+    }
+
+    /**
+     * Test DockerClient.getInfo returns docker info
+     */
+    public function testDockerClientGetInfo(): void
+    {
+        $client = new \DockerClient();
+        $info = $client->getInfo();
+        
+        $this->assertIsArray($info);
+        $this->assertArrayHasKey('ServerVersion', $info);
+        $this->assertArrayHasKey('NCPU', $info);
+        $this->assertArrayHasKey('MemTotal', $info);
+    }
+
+    /**
+     * Test DockerClient.humanTiming formats time correctly
+     */
+    public function testDockerClientHumanTiming(): void
+    {
+        $client = new \DockerClient();
+        
+        // Test seconds ago
+        $result = $client->humanTiming(time() - 30);
+        $this->assertStringContainsString('second', $result);
+        
+        // Test minutes ago
+        $result = $client->humanTiming(time() - 120);
+        $this->assertStringContainsString('minute', $result);
+        
+        // Test hours ago
+        $result = $client->humanTiming(time() - 7200);
+        $this->assertStringContainsString('hour', $result);
+    }
+
+    /**
+     * Test DockerClient.formatBytes formats sizes correctly
+     */
+    public function testDockerClientFormatBytes(): void
+    {
+        $client = new \DockerClient();
+        
+        $this->assertEquals('0 B', $client->formatBytes(0));
+        $this->assertStringContainsString('B', $client->formatBytes(512));
+        $this->assertStringContainsString('KB', $client->formatBytes(1024));
+        $this->assertStringContainsString('MB', $client->formatBytes(1024 * 1024));
+        $this->assertStringContainsString('GB', $client->formatBytes(1024 * 1024 * 1024));
+    }
+
+    /**
+     * Test DockerClient.getRegistryAuth parses Docker Hub images
+     */
+    public function testDockerClientGetRegistryAuth(): void
+    {
+        $client = new \DockerClient();
+        
+        // Test Docker Hub official image
+        $auth = $client->getRegistryAuth('library/nginx:latest');
+        
+        $this->assertIsArray($auth);
+        $this->assertArrayHasKey('imageName', $auth);
+        $this->assertArrayHasKey('imageTag', $auth);
+        $this->assertArrayHasKey('apiUrl', $auth);
+    }
+
+    /**
+     * Test DockerClient.flushCaches clears cache
+     */
+    public function testDockerClientFlushCaches(): void
+    {
+        $this->mockContainers([
+            'container1' => [
+                'Name' => 'container1',
+                'Image' => 'nginx:latest',
+                'State' => 'running',
+            ],
+        ]);
+        
+        $client = new \DockerClient();
+        
+        // First call populates cache
+        $containers = $client->getDockerContainers();
+        $this->assertCount(1, $containers);
+        
+        // Flush caches
+        $client->flushCaches();
+        
+        // Should still work after flush
+        $containers = $client->getDockerContainers();
+        $this->assertCount(1, $containers);
+    }
+
+    // ===========================================
+    // DockerUtil Additional Tests
+    // ===========================================
+
+    /**
+     * Test DockerUtil.getContainer returns container by name
+     */
+    public function testDockerUtilGetContainer(): void
+    {
+        $this->mockContainers([
+            'webserver' => [
+                'Name' => 'webserver',
+                'Image' => 'nginx:latest',
+                'State' => 'running',
+                'IPAddress' => '172.17.0.5',
+            ],
+        ]);
+        
+        $container = \DockerUtil::getContainer('webserver');
+        
+        $this->assertIsArray($container);
+        $this->assertEquals('webserver', $container['Name']);
+        $this->assertEquals('172.17.0.5', $container['IPAddress']);
+    }
+
+    /**
+     * Test DockerUtil.getContainer returns null for unknown container
+     */
+    public function testDockerUtilGetContainerUnknown(): void
+    {
+        $this->mockContainers([]);
+        
+        $container = \DockerUtil::getContainer('nonexistent');
+        
+        $this->assertNull($container);
+    }
+
+    /**
+     * Test DockerUtil.myIP returns container IP
+     */
+    public function testDockerUtilMyIP(): void
+    {
+        $this->mockContainers([
+            'webserver' => [
+                'Name' => 'webserver',
+                'Image' => 'nginx:latest',
+                'State' => 'running',
+                'IPAddress' => '172.17.0.5',
+            ],
+        ]);
+        
+        $ip = \DockerUtil::myIP('webserver');
+        
+        $this->assertEquals('172.17.0.5', $ip);
+    }
+
+    /**
+     * Test DockerUtil.docker executes command (mock returns empty)
+     */
+    public function testDockerUtilDockerCommand(): void
+    {
+        // String return
+        $result = \DockerUtil::docker('ps');
+        $this->assertEquals('', $result);
+        
+        // Array return
+        $result = \DockerUtil::docker('ps', true);
+        $this->assertIsArray($result);
+        $this->assertEmpty($result);
+    }
+
+    /**
+     * Test DockerUtil network methods
+     */
+    public function testDockerUtilNetworkMethods(): void
+    {
+        $drivers = \DockerUtil::driver();
+        $this->assertIsArray($drivers);
+        $this->assertArrayHasKey('bridge', $drivers);
+        $this->assertArrayHasKey('host', $drivers);
+        
+        $custom = \DockerUtil::custom();
+        $this->assertIsArray($custom);
+        
+        $networks = \DockerUtil::network($custom);
+        $this->assertIsArray($networks);
+        $this->assertArrayHasKey('bridge', $networks);
+    }
+
+    /**
+     * Test DockerUtil.cpus returns available CPUs
+     */
+    public function testDockerUtilCpus(): void
+    {
+        $cpus = \DockerUtil::cpus();
+        
+        $this->assertIsArray($cpus);
+        $this->assertNotEmpty($cpus);
+    }
+
+    /**
+     * Test DockerUtil.host returns host IP
+     */
+    public function testDockerUtilHost(): void
+    {
+        $host = \DockerUtil::host();
+        
+        $this->assertIsString($host);
+        $this->assertMatchesRegularExpression('/^\d+\.\d+\.\d+\.\d+$/', $host);
+    }
+
+    /**
+     * Test DockerUtil.port returns network port
+     */
+    public function testDockerUtilPort(): void
+    {
+        $port = \DockerUtil::port();
+        
+        $this->assertIsString($port);
+        $this->assertNotEmpty($port);
+    }
+
+    /**
+     * Test DockerUtil.ctMap returns container property
+     */
+    public function testDockerUtilCtMap(): void
+    {
+        $this->mockContainers([
+            'webserver' => [
+                'Name' => 'webserver',
+                'Image' => 'nginx:latest',
+                'State' => 'running',
+            ],
+        ]);
+        
+        $name = \DockerUtil::ctMap('webserver', 'Name');
+        $this->assertEquals('webserver', $name);
+        
+        $image = \DockerUtil::ctMap('webserver', 'Image');
+        $this->assertEquals('nginx:latest', $image);
+        
+        // Unknown property
+        $unknown = \DockerUtil::ctMap('webserver', 'Unknown');
+        $this->assertEquals('', $unknown);
     }
 }

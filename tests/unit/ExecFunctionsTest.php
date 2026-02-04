@@ -1,9 +1,14 @@
 <?php
 
 /**
- * Unit Tests for exec.php functions
+ * Unit Tests for exec.php functions (REAL SOURCE)
  * 
- * Tests utility functions defined in exec.php that can be tested in isolation.
+ * Tests the actual source functions from source/compose.manager/php/exec.php
+ * The file is loaded via includeWithSwitch() to safely bypass the switch($_POST['action']) block.
+ * 
+ * exec.php contains these functions:
+ * - getElement($element) - converts element name to safe HTML ID
+ * - normalizeImageForUpdateCheck($image) - normalizes Docker image names for update checking
  */
 
 declare(strict_types=1);
@@ -11,10 +16,10 @@ declare(strict_types=1);
 namespace ComposeManager\Tests;
 
 use PluginTests\TestCase;
-use PluginTests\Mocks\FunctionMocks;
 
-// We need to define the function before including exec.php since it requires defines.php
-// which has Unraid-specific dependencies. We'll extract the testable functions.
+// Load the actual source file via stream wrapper using includeWithSwitch()
+// This safely includes exec.php which has a switch($_POST['action']) block
+includeWithSwitch('/usr/local/emhttp/plugins/compose.manager/php/exec.php');
 
 /**
  * @covers ::getElement
@@ -22,16 +27,6 @@ use PluginTests\Mocks\FunctionMocks;
  */
 class ExecFunctionsTest extends TestCase
 {
-    protected function setUp(): void
-    {
-        parent::setUp();
-        
-        // Define the functions here since exec.php has complex dependencies
-        if (!function_exists('getElement')) {
-            require_once __DIR__ . '/exec_functions.php';
-        }
-    }
-
     // ===========================================
     // getElement() Tests
     // ===========================================
@@ -79,6 +74,24 @@ class ExecFunctionsTest extends TestCase
     {
         $result = getElement('stack-name_123');
         $this->assertEquals('stack-name_123', $result);
+    }
+
+    /**
+     * Test getElement with only dots
+     */
+    public function testGetElementOnlyDots(): void
+    {
+        $result = getElement('...');
+        $this->assertEquals('---', $result);
+    }
+
+    /**
+     * Test getElement with mixed special chars
+     */
+    public function testGetElementMixedChars(): void
+    {
+        $result = getElement('my.stack name-test_123');
+        $this->assertEquals('my-stackname-test_123', $result);
     }
 
     // ===========================================
@@ -186,10 +199,6 @@ class ExecFunctionsTest extends TestCase
         $this->assertEquals('library/nginx:latest', $result);
     }
 
-    // ===========================================
-    // Additional Edge Case Tests
-    // ===========================================
-
     /**
      * Test normalizeImageForUpdateCheck with lscr.io (Linuxserver new registry)
      */
@@ -244,23 +253,5 @@ class ExecFunctionsTest extends TestCase
         // Docker image names should be lowercase but we don't change case
         $result = normalizeImageForUpdateCheck('MyUser/MyApp:Latest');
         $this->assertEquals('MyUser/MyApp:Latest', $result);
-    }
-
-    /**
-     * Test getElement with edge cases
-     */
-    public function testGetElementOnlyDots(): void
-    {
-        $result = getElement('...');
-        $this->assertEquals('---', $result);
-    }
-
-    /**
-     * Test getElement with mixed special chars
-     */
-    public function testGetElementMixedChars(): void
-    {
-        $result = getElement('my.stack name-test_123');
-        $this->assertEquals('my-stackname-test_123', $result);
     }
 }
