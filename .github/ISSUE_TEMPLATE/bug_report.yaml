@@ -1,0 +1,43 @@
+name: Bug report
+description: Use this form to report bugs with compose_manager
+title: "[bug] {short_summary}"
+labels: ["bug"]
+body:
+  - type: input
+    id: short_summary
+    attributes:
+      label: Short summary
+      description: A one-line summary of the bug
+      placeholder: e.g. "compose up fails with network error"
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Step-by-step reproduction steps
+      placeholder: "1. Upload docker-compose.yml\n2. Click Start\n3. Observe error"
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      required: true
+  - type: dropdown
+    id: compose_manager_version
+    attributes:
+      label: compose_manager version
+      options:
+        - "latest"
+        - "2026.01.31"
+        - "other"
+  - type: input
+    id: logs
+    attributes:
+      label: Relevant logs or paste link
+      description: Short excerpt or link to a gist
+      required: false
