@@ -1,7 +1,7 @@
 name: Bug report
 description: Use this form to report bugs with compose_manager
-title: "[bug] {short_summary}"
 labels: ["bug"]
+title: "[bug] ${inputs.short_summary}"
 body:
   - type: input
     id: short_summary
