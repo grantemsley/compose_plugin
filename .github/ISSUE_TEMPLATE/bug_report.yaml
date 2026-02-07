@@ -1,4 +1,4 @@
-name: "Bug report"
+name: "Bug reports"
 description: "Use this form to report bugs with compose_manager"
 labels: ["bug"]
 title: "[BUG] ${inputs.short_summary}"
