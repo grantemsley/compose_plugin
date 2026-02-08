@@ -3,7 +3,7 @@
     position: absolute;
     display: inline-block;
   }
-  
+
   /* Dropdown Content (Hidden by Default) */
   .dropdown-content {
     display: none;
@@ -14,7 +14,7 @@
     z-index: 1;
     right: 75px;
   }
-  
+
   /* Links inside the dropdown */
   .dropdown-content a {
     color: black;
@@ -22,10 +22,10 @@
     text-decoration: none;
     display: block;
   }
-  
+
   /* Change color of dropdown links on hover */
   .dropdown-content a:hover {background-color: #ddd}
-  
+
   /* Show the dropdown menu on hover */
   .dropdown:hover .dropdown-content {
     display: block;
@@ -221,14 +221,29 @@
   text-decoration: none;
 }
 
-/* Ensure switch button labels align consistently across dashboard and compose views */
-.switch-button, .switch-button * {
-  vertical-align: middle !important;
-  line-height: normal !important;
+/* Hide advanced-view columns by default via CSS so they are never visible
+   before JavaScript runs applyListView().  applyListView() uses jQuery
+   .show()/.hide() which set inline styles that override this rule. */
+#compose_stacks .advanced {
+  display: none;
 }
-.switch-button .switch-label {
-  display: inline-block !important;
-  vertical-align: middle !important;
+
+/* Keep autostart switch labels on one line inside the table cell.
+   On the standalone Compose tab the default float layout can wrap
+   the "On" label to a new line without this. */
+#compose_stacks td.nine {
+  white-space: nowrap;
+}
+
+/* Prevent autostart toggle label from wrapping to a new line in narrow columns.
+   Switches the switchButton elements from float:left to inline-block so they
+   stay on one line inside the narrow <td class="nine"> cell.
+   Scoped to #compose_list so it does NOT affect Unraid's native Docker toggles. */
+#compose_list .switch-button-label,
+#compose_list .switch-button-background {
+  float: none !important;
+  display: inline-block;
+  vertical-align: middle;
 }
 
 /* Namespaced compose classes to avoid global Docker manager handlers */
