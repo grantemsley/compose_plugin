@@ -557,13 +557,19 @@ $script = <<<'EOT'
     $(function() {
         // Initialize toggle switch (like Docker's apps toggle)
         var cookie = (typeof $.cookie === 'function' && $.cookie('unraid_settings')) ? JSON.parse($.cookie('unraid_settings')) : {};
-        $('#compose_stacks_toggle').switchButton({
-            labels_placement: 'right',
-            off_label: "All Stacks",
-            on_label: "Started only",
-            checked: cookie.my_stacks === 'startedOnly'
-        });
-        $('#compose_stacks_toggle').change(function() {
+        // Initialize header toggle idempotently to avoid duplicate switch rendering
+        var $toggle = $('#compose_stacks_toggle');
+        if (!$toggle.data('switchbutton-initialized')) {
+            $toggle.switchButton({
+                labels_placement: 'right',
+                off_label: "All Stacks",
+                on_label: "Started only",
+                checked: cookie.my_stacks === 'startedOnly'
+            });
+            $toggle.data('switchbutton-initialized', true);
+        }
+        // Bind change handler once using delegated binding on the container
+        $('#compose_dash_content').off('change', '#compose_stacks_toggle').on('change', '#compose_stacks_toggle', function() {
             $('.compose-dash-stack.stopped').finish().toggle('fast', function() { noStacks(); });
             var cookie = (typeof $.cookie === 'function' && $.cookie('unraid_settings')) ? JSON.parse($.cookie('unraid_settings')) : {};
             if ($('#compose_stacks_toggle').is(':checked')) {

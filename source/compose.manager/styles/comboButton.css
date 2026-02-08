@@ -220,3 +220,13 @@
 .updatecolumn a:hover {
   text-decoration: none;
 }
+
+/* Ensure switch button labels align consistently across dashboard and compose views */
+.switch-button, .switch-button * {
+  vertical-align: middle !important;
+  line-height: normal !important;
+}
+.switch-button .switch-label {
+  display: inline-block !important;
+  vertical-align: middle !important;
+}
