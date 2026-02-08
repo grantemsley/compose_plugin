@@ -1131,6 +1131,17 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                                 } catch (e) {}
                                 schedulePendingComposeReloads(800);
                             }
+
+                            // Sync Unraid's Docker containers widget after compose actions
+                            // (compose up/down/update changes containers that Docker's view needs to reflect)
+                            if (typeof window.loadlist === 'function') {
+                                setTimeout(function() {
+                                    try {
+                                        composeClientDebug('eboxObserver:calling-loadlist-for-docker-sync');
+                                    } catch (e) {}
+                                    window.loadlist();
+                                }, 1500);
+                            }
                         }
                     });
                 }
@@ -1146,6 +1157,74 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
         // Load the stack list asynchronously (like Docker tab)
         // This defers the expensive docker commands to after the page renders
         composeLoadlist();
+
+        // ── Cross-widget sync ──────────────────────────────────────────
+        // On the Docker page the Compose stacks list is rendered below
+        // the built-in Docker containers table (non-tabbed) or in a
+        // separate tab (tabbed mode).  When Docker's loadlist() fires
+        // (container start/stop/restart/etc.), the compose list must
+        // also refresh so state stays in sync.
+        (function hookLoadlist() {
+            var composeRefreshTimer = null;
+            var composeDataStale = false;
+
+            // For tabbed mode: detect if our panel is hidden so we can
+            // defer the refresh until the user switches to the compose tab.
+            var composeTable = document.getElementById('compose_stacks');
+            var tabPanel = composeTable ? composeTable.closest('[role="tabpanel"]') : null;
+            var isTabbed = tabPanel !== null;
+
+            function isComposePanelVisible() {
+                if (!isTabbed) return true; // non-tabbed: always visible
+                return tabPanel.style.display !== 'none';
+            }
+
+            function wrapLoadlist() {
+                if (typeof window.loadlist === 'function' && !window.loadlist._composeTabHooked) {
+                    var originalLoadlist = window.loadlist;
+                    window.loadlist = function() {
+                        originalLoadlist.apply(this, arguments);
+
+                        if (isComposePanelVisible()) {
+                            // Visible — refresh with debounce
+                            clearTimeout(composeRefreshTimer);
+                            composeRefreshTimer = setTimeout(function() {
+                                composeLoadlist();
+                            }, 2000);
+                        } else {
+                            // Hidden tab — mark stale, refresh on tab switch
+                            composeDataStale = true;
+                        }
+                    };
+                    window.loadlist._composeTabHooked = true;
+                    composeClientDebug('hookLoadlist: hooked loadlist() for cross-widget sync, tabbed=' + isTabbed);
+                    return true;
+                }
+                return false;
+            }
+
+            // loadlist may not exist yet — retry every 500ms
+            if (!wrapLoadlist()) {
+                var hookInterval = setInterval(function() {
+                    if (wrapLoadlist()) clearInterval(hookInterval);
+                }, 500);
+                // Give up after 30s
+                setTimeout(function() { clearInterval(hookInterval); }, 30000);
+            }
+
+            // Tabbed mode: watch for tab switches to flush stale data
+            if (isTabbed) {
+                var panelObserver = new MutationObserver(function(mutations) {
+                    mutations.forEach(function(mutation) {
+                        if (mutation.attributeName === 'style' && isComposePanelVisible() && composeDataStale) {
+                            composeDataStale = false;
+                            composeLoadlist();
+                        }
+                    });
+                });
+                panelObserver.observe(tabPanel, { attributes: true, attributeFilter: ['style'] });
+            }
+        })();
     });
 
     function addStack() {
@@ -3971,6 +4050,10 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                     try {
                         schedulePendingComposeReloads(1200);
                     } catch (e) {}
+                    // Also refresh Unraid's Docker containers widget
+                    if (typeof window.loadlist === 'function') {
+                        setTimeout(function() { window.loadlist(); }, 1500);
+                    }
                 } else {
                     // Restore status icon or remove overlay spinner
                     if (__spinnerInserted) {

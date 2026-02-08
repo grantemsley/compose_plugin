@@ -89,24 +89,24 @@ $styles = <<<EOT
     --compose-update-width: 120px;
     --compose-runtime-width: 100px;
 }
-.compose-dash-stack { 
-    display: flex; 
-    align-items: center; 
+.compose-dash-stack {
+    display: flex;
+    align-items: center;
     padding: 4px 8px;
     cursor: pointer;
     border-radius: 4px;
 }
 .compose-dash-stack:hover { background: rgba(255,255,255,0.05); }
-.compose-dash-expand { 
+.compose-dash-expand {
     width: var(--compose-expand-width);
     flex-shrink: 0;
     transition: transform 0.2s;
     color: #666;
 }
 .compose-dash-expand.expanded { transform: rotate(90deg); }
-.compose-dash-icon { 
-    width: 32px; 
-    height: 32px; 
+.compose-dash-icon {
+    width: 32px;
+    height: 32px;
     margin: 0 8px;
     flex-shrink: 0;
     border-radius: 4px;
@@ -155,19 +155,19 @@ $script = <<<'EOT'
     var caURL = '/plugins/compose.manager/php/exec.php';
     var expandedStacks = {};
     var stackContainerCache = {};
-    
+
     // Debug logging function - respects plugin debug setting
     function debugLog() {
         if (window.composeDashDebug) {
             console.log.apply(console, ['[ComposeDash]'].concat(Array.prototype.slice.call(arguments)));
         }
     }
-    
+
     // Smart uptime formatting - single unit, less granularity over time
     function formatUptime(startedAt, isRunning) {
         if (!isRunning) return 'stopped';
         if (!startedAt) return '';
-        
+
         var started = new Date(startedAt);
         var now = new Date();
         var diffMs = now - started;
@@ -177,7 +177,7 @@ $script = <<<'EOT'
         var weeks = Math.floor(days / 7);
         var months = Math.floor(days / 30);
         var years = Math.floor(days / 365);
-        
+
         if (mins < 120) {
             return mins + ' min' + (mins !== 1 ? 's' : '');
         } else if (hours < 48) {
@@ -192,11 +192,11 @@ $script = <<<'EOT'
             return years + ' year' + (years !== 1 ? 's' : '');
         }
     }
-    
+
     // Stack context menu - called onclick like Docker pattern
     function addStackContext(elementId, stackName, isRunning, webui) {
         debugLog('addStackContext called:', elementId, stackName, isRunning, 'webui:', webui);
-        
+
         // Check if menu is already open for this element - if so, just close it
         var dropdownId = 'dropdown-' + elementId;
         var $dropdown = $('#' + dropdownId);
@@ -205,10 +205,10 @@ $script = <<<'EOT'
             $dropdown.hide();
             return;
         }
-        
+
         var opts = [];
         context.settings({right:false, above:false});
-        
+
         if (isRunning) {
             if (webui && webui !== '') {
                 opts.push({text:'WebUI', icon:'fa-globe', action:function(e){
@@ -240,17 +240,17 @@ $script = <<<'EOT'
             e.preventDefault();
             location.href = '/Docker/Compose';
         }});
-        
+
         // Destroy and re-attach like Docker pattern
         context.destroy('#' + elementId);
         context.attach('#' + elementId, opts);
         debugLog('Context menu attached to #' + elementId);
     }
-    
+
     function stackAction(stackName, action) {
         var $status = $('#compose_stacks_status');
         $status.text(action.charAt(0).toUpperCase() + action.slice(1) + 'ing ' + stackName + '...');
-        
+
         $.post('/plugins/compose.manager/php/compose_util.php', {
             action: 'compose' + action.charAt(0).toUpperCase() + action.slice(1),
             path: '/boot/config/plugins/compose.manager/projects/' + stackName
@@ -258,7 +258,7 @@ $script = <<<'EOT'
             setTimeout(loadComposeStacks, 1000);
         });
     }
-    
+
     function openStackLogs(stackName) {
         // Open combined logs for the stack using the same approach as the Compose page
         var projectPath = '/boot/config/plugins/compose.manager/projects/' + stackName;
@@ -274,11 +274,11 @@ $script = <<<'EOT'
             }
         });
     }
-    
+
     // Container context menu
     function addContainerContext(elementId, ctName, ctId, isRunning, webui, shell) {
         debugLog('addContainerContext called:', elementId, ctName, isRunning);
-        
+
         // Check if menu is already open - toggle off
         var dropdownId = 'dropdown-' + elementId;
         var $dropdown = $('#' + dropdownId);
@@ -287,10 +287,10 @@ $script = <<<'EOT'
             $dropdown.hide();
             return;
         }
-        
+
         var opts = [];
         context.settings({right:false, above:false});
-        
+
         if (isRunning) {
             if (webui && webui !== '' && webui !== '#') {
                 opts.push({text:'WebUI', icon:'fa-globe', action:function(e){
@@ -321,13 +321,13 @@ $script = <<<'EOT'
                 dockerAction(ctId, 'start');
             }});
         }
-        
+
         context.destroy('#' + elementId);
         context.attach('#' + elementId, opts);
         debugLog('Container context menu attached to #' + elementId);
     }
     window.addContainerContext = addContainerContext;
-    
+
     function dockerAction(ctId, action) {
         debugLog('dockerAction:', ctId, action);
         $.post('/plugins/dynamix.docker.manager/include/Events.php', {
@@ -338,7 +338,7 @@ $script = <<<'EOT'
             setTimeout(loadComposeStacks, 1500);
         });
     }
-    
+
     // Open terminal - call global openTerminal (from Unraid's HeadInlineJS.php)
     // For logs: openTerminal('docker', containerName, '.log')
     // For console: openTerminal('docker', containerName, shell)
@@ -353,11 +353,11 @@ $script = <<<'EOT'
             window.open(url, '_blank');
         }
     }
-    
+
     function toggleStack(stackId, stackName) {
         var $containers = $('#compose-dash-ct-' + stackId);
         var $icon = $('#compose-dash-exp-' + stackId);
-        
+
         if (expandedStacks[stackId]) {
             $containers.removeClass('expanded');
             $icon.removeClass('expanded');
@@ -366,17 +366,17 @@ $script = <<<'EOT'
             $containers.addClass('expanded');
             $icon.addClass('expanded');
             expandedStacks[stackId] = true;
-            
+
             if (!stackContainerCache[stackId]) {
                 loadStackContainers(stackId, stackName);
             }
         }
     }
-    
+
     function loadStackContainers(stackId, stackName) {
         var $container = $('#compose-dash-ct-' + stackId);
         $container.html('<div class="compose-dash-loading"><i class="fa fa-spinner fa-spin"></i> Loading...</div>');
-        
+
         $.post(caURL, {action: 'getStackContainers', script: stackName}, function(data) {
             try {
                 var response = JSON.parse(data);
@@ -397,7 +397,7 @@ $script = <<<'EOT'
                         // Parse image to get repo and tag
                         var image = ct.Image || '';
                         var imageDisplay = image.replace(/^.*\//, ''); // Remove registry prefix
-                        
+
                         // Update status
                         var updateStatus = ct.UpdateStatus || 'unknown';
                         var localSha = ct.LocalSha || '';
@@ -410,10 +410,10 @@ $script = <<<'EOT'
                         } else {
                             updateHtml = '<span class="grey-text">--</span>';
                         }
-                        
+
                         // Container uptime - use shared smart formatting
                         var ctUptime = formatUptime(ct.StartedAt, isRunning);
-                        
+
                         html += '<div class="compose-dash-container">';
                         html += '<span class="compose-dash-ct-icon" id="' + ctElId + '" onclick="addContainerContext(\'' + ctElId + '\',\'' + escapedName + '\',\'' + shortId + '\',' + isRunning + ',\'' + webui + '\',\'' + shell + '\')">';
                         html += '<img src="' + imgSrc + '" onerror="this.src=\'/plugins/dynamix.docker.manager/images/question.png\';">';
@@ -430,7 +430,7 @@ $script = <<<'EOT'
                         html += '</div>';
                     });
                     $container.html(html);
-                    
+
                     stackContainerCache[stackId] = true;
                 } else {
                     $container.html('<div class="compose-dash-loading">No containers</div>');
@@ -441,13 +441,13 @@ $script = <<<'EOT'
             }
         });
     }
-    
+
     function loadComposeStacks() {
         $.post('/plugins/compose.manager/php/dashboard_stacks.php', function(data) {
             var statusText = 'Stacks -- Started: ' + data.started + ', Stopped: ' + data.stopped;
             if (data.partial > 0) statusText += ', Partial: ' + data.partial;
             $('#compose_stacks_status').text(statusText);
-            
+
             var html = '';
             if (data.stacks.length === 0) {
                 html = '<div class="compose-dash-loading">No compose stacks defined</div>';
@@ -455,14 +455,14 @@ $script = <<<'EOT'
                 data.stacks.forEach(function(stack, idx) {
                     var stackId = 'stack-' + idx;
                     var state = stack.state;
-                    var stateIcon = state === 'started' ? 'fa-play' : 
+                    var stateIcon = state === 'started' ? 'fa-play' :
                                    (state === 'partial' ? 'fa-exclamation-circle' : 'fa-square');
-                    var stateColor = state === 'started' ? 'green-text' : 
+                    var stateColor = state === 'started' ? 'green-text' :
                                     (state === 'partial' ? 'orange-text' : 'red-text');
                     var stateText = state === 'partial' ? 'partial' : state;
                     var imgSrc = stack.icon || '/plugins/dynamix.docker.manager/images/question.png';
                     var isRunning = state === 'started' || state === 'partial';
-                    
+
                     // Update status display
                     var updateIcon, updateText, updateColor;
                     if (stack.update === 'up-to-date') {
@@ -472,16 +472,16 @@ $script = <<<'EOT'
                     } else {
                         updateIcon = 'fa-question-circle'; updateText = ''; updateColor = 'grey-text';
                     }
-                    
+
                     // Container count
                     var containerText = stack.running + '/' + stack.total;
-                    
+
                     // Uptime - use smart formatting from startedAt
                     var uptimeText = formatUptime(stack.startedAt, isRunning);
-                    
+
                     // WebUI
                     var webui = (stack.webui || '').replace(/'/g, "\\'");
-                    
+
                     var escapedFolder = stack.folder.replace(/'/g, "\\'");
                     // Add state class for filtering (like Docker tile)
                     var stateClass = state === 'stopped' ? 'stopped' : 'started';
@@ -501,29 +501,29 @@ $script = <<<'EOT'
                     html += '<div class="compose-dash-containers" id="compose-dash-ct-' + stackId + '"></div>';
                 });
             }
-            
+
             $('#compose_dash_content').html(html);
-            
+
             // Attach row click handlers using event delegation (allows context menu clicks to bubble)
             $('#compose_dash_content').off('click', '.compose-dash-stack').on('click', '.compose-dash-stack', function(e) {
                 // Don't toggle if clicking on icon (context menu trigger)
                 if ($(e.target).closest('.compose-dash-icon').length) {
                     return;
                 }
-                
+
                 // Check if any context menu is currently visible
                 var menuOpen = $('.dropdown-context:visible').length > 0;
-                
+
                 // If menu is open and NOT clicking the expand arrow, just let the menu close
                 if (menuOpen && !$(e.target).closest('.compose-dash-expand').length) {
                     return;
                 }
-                
+
                 var stackId = $(this).data('stackid');
                 var folder = $(this).data('folder');
                 window.composeToggleStack(stackId, folder);
             });
-            
+
             // Apply saved filter preference
             var cookie = (typeof $.cookie === 'function' && $.cookie('unraid_settings')) ? JSON.parse($.cookie('unraid_settings')) : {};
             if (cookie.my_stacks === 'startedOnly') {
@@ -542,11 +542,11 @@ $script = <<<'EOT'
             $('#compose_dash_content').html('<div class="compose-dash-loading red-text">Failed to load stacks</div>');
         });
     }
-    
+
     // Expose functions globally for onclick handlers
     window.composeToggleStack = toggleStack;
     window.addStackContext = addStackContext;
-    
+
     // Check if any stacks are visible (for "no stacks" message)
     function noStacks() {
         if ($('#compose_dash_content .compose-dash-stack:visible').length === 0 && $('#compose_dash_content .compose-dash-stack').length > 0) {
@@ -691,9 +691,48 @@ $script = <<<'EOT'
             }
             $.cookie('unraid_settings', JSON.stringify(cookie), {expires: 3650, path: '/'});
         });
-        
+
         loadComposeStacks();
     });
+
+    // ── Cross-widget sync ──────────────────────────────────────────────
+    // When the Docker Containers widget refreshes (via loadlist), the
+    // Compose Stacks tile on the same dashboard page must also update.
+    // We wrap the global loadlist() so that after Docker finishes
+    // reloading its container list, we invalidate our container cache
+    // and reload stacks.  The wrapper is applied via a retry loop
+    // because the Docker widget may define loadlist() after this tile.
+    (function hookLoadlist() {
+        var composeRefreshTimer = null;
+
+        function wrapLoadlist() {
+            if (typeof window.loadlist === 'function' && !window.loadlist._composeDashHooked) {
+                var originalLoadlist = window.loadlist;
+                window.loadlist = function() {
+                    originalLoadlist.apply(this, arguments);
+                    // Debounce rapid successive calls (e.g. start-all / stop-all)
+                    clearTimeout(composeRefreshTimer);
+                    composeRefreshTimer = setTimeout(function() {
+                        stackContainerCache = {};
+                        loadComposeStacks();
+                    }, 2000);
+                };
+                window.loadlist._composeDashHooked = true;
+                debugLog('Hooked loadlist() for dashboard sync');
+                return true;
+            }
+            return false;
+        }
+
+        // loadlist may not exist yet — retry every second
+        if (!wrapLoadlist()) {
+            var hookInterval = setInterval(function() {
+                if (wrapLoadlist()) clearInterval(hookInterval);
+            }, 1000);
+            // Give up after 60 s (dashboard may not have Docker widget)
+            setTimeout(function() { clearInterval(hookInterval); }, 60000);
+        }
+    })();
 })();
 </script>
 EOT;
