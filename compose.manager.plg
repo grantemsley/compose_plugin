@@ -28,6 +28,28 @@
 >
 
 <CHANGES>
+###2026.02.08
+- Features: enable blank issues and add feature request template for contributions
+- Features: add issues section to issue template configuration
+- Features: add issue and pull request templates for better contribution guidelines
+- Features: create initial override file for UI labels if it doesn't exist and remove old modal for editing the override file
+- Bug Fixes: enhance UI feedback with localized spinners and status icons for compose actions
+- Bug Fixes: include --all flag in docker compose commands to return exited/stopped containers
+- Bug Fixes: improve switch button initialization and ensure consistent label alignment
+- Bug Fixes: enhance switchButton initialization to prevent re-binding and ensure consistent state
+- Bug Fixes: replace outdated bug report template with a new structured format
+- Bug Fixes: remove outdated bug report template from issue configuration
+- Bug Fixes: correct name field in bug report template
+- Bug Fixes: standardize quotes and formatting in bug report template
+- Bug Fixes: add quotes around bug report name
+- Bug Fixes: remove title field from bug report template
+- Bug Fixes: correct placeholder syntax in bug report template title
+- Bug Fixes: update support forum URL in issue template configuration
+- Bug Fixes: ensure text coverage report is generated in phpunit configuration
+- Bug Fixes: add workspace instructions file to .gitignore
+- Chores: remove outdated bug report and feature request templates
+- Update issue templates by adding bug report template from webui
+- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.02.03d...v2026.02.08)
 ###2026.02.03d
 - Features: implement stack recheck functionality with server-side persistence
 - [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.02.03c...v2026.02.03d)
