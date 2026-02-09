@@ -1,4 +1,4 @@
-diff --git a/tmp/DockerContainers - 7.2.3.php b/tmp/DockerContainers - 7.2.3.php.patched
+diff --git a/usr/local/emhttp/plugins/dynamix.docker.manager/include/DockerContainers.php b/usr/local/emhttp/plugins/dynamix.docker.manager/include/DockerContainers.php
 index 3f7e0e7..e0fed6f 100644
 --- a/usr/local/emhttp/plugins/dynamix.docker.manager/include/DockerContainers.php
 +++ b/usr/local/emhttp/plugins/dynamix.docker.manager/include/DockerContainers.php	
