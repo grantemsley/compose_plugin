@@ -1,0 +1,362 @@
+<?php
+
+/**
+ * Compose Manager - Backup & Restore Functions
+ *
+ * Handles creation and restoration of stack backup archives.
+ * Archives are .tar.gz files containing stack directories.
+ */
+
+require_once("/usr/local/emhttp/plugins/compose.manager/php/defines.php");
+
+/**
+ * Get the backup destination path from config, falling back to default.
+ */
+function getBackupDestination()
+{
+    $cfg = @parse_ini_file("/boot/config/plugins/compose.manager/compose.manager.cfg");
+    $dest = $cfg['BACKUP_DESTINATION'] ?? '/boot/config/plugins/compose.manager/backups';
+    return rtrim($dest, '/');
+}
+
+/**
+ * Get the backup source path (projects folder).
+ */
+function getBackupSource()
+{
+    global $compose_root;
+    return rtrim($compose_root, '/');
+}
+
+/**
+ * Create a backup archive of all stack directories.
+ *
+ * @return array Result with 'result' and 'message' keys.
+ */
+function createBackup()
+{
+    $source = getBackupSource();
+    $destination = getBackupDestination();
+
+    // Validate source
+    if (!is_dir($source)) {
+        return ['result' => 'error', 'message' => 'Projects folder does not exist: ' . $source];
+    }
+
+    // Ensure destination directory exists
+    if (!is_dir($destination)) {
+        @mkdir($destination, 0755, true);
+        if (!is_dir($destination)) {
+            return ['result' => 'error', 'message' => 'Cannot create backup destination: ' . $destination];
+        }
+    }
+
+    // Collect stack directories
+    $stacks = [];
+    $entries = @scandir($source);
+    if ($entries === false) {
+        return ['result' => 'error', 'message' => 'Cannot read projects folder: ' . $source];
+    }
+
+    foreach ($entries as $entry) {
+        if ($entry === '.' || $entry === '..') continue;
+        $fullPath = $source . '/' . $entry;
+        if (is_dir($fullPath)) {
+            $stacks[] = $entry;
+        }
+    }
+
+    if (empty($stacks)) {
+        return ['result' => 'error', 'message' => 'No stacks found to back up.'];
+    }
+
+    // Generate archive filename
+    $timestamp = date('Y-m-d_H-i');
+    $archiveName = "backup_{$timestamp}.tar.gz";
+    $archivePath = $destination . '/' . $archiveName;
+
+    // Avoid overwriting — append seconds if file exists
+    if (file_exists($archivePath)) {
+        $timestamp = date('Y-m-d_H-i-s');
+        $archiveName = "backup_{$timestamp}.tar.gz";
+        $archivePath = $destination . '/' . $archiveName;
+    }
+
+    // Build tar.gz — cd into source dir so paths inside the archive are relative
+    $escapedArchive = escapeshellarg($archivePath);
+    $tarItems = '';
+    foreach ($stacks as $stack) {
+        $tarItems .= ' ' . escapeshellarg($stack);
+    }
+
+    $cmd = "cd " . escapeshellarg($source) . " && tar czf {$escapedArchive}{$tarItems} 2>&1";
+    exec($cmd, $output, $exitCode);
+
+    if ($exitCode !== 0) {
+        return ['result' => 'error', 'message' => 'tar command failed (exit ' . $exitCode . '): ' . implode("\n", $output)];
+    }
+
+    // Apply retention policy
+    applyRetentionPolicy($destination);
+
+    $sizeBytes = filesize($archivePath);
+    $sizeHuman = formatBytes($sizeBytes);
+
+    logger("Backup created: {$archiveName} ({$sizeHuman}, " . count($stacks) . " stacks)");
+
+    return [
+        'result' => 'success',
+        'message' => "Backup created successfully.",
+        'archive' => $archiveName,
+        'size' => $sizeHuman,
+        'stacks' => count($stacks)
+    ];
+}
+
+/**
+ * Apply retention policy — delete oldest archives exceeding the retention count.
+ */
+function applyRetentionPolicy($destination)
+{
+    $cfg = @parse_ini_file("/boot/config/plugins/compose.manager/compose.manager.cfg");
+    $retention = intval($cfg['BACKUP_RETENTION'] ?? 5);
+
+    if ($retention <= 0) return; // 0 = unlimited
+
+    $archives = listBackupArchives($destination);
+
+    if (count($archives) > $retention) {
+        // Archives are sorted newest-first; remove from the end (oldest)
+        $toDelete = array_slice($archives, $retention);
+        foreach ($toDelete as $archive) {
+            $filePath = $destination . '/' . $archive['filename'];
+            @unlink($filePath);
+            logger("Retention: deleted old backup " . $archive['filename']);
+        }
+    }
+}
+
+/**
+ * List backup archives in a directory, sorted newest-first.
+ *
+ * @param string|null $directory Override directory, or null for configured destination.
+ * @return array List of archive info arrays.
+ */
+function listBackupArchives($directory = null)
+{
+    $dir = $directory ?? getBackupDestination();
+    $archives = [];
+
+    if (!is_dir($dir)) return $archives;
+
+    $entries = @scandir($dir);
+    if ($entries === false) return $archives;
+
+    foreach ($entries as $entry) {
+        if (preg_match('/^backup_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}(-\d{2})?\.tar\.gz$/', $entry)) {
+            $fullPath = $dir . '/' . $entry;
+            $archives[] = [
+                'filename' => $entry,
+                'size' => formatBytes(filesize($fullPath)),
+                'sizeBytes' => filesize($fullPath),
+                'modified' => date('c', filemtime($fullPath))
+            ];
+        }
+    }
+
+    // Sort newest first by filename (which contains the timestamp)
+    usort($archives, function ($a, $b) {
+        return strcmp($b['filename'], $a['filename']);
+    });
+
+    return $archives;
+}
+
+/**
+ * Read the top-level directory names (stacks) from a backup archive.
+ *
+ * @param string $archivePath Full path to the .tar.gz file.
+ * @return array Result with 'stacks' array, or error.
+ */
+function readArchiveStacks($archivePath)
+{
+    if (!file_exists($archivePath)) {
+        return ['result' => 'error', 'message' => 'Archive not found: ' . basename($archivePath)];
+    }
+
+    // List archive contents and extract top-level directory names
+    $escaped = escapeshellarg($archivePath);
+    $cmd = "tar tzf {$escaped} 2>/dev/null";
+    $output = shell_exec($cmd);
+
+    if (empty($output)) {
+        return ['result' => 'error', 'message' => 'Cannot read archive contents or archive is empty.'];
+    }
+
+    $lines = explode("\n", trim($output));
+    $stacks = [];
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if (empty($line)) continue;
+        $parts = explode('/', $line);
+        $topDir = $parts[0];
+        if (!empty($topDir) && $topDir !== '.' && !in_array($topDir, $stacks)) {
+            $stacks[] = $topDir;
+        }
+    }
+
+    sort($stacks);
+
+    return ['result' => 'success', 'stacks' => $stacks];
+}
+
+/**
+ * Restore selected stacks from a backup archive.
+ *
+ * @param string $archivePath Full path to the .tar.gz file.
+ * @param array $stacks Array of stack directory names to restore.
+ * @return array Result with 'result', 'message', and 'restored' keys.
+ */
+function restoreStacks($archivePath, $stacks)
+{
+    $source = getBackupSource();
+
+    if (!file_exists($archivePath)) {
+        return ['result' => 'error', 'message' => 'Archive not found: ' . basename($archivePath)];
+    }
+
+    if (empty($stacks)) {
+        return ['result' => 'error', 'message' => 'No stacks selected for restore.'];
+    }
+
+    // Ensure projects folder exists
+    if (!is_dir($source)) {
+        @mkdir($source, 0755, true);
+    }
+
+    $escaped = escapeshellarg($archivePath);
+    $destEscaped = escapeshellarg($source);
+    $restored = [];
+    $errors = [];
+
+    foreach ($stacks as $stack) {
+        $stackEscaped = escapeshellarg($stack . '/');
+
+        // Extract the stack directory, overwriting existing files
+        $cmd = "tar xzf {$escaped} -C {$destEscaped} {$stackEscaped} 2>&1";
+        exec($cmd, $output, $exitCode);
+
+        if ($exitCode === 0) {
+            $restored[] = $stack;
+            logger("Restored stack: {$stack}");
+        } else {
+            $errors[] = $stack . ' (exit ' . $exitCode . ')';
+        }
+    }
+
+    $result = [
+        'result' => empty($errors) ? 'success' : (empty($restored) ? 'error' : 'warning'),
+        'restored' => $restored,
+        'errors' => $errors,
+        'message' => count($restored) . ' stack(s) restored successfully.'
+    ];
+
+    if (!empty($errors)) {
+        $result['message'] .= ' Failed: ' . implode(', ', $errors);
+    }
+
+    return $result;
+}
+
+/**
+ * Install or remove the backup cron job.
+ */
+function updateBackupCron()
+{
+    $cfg = @parse_ini_file("/boot/config/plugins/compose.manager/compose.manager.cfg");
+    $cronFile = '/etc/cron.d/compose-manager-backup';
+    $script = '/usr/local/emhttp/plugins/compose.manager/scripts/backup_cron.sh';
+
+    $enabled = ($cfg['BACKUP_SCHEDULE_ENABLED'] ?? 'false') === 'true';
+
+    if (!$enabled) {
+        // Remove cron job if it exists
+        if (file_exists($cronFile)) {
+            @unlink($cronFile);
+        }
+        return;
+    }
+
+    $frequency = $cfg['BACKUP_SCHEDULE_FREQUENCY'] ?? 'daily';
+    $time = $cfg['BACKUP_SCHEDULE_TIME'] ?? '03:00';
+    $dayOfWeek = $cfg['BACKUP_SCHEDULE_DAY'] ?? '1'; // Monday
+
+    // Parse time
+    $parts = explode(':', $time);
+    $hour = isset($parts[0]) ? intval($parts[0]) : 3;
+    $minute = isset($parts[1]) ? intval($parts[1]) : 0;
+
+    if ($frequency === 'weekly') {
+        $cronLine = "{$minute} {$hour} * * {$dayOfWeek} root {$script} >/dev/null 2>&1";
+    } else {
+        // daily
+        $cronLine = "{$minute} {$hour} * * * root {$script} >/dev/null 2>&1";
+    }
+
+    file_put_contents($cronFile, $cronLine . "\n");
+    // Ensure correct permissions
+    chmod($cronFile, 0644);
+}
+
+/**
+ * Format bytes to human-readable string.
+ */
+function formatBytes($bytes)
+{
+    if ($bytes >= 1073741824) {
+        return round($bytes / 1073741824, 2) . ' GB';
+    } elseif ($bytes >= 1048576) {
+        return round($bytes / 1048576, 2) . ' MB';
+    } elseif ($bytes >= 1024) {
+        return round($bytes / 1024, 2) . ' KB';
+    }
+    return $bytes . ' B';
+}
+
+/**
+ * Log a message to syslog with compose.manager tag.
+ */
+function logger($message)
+{
+    exec("logger -t 'compose.manager' " . escapeshellarg("[backup] " . $message));
+}
+
+/**
+ * Resolve the full path to an archive given a filename.
+ * Looks in the optional directory first, then configured destination, falls back to the provided path.
+ */
+function resolveArchivePath($filenameOrPath, $directory = null)
+{
+    // If it's an absolute path and exists, use it directly
+    if (strpos($filenameOrPath, '/') !== false && file_exists($filenameOrPath)) {
+        return $filenameOrPath;
+    }
+
+    // Try the explicitly provided directory first
+    if ($directory !== null && $directory !== '') {
+        $candidate = rtrim($directory, '/') . '/' . basename($filenameOrPath);
+        if (file_exists($candidate)) {
+            return $candidate;
+        }
+    }
+
+    // Otherwise look in the configured backup destination
+    $dest = getBackupDestination();
+    $candidate = $dest . '/' . basename($filenameOrPath);
+    if (file_exists($candidate)) {
+        return $candidate;
+    }
+
+    // Return as-is for the caller to handle the error
+    return $filenameOrPath;
+}

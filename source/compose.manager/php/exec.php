@@ -1018,6 +1018,74 @@ switch ($_POST['action']) {
         file_put_contents($pendingRecheckFile, json_encode($pending, JSON_PRETTY_PRINT));
         echo json_encode(['result' => 'success', 'remaining' => array_keys($pending)]);
         break;
+
+    case 'createBackup':
+        require_once("/usr/local/emhttp/plugins/compose.manager/php/backup_functions.php");
+        $result = createBackup();
+        echo json_encode($result);
+        break;
+
+    case 'listBackups':
+        require_once("/usr/local/emhttp/plugins/compose.manager/php/backup_functions.php");
+        $directory = isset($_POST['directory']) && $_POST['directory'] !== '' ? urldecode($_POST['directory']) : null;
+        $archives = listBackupArchives($directory);
+        echo json_encode(['result' => 'success', 'archives' => $archives]);
+        break;
+
+    case 'readManifest':
+        require_once("/usr/local/emhttp/plugins/compose.manager/php/backup_functions.php");
+        $archive = isset($_POST['archive']) ? urldecode($_POST['archive']) : '';
+        $directory = isset($_POST['directory']) && $_POST['directory'] !== '' ? urldecode($_POST['directory']) : null;
+        if (empty($archive)) {
+            echo json_encode(['result' => 'error', 'message' => 'No archive specified.']);
+            break;
+        }
+        $archivePath = resolveArchivePath($archive, $directory);
+        $result = readArchiveStacks($archivePath);
+        echo json_encode($result);
+        break;
+
+    case 'restoreBackup':
+        require_once("/usr/local/emhttp/plugins/compose.manager/php/backup_functions.php");
+        $archive = isset($_POST['archive']) ? urldecode($_POST['archive']) : '';
+        $stacks = isset($_POST['stacks']) ? $_POST['stacks'] : '';
+        if (is_string($stacks)) {
+            $stacks = json_decode($stacks, true);
+        }
+        if (empty($archive)) {
+            echo json_encode(['result' => 'error', 'message' => 'No archive specified.']);
+            break;
+        }
+        if (!is_array($stacks) || empty($stacks)) {
+            echo json_encode(['result' => 'error', 'message' => 'No stacks selected for restore.']);
+            break;
+        }
+        $archivePath = resolveArchivePath($archive);
+        $result = restoreStacks($archivePath, $stacks);
+        echo json_encode($result);
+        break;
+
+    case 'deleteBackup':
+        require_once("/usr/local/emhttp/plugins/compose.manager/php/backup_functions.php");
+        $archive = isset($_POST['archive']) ? urldecode($_POST['archive']) : '';
+        if (empty($archive)) {
+            echo json_encode(['result' => 'error', 'message' => 'No archive specified.']);
+            break;
+        }
+        $archivePath = resolveArchivePath($archive);
+        if (!file_exists($archivePath)) {
+            echo json_encode(['result' => 'error', 'message' => 'Archive not found.']);
+            break;
+        }
+        @unlink($archivePath);
+        echo json_encode(['result' => 'success', 'message' => 'Backup deleted.']);
+        break;
+
+    case 'updateBackupCron':
+        require_once("/usr/local/emhttp/plugins/compose.manager/php/backup_functions.php");
+        updateBackupCron();
+        echo json_encode(['result' => 'success', 'message' => 'Backup schedule updated.']);
+        break;
 }
 
 ?>
