@@ -1,4 +1,4 @@
-diff --git a/usr/local/emhttp/plugins/dynamix.docker.manager/system/Docker b/usr/local/emhttp/plugins/dynamix.docker.manager/system/Docker
+diff --git a/tmp/Docker - 7.2.3 b/tmp/Docker - 7.2.3.patched
 index 236ef3d..5172e10 100644
 --- a/usr/local/emhttp/plugins/dynamix.docker.manager/system/Docker
 +++ b/usr/local/emhttp/plugins/dynamix.docker.manager/system/Docker	
