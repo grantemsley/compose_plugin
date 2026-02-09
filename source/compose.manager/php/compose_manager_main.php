@@ -199,8 +199,8 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             addComposeStackContext(this.id);
         });
 
-        // Apply readmore to descriptions - scope to compose_stacks
-        $('#compose_stacks .docker_readmore').readmore({
+        // Apply readmore to descriptions - scope to compose_stacks, exclude container detail rows
+        $('#compose_stacks .docker_readmore').not('.stack-details-container .docker_readmore').readmore({
             maxHeight: 32,
             moreLink: "<a href='#' style='text-align:center'><i class='fa fa-chevron-down'></i></a>",
             lessLink: "<a href='#' style='text-align:center'><i class='fa fa-chevron-up'></i></a>"
@@ -1014,8 +1014,8 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             $('#compose_stacks .advanced').hide();
             $('#compose_stacks .basic').show();
         }
-        // Apply readmore to descriptions
-        $('#compose_stacks .docker_readmore').readmore({
+        // Apply readmore to descriptions — exclude container detail rows to avoid double-application
+        $('#compose_stacks .docker_readmore').not('.stack-details-container .docker_readmore').readmore({
             maxHeight: 32,
             moreLink: "<a href='#' style='text-align:center'><i class='fa fa-chevron-down'></i></a>",
             lessLink: "<a href='#' style='text-align:center'><i class='fa fa-chevron-up'></i></a>"
@@ -3544,7 +3544,8 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             // Container name column - matches Docker tab exactly
             html += '<td class="ct-name">';
             html += '<span class="outer ' + outerClass + '">';
-            html += '<span id="' + uniqueId + '" class="hand" data-name="' + escapeAttr(containerName) + '" data-state="' + escapeAttr(state) + '" data-webui="' + escapeAttr(webui) + '" data-stackid="' + escapeAttr(stackId) + '">';
+            var containerShell = container.Shell || '/bin/sh';
+            html += '<span id="' + uniqueId + '" class="hand" data-name="' + escapeAttr(containerName) + '" data-state="' + escapeAttr(state) + '" data-webui="' + escapeAttr(webui) + '" data-stackid="' + escapeAttr(stackId) + '" data-shell="' + escapeAttr(containerShell) + '">';
             // Use actual image like Docker tab - either container icon or default question.png
             var iconSrc = (container.Icon && (isValidWebUIUrl(container.Icon) || container.Icon.startsWith('data:image/'))) ?
                 container.Icon :
@@ -3662,7 +3663,8 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             }, 120);
         } catch (e) {}
 
-        // Apply readmore to container details
+        // Apply readmore to container details — destroy first to avoid nesting wrappers
+        $container.find('.docker_readmore').readmore('destroy');
         $container.find('.docker_readmore').readmore({
             maxHeight: 32,
             moreLink: "<a href='#' style='text-align:center'><i class='fa fa-chevron-down'></i></a>",
@@ -3868,6 +3870,7 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
         var state = $el.data('state');
         var webui = $el.data('webui');
         var stackId = $el.data('stackid');
+        var shell = $el.data('shell') || '/bin/sh';
         var running = state === 'running';
         var paused = state === 'paused';
 
@@ -3900,7 +3903,7 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                 action: function(e) {
                     e.preventDefault();
                     if (typeof openTerminal === 'function') {
-                        openTerminal('docker', containerName, '/bin/bash');
+                        openTerminal('docker', containerName, shell);
                     } else {
                         swal({
                             title: 'Console',
@@ -3972,7 +3975,7 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             action: function(e) {
                 e.preventDefault();
                 if (typeof openTerminal === 'function') {
-                    openTerminal('docker_logs', containerName);
+                    openTerminal('docker', containerName, '.log');
                 } else {
                     swal({
                         title: 'Logs',
