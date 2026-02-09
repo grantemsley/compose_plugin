@@ -252,7 +252,7 @@ $(function() {
       $wrapper.css({ opacity: 1, pointerEvents: '' });
     }
   }
-  
+
   // Patch UI toggle: confirm action and run patch.sh via server (uses existing ajax handlers)
   var _ignorePatchUIChange = false;
   $('.compose-toggle[name="PATCH_UI"]').on('change', function(e) {
@@ -639,6 +639,7 @@ function toggleAutoScroll() {
     </blockquote>
   </dd>
 </dl>
+
 <dt style="cursor: help;" onclick="toggleHelp(this)">_(Hide Compose-managed containers from Docker UI)_:</dt>
   <dd>
     <input type="checkbox" name="HIDE_COMPOSE_FROM_DOCKER" class="compose-toggle" <?=($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') == 'true' ? 'checked' : ''?>>
