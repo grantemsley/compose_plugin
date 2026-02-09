@@ -11,6 +11,7 @@ require_once("/usr/local/emhttp/plugins/compose.manager/php/util.php");
 $cfg = parse_plugin_cfg($sName);
 $autoCheckUpdates = ($cfg['AUTO_CHECK_UPDATES'] ?? 'false') === 'true';
 $autoCheckDays = floatval($cfg['AUTO_CHECK_UPDATES_DAYS'] ?? '1');
+$showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
 
 // Note: Stack list is now loaded asynchronously via compose_list.php
 // This improves page load time by deferring expensive docker commands
@@ -30,6 +31,7 @@ const shell_label = <?php echo json_encode($docker_label_shell); ?>;
 // Auto-check settings from config
 var autoCheckUpdates = <?php echo json_encode($autoCheckUpdates); ?>;
 var autoCheckDays = <?php echo json_encode($autoCheckDays); ?>;
+var showComposeOnTop = <?php echo json_encode($showComposeOnTop); ?>;
 
 // Timers for async operations (plugin-specific to avoid collision with Unraid's global timers)
 var composeTimers = {};
@@ -3992,6 +3994,41 @@ $(function() {
   updateModalOffset();
   $(window).on('resize', updateModalOffset);
   initEditorModal();
+
+  // Reorder Compose section above Docker Containers if configured
+  // Only applies in non-tabbed mode (when pages are flat siblings under .content)
+  (function reorderComposeAboveDocker() {
+    if (!showComposeOnTop) return;
+    // In tabbed mode the sections live in separate tabs; reordering is not applicable
+    if ($('.tabs').length) return;
+
+    var $content = $('div.content');
+    if (!$content.length) return;
+
+    // Locate the two title divs by their text content
+    var $dockerTitle = null;
+    var $composeTitle = null;
+    $content.children('div.title').each(function() {
+      var txt = $(this).text().trim();
+      if (!$dockerTitle && /Docker\s*Containers/i.test(txt)) $dockerTitle = $(this);
+      if (!$composeTitle && /^Compose$/i.test(txt)) $composeTitle = $(this);
+    });
+
+    if (!$dockerTitle || !$composeTitle) return;
+
+    // Collect all nodes from the Compose title to the end of .content
+    var composeNodes = [];
+    var found = false;
+    $content.contents().each(function() {
+      if (this === $composeTitle[0]) found = true;
+      if (found) composeNodes.push(this);
+    });
+
+    // Move them before the Docker title
+    composeNodes.forEach(function(node) {
+      $content[0].insertBefore(node, $dockerTitle[0]);
+    });
+  })();
 });
 </script>
 

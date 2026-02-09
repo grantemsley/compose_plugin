@@ -4,7 +4,7 @@ Title="Compose"
 Type="xmenu"
 Menu="Utilities"
 ---
-<?php 
+<?php
 include "/usr/local/emhttp/plugins/dynamix.docker.manager/include/DockerClient.php";
 require_once("/usr/local/emhttp/plugins/compose.manager/php/defines.php");
 $cfg = parse_plugin_cfg($sName);
@@ -228,19 +228,38 @@ function toggleAutoCheckInterval() {
 
 $(function() {
   $('#PROJECTS_FOLDER').on("input", null, null, checkProjectFolder);
-  
+
   // Initialize toggle switches
   $('.compose-toggle').switchButton({
     labels_placement: 'right',
     on_label: 'YES',
     off_label: 'NO'
   });
-  
+
+  // Handle header menu toggle -> disable/enable compose-on-top
+  function toggleComposeOnTop() {
+    var headerMenuEnabled = $('#SHOW_COMPOSE_IN_HEADER_MENU').is(':checked');
+    var $onTop = $('#SHOW_COMPOSE_ON_TOP');
+    var $wrapper = $onTop.closest('dl');
+    if (headerMenuEnabled) {
+      // Uncheck first, then grey out
+      if ($onTop.is(':checked')) {
+        $onTop.prop('checked', false).change();
+      }
+      $wrapper.css({ opacity: 0.4, pointerEvents: 'none' });
+    } else {
+      $wrapper.css({ opacity: 1, pointerEvents: '' });
+    }
+  }
+  // Apply on load and on change
+  toggleComposeOnTop();
+  $('#SHOW_COMPOSE_IN_HEADER_MENU').change(toggleComposeOnTop);
+
   // Handle auto-check toggle state change
   $('#AUTO_CHECK_UPDATES').change(function() {
     toggleAutoCheckInterval();
   });
-  
+
   // Convert checkbox values to true/false strings before form submission
   $('form[name="compose_manager_settings"]').on('submit', function() {
     $('.compose-toggle').each(function() {
@@ -261,22 +280,22 @@ $(function() {
       $checkbox.removeAttr('name');
     });
   });
-  
+
   // Tab switching
   $('.compose-tab').on('click', function() {
     var tabId = $(this).data('tab');
-    
+
     // Update tab state
     $('.compose-tab').removeClass('active');
     $(this).addClass('active');
-    
+
     // Show content
     $('.compose-tab-content').removeClass('active');
     $('#compose-tab-' + tabId).addClass('active');
-    
+
     // Save tab preference
     localStorage.setItem('compose-settings-tab', tabId);
-    
+
     // Start/stop log refresh based on tab
     if (tabId === 'log') {
       loadLogs();
@@ -285,7 +304,7 @@ $(function() {
       stopLogRefresh();
     }
   });
-  
+
   // Restore saved tab
   var savedTab = localStorage.getItem('compose-settings-tab') || 'settings';
   $('.compose-tab[data-tab="' + savedTab + '"]').click();
@@ -294,7 +313,7 @@ $(function() {
 function loadLogs() {
   var lines = $('#log-lines').val() || 100;
   var filter = $('#log-filter').val() || '';
-  
+
   $.post(caURL, {
     action: 'getLogs',
     lines: lines,
@@ -322,7 +341,7 @@ function formatLogEntries(logs) {
   if (!logs || logs.length === 0) {
     return '<span style="color: #888;">No log entries found. Enable Debug Logging in Settings to capture compose commands.</span>';
   }
-  
+
   var html = '';
   logs.forEach(function(entry) {
     html += '<div class="log-entry">';
@@ -371,7 +390,7 @@ function clearLogs() {
 function downloadLogs() {
   var lines = $('#log-lines').val() || 100;
   var filter = $('#log-filter').val() || '';
-  
+
   $.post(caURL, {
     action: 'getLogs',
     lines: lines,
@@ -383,7 +402,7 @@ function downloadLogs() {
         var text = result.logs.map(function(entry) {
           return entry.timestamp + ' ' + entry.source + ': ' + entry.message;
         }).join('\n');
-        
+
         var blob = new Blob([text], {type: 'text/plain'});
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
@@ -496,9 +515,20 @@ function toggleAutoScroll() {
 <dl>
   <dt style="cursor: help;" onclick="toggleHelp(this)">_(Show Compose in Header Menu)_:</dt>
   <dd>
-    <input type="checkbox" name="SHOW_COMPOSE_IN_HEADER_MENU" class="compose-toggle" <?=$cfg['SHOW_COMPOSE_IN_HEADER_MENU'] == 'true' ? 'checked' : ''?>>
+    <input type="checkbox" name="SHOW_COMPOSE_IN_HEADER_MENU" id="SHOW_COMPOSE_IN_HEADER_MENU" class="compose-toggle" <?=$cfg['SHOW_COMPOSE_IN_HEADER_MENU'] == 'true' ? 'checked' : ''?>>
     <blockquote class="inline_help">
     Add a Compose tab to the main Unraid header navigation bar for quick access.
+    </blockquote>
+  </dd>
+</dl>
+
+<dl>
+  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Show Compose Stacks Above Docker Containers)_:</dt>
+  <dd>
+    <input type="checkbox" name="SHOW_COMPOSE_ON_TOP" id="SHOW_COMPOSE_ON_TOP" class="compose-toggle" <?=($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') == 'true' ? 'checked' : ''?>>
+    <blockquote class="inline_help">
+    When the Docker page is displayed without tabs, move the Compose Stacks section above the built-in Docker Containers section.<br>
+    This option is only available when "Show Compose in Header Menu" is set to No (non-tabbed mode).
     </blockquote>
   </dd>
 </dl>
@@ -581,7 +611,7 @@ function toggleAutoScroll() {
 <!-- Log Tab -->
 <div id="compose-tab-log" class="compose-tab-content">
 <div class="log-controls">
-  <label>_(Lines)_: 
+  <label>_(Lines)_:
     <select id="log-lines" onchange="loadLogs()">
       <option value="50">50</option>
       <option value="100" selected>100</option>
@@ -590,7 +620,7 @@ function toggleAutoScroll() {
       <option value="1000">1000</option>
     </select>
   </label>
-  <label>_(Refresh)_: 
+  <label>_(Refresh)_:
     <select id="log-refresh" onchange="startLogRefresh()">
       <option value="0">_(Manual)_</option>
       <option value="5">5s</option>
@@ -599,7 +629,7 @@ function toggleAutoScroll() {
       <option value="60">60s</option>
     </select>
   </label>
-  <label>_(Filter)_: 
+  <label>_(Filter)_:
     <input type="text" id="log-filter" placeholder="_(Search logs...)_" onkeyup="if(event.keyCode==13)loadLogs()">
   </label>
   <input type="button" value="_(Refresh)_" onclick="loadLogs()">
