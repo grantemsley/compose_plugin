@@ -478,9 +478,9 @@ switch ($_POST['action']) {
                                     
                                     // Get labels for WebUI
                                     $labels = $inspect['Config']['Labels'] ?? [];
-                                    $container['WebUI'] = isset($labels[$docker_label_webui]) ? $labels[$docker_label_webui] : '';
-                                    $container['Icon'] = isset($labels[$docker_label_icon]) ? $labels[$docker_label_icon] : '';
-                                    $container['Shell'] = isset($labels[$docker_label_shell]) ? $labels[$docker_label_shell] : '/bin/bash';
+                                    $container['WebUI'] = $labels[$docker_label_webui] ?? '';
+                                    $container['Icon'] = $labels[$docker_label_icon] ?? '';
+                                    $container['Shell'] = $labels[$docker_label_shell] ?? '/bin/bash';
                                     
                                     // Get update status from saved status file
                                     $updateStatusFile = "/var/lib/docker/unraid-update-status.json";
