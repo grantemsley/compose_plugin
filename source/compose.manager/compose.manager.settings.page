@@ -310,6 +310,7 @@ $projects_exist = intval(shell_exec("ls -l ".$compose_root." | grep ^d | wc -l")
 </style>
 <script>
 var caURL = "/plugins/compose.manager/php/exec.php";
+var initialHideCompose = <?php echo json_encode(($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') == 'true'); ?>;
 var logRefreshInterval = null;
 var autoScroll = true;
 
@@ -340,7 +341,8 @@ function clearUpdateCache() {
     type: 'warning',
     showCancelButton: true,
     confirmButtonText: 'Clear Cache'
-  }, function() {
+  }, function(confirmed) {
+    if (!confirmed) return;
     $.post(caURL, {action: 'clearUpdateCache'}, function(data) {
       var result = JSON.parse(data);
       if (result.result === 'success') {
@@ -387,21 +389,140 @@ $(function() {
       });
     });
   }
-=======
-  // Helper to initialize toggles as switchButton (only once)
-  function initSwitchToggles($scope) {
-    $scope.find('.compose-toggle').each(function() {
-      var $cb = $(this);
-      // Always try to destroy, regardless of data
-      try { $cb.switchButton('destroy'); } catch(e) {}
-      $cb.switchButton({
-        labels_placement: 'right',
-        on_label: 'YES',
-        off_label: 'NO'
-      });
-    });
+  
+  // Initialize toggle switches
+  $('.compose-toggle').switchButton({
+    labels_placement: 'right',
+    on_label: 'YES',
+    off_label: 'NO'
+  });
+
+  // Handle dashboard tile toggle -> disable/enable hide containers option
+  function toggleHideContainers() {
+    var dashboardTileEnabled = $('#SHOW_DASHBOARD_TILE').is(':checked');
+    var $hide = $('#HIDE_DOCKER_COMPOSE_CONTAINERS');
+    var $wrapper = $hide.closest('dl');
+    if (!dashboardTileEnabled) {
+      if ($hide.is(':checked')) {
+        $hide.prop('checked', false).change();
+      }
+      $wrapper.css({ opacity: 0.4, pointerEvents: 'none' });
+    } else {
+      $wrapper.css({ opacity: 1, pointerEvents: '' });
+    }
   }
->>>>>>> 33d4f6b (fix: restore checklist 'Select All' checkbox updates correctly when stacks are (de)selected (fixes #13))
+
+  // Patch UI toggle: confirm action and run patch.sh via server (uses existing ajax handlers)
+  var _ignorePatchUIChange = false;
+  $('.compose-toggle[name="PATCH_UI"]').on('change', function(e) {
+    if (_ignorePatchUIChange) { _ignorePatchUIChange = false; return; }
+    var $cb = $(this);
+    var checked = $cb.is(':checked');
+    swal({
+      title: checked ? 'Patch Docker Page' : 'Unpatch Docker Page',
+      text: checked ? 'This will patch the Docker page to better display compose-managed containers. Apply now?' : 'This will remove the Docker page patch and restore the original UI. Proceed?',
+      type: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, proceed'
+    }, function(confirmed) {
+      if (!confirmed) {
+        // revert UI to previous state
+        _ignorePatchUIChange = true;
+        $cb.prop('checked', !checked);
+        // reload to ensure switch UI reflects actual state
+        window.location.reload();
+        return;
+      }
+      // Call existing ajax helpers which execute patch.sh on the server and reload
+      if (checked) patchWebui(); else unpatchWebui();
+    });
+  });
+  
+  // Handle header menu toggle -> disable/enable compose-on-top
+  function toggleComposeOnTop() {
+    var headerMenuEnabled = $('#SHOW_COMPOSE_IN_HEADER_MENU').is(':checked');
+    var $onTop = $('#SHOW_COMPOSE_ON_TOP');
+    var $wrapper = $onTop.closest('dl');
+    if (headerMenuEnabled) {
+      // Uncheck first, then grey out
+      if ($onTop.is(':checked')) {
+        $onTop.prop('checked', false).change();
+      }
+      $wrapper.css({ opacity: 0.4, pointerEvents: 'none' });
+    } else {
+      $wrapper.css({ opacity: 1, pointerEvents: '' });
+    }
+  }
+
+  // Apply hide containers on load and on change
+  toggleHideContainers();
+  $('#SHOW_DASHBOARD_TILE').change(toggleHideContainers);
+  
+  // Apply compose on top on load and on change
+  toggleComposeOnTop();
+  $('#SHOW_COMPOSE_IN_HEADER_MENU').change(toggleComposeOnTop);
+
+  // Handle auto-check toggle state change
+  $('#AUTO_CHECK_UPDATES').change(function() {
+    toggleAutoCheckInterval();
+  });
+
+  // Convert checkbox values to true/false strings before form submission
+  $('form[name="compose_manager_settings"]').on('submit', function(e) {
+    var $form = $(this);
+
+    $('.compose-toggle').each(function() {
+      var $checkbox = $(this);
+      var name = $checkbox.attr('name');
+      // Remove any existing hidden field for this setting
+      $('input[type="hidden"][name="' + name + '"]').remove();
+      // Determine the value based on the setting type
+      var value;
+      if (name === 'OUTPUTSTYLE') {
+        value = $checkbox.is(':checked') ? 'ttyd' : 'basic';
+      } else {
+        value = $checkbox.is(':checked') ? 'true' : 'false';
+      }
+      // Add hidden field with the appropriate value
+      $checkbox.before('<input type="hidden" name="' + name + '" value="' + value + '">');
+      // Remove name from checkbox so it doesn't submit
+      $checkbox.removeAttr('name');
+    });
+
+    // If hiding compose containers changed, run patch.sh before saving so change is immediate
+    var hideCompose = $('input[type="hidden"][name="HIDE_COMPOSE_FROM_DOCKER"]').val() === 'true';
+    if (hideCompose !== initialHideCompose) {
+      e.preventDefault();
+      var cmd = hideCompose ? 'apply' : 'remove';
+      var title = hideCompose ? 'Enable Hide Compose-managed Containers?' : 'Disable Hide Compose-managed Containers?';
+      var txt = hideCompose
+        ? 'Enabling will modify Docker UI system files using patches. Originals are backed up and reverse patches are stored under /usr/local/emhttp/plugins/compose.manager/patches/applied so the changes can be reverted. Verbose output will be written to /boot/config/plugins/compose.manager/patch_last_run.log and (if Debug Logging is enabled) to the syslog. Proceed?'
+        : 'Disabling will revert the patches and restore original Docker UI files from backups stored under /usr/local/emhttp/plugins/compose.manager/patches/applied. Verbose output will be written to /boot/config/plugins/compose.manager/patch_last_run.log and (if Debug Logging is enabled) to the syslog. Proceed?';
+      swal({
+        title: title,
+        text: txt,
+        type: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, proceed'
+      }, function(confirmed) {
+        if (!confirmed) { window.location.reload(); return; }
+        $.post(caURL, {action: 'runPatch', cmd: cmd}, function(data) {
+          try { var result = JSON.parse(data); } catch(e) { var result = { result: 'error', output: data }; }
+          if (result.result !== 'success') {
+            swal('Patch Script','Patch operation returned an error. Check Debug Log (syslog) for full verbose output.','error');
+            console.error('runPatch output:', result.output || data);
+          } else {
+            console.log('runPatch succeeded');
+          }
+        }).always(function() {
+          // Proceed to submit the form (will write config)
+          $form.off('submit');
+          $form.submit();
+        });
+      });
+    }
+
+  });
 
   // Tab switching
   $('.compose-tab').on('click', function() {
@@ -512,7 +633,8 @@ function clearLogs() {
     type: 'warning',
     showCancelButton: true,
     confirmButtonText: 'Clear'
-  }, function() {
+  }, function(confirmed) {
+    if (!confirmed) return;
     // Note: We can't actually clear syslog entries, so just refresh
     loadLogs();
   });
@@ -1020,6 +1142,16 @@ function browseRestoreArchive() {
     Hide containers managed by Compose stacks from Unraid's Docker Containers dashboard tile.<br>
     This avoids duplicate entries when both the Compose Stacks tile and Docker Containers tile are visible on the Dashboard.<br>
     This option requires "Show Dashboard Tile" to be enabled.
+    </blockquote>
+  </dd>
+</dl>
+
+<dl>
+  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Hide Compose Containers from Docker UI via Patch)_:</dt>
+  <dd>
+    <input type="checkbox" name="HIDE_COMPOSE_FROM_DOCKER" class="compose-toggle" <?=($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') == 'true' ? 'checked' : ''?>>
+    <blockquote class="inline_help">
+    When enabled, compose-managed containers will be hidden from the main Docker tab and the Docker dashboard tile. This only affects the UI rendering and does not stop containers from running.
     </blockquote>
   </dd>
 </dl>

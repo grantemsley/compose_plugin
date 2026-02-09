@@ -197,12 +197,31 @@ switch ($_POST['action']) {
         file_put_contents($fileName,$autostart);
         echo json_encode( [ 'result' => 'success', 'message' => '' ] );
         break;
-    case 'patchUI':
-        exec("$plugin_root/scripts/patch_ui.sh");
+
+    case 'runPatch':
+        $cmd = isset($_POST['cmd']) ? $_POST['cmd'] : 'apply';
+        if (!in_array($cmd, ['apply','remove'])) { echo json_encode(['result'=>'error','message'=>'Invalid command']); break; }
+        $script = "$plugin_root/scripts/patch.sh";
+        // Quote each argument to preserve spaces and special characters and avoid the fragility of escapeshellcmd()
+        $fullcmd = escapeshellarg($script) . ' ' . escapeshellarg($cmd) . ' ' . escapeshellarg('--verbose') . ' 2>&1';
+        exec($fullcmd, $output, $rc);
+        // Save a copy to plugin log file
+        $logfile = "/boot/config/plugins/compose.manager/patch_last_run.log";
+        $ts = date('c');
+        $entry = "[{$ts}] runPatch {$cmd} exit={$rc}\n" . implode("\n",$output) . "\n\n";
+        @file_put_contents($logfile, $entry, FILE_APPEND);
+        // If debug logging enabled, send to syslog
+        $cfg = parse_plugin_cfg($sName);
+        if ((($cfg['DEBUG_TO_LOG'] ?? 'false') == 'true')) {
+            openlog("compose.manager", LOG_PID, LOG_USER);
+            foreach ($output as $line) {
+                syslog(LOG_DEBUG, "[patch.sh {$cmd}] " . $line);
+            }
+            closelog();
+        }
+        echo json_encode(['result' => $rc === 0 ? 'success' : 'error', 'output' => implode("\n", $output), 'rc' => $rc]);
         break;
-    case 'unPatchUI':
-        exec("$plugin_root/scripts/patch_ui.sh -r");
-        break;
+
     case 'clearUpdateCache':
         // Clear the compose manager update status cache
         $composeUpdateStatusFile = "/boot/config/plugins/compose.manager/update-status.json";

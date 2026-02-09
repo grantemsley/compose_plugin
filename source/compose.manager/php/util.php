@@ -136,4 +136,21 @@ function getStackLastResult($stackPath) {
     return null;
 }
 
+/**
+ * Determine whether Compose-managed containers should be hidden from the Docker tab
+ * Uses parse_plugin_cfg('compose.manager') when available (testable), or falls back to
+ * parsing /boot/config/plugins/compose.manager/compose.manager.cfg
+ *
+ * @return bool
+ */
+function hide_compose_from_docker(): bool {
+    $cfg = [];
+    if (function_exists('parse_plugin_cfg')) {
+        $cfg = parse_plugin_cfg('compose.manager');
+    } else {
+        $cfg = @parse_ini_file('/boot/config/plugins/compose.manager/compose.manager.cfg') ?: [];
+    }
+    return (isset($cfg['HIDE_COMPOSE_FROM_DOCKER']) && $cfg['HIDE_COMPOSE_FROM_DOCKER'] === 'true');
+}
+
 ?>
