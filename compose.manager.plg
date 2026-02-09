@@ -28,6 +28,35 @@
 >
 
 <CHANGES>
+###2026.02.09
+- Features: Implement filtering for compose-managed containers
+  - Added functionality to optionally hide compose-managed containers in DockerClient and DockerContainers.
+  - Introduced configuration option HIDE_COMPOSE_FROM_DOCKER to control visibility of compose-managed containers.
+  - Updated Docker system scripts to respect the new configuration setting.
+  - Enhanced DockerClient to include additional metadata for containers, such as Icon, Url, Shell, and Manager.
+  - Created patch.sh script for robust patch management, allowing for easy application and removal of patches.
+  - Added unit tests for the new filtering logic and settings page to ensure correct behavior.
+- Features: hide compose containers from Docker tile on Dashboard
+  - Add HIDE_DOCKER_COMPOSE_CONTAINERS setting (default: false)
+  - Collect container names from compose stacks in dashboard_stacks.php
+  - Hide matching containers using ajaxComplete + CSS !important class
+  - Grey out option when Show Dashboard Tile is disabled
+- Features: add option to display Compose stacks above Docker Containers
+  - Add SHOW_COMPOSE_ON_TOP config with default 'false'
+  - Add settings toggle with dependency on Header Menu setting
+  - Add DOM reorder logic in compose_manager_main.php that moves
+- Bug Fixes: update patch file to skip disabling compose containers
+- Fix dashboard visual bugs: dynamic flex layout, SHA display, CSS class collision
+  - Replace fixed-width CSS columns with dynamic flexbox layout (name flex:1, cols flex:2)
+  - Remove --compose-name-width and --compose-image-width CSS variables
+  - Fix SHA display stripping sha256: prefix before truncating to 8 hex chars
+  - Rename CSS class from 'info' to 'containers' to avoid Unraid global .info collision
+  - Add min-width:0 and overflow:hidden to flex containers for proper truncation
+  - Set update column to 120px, runtime to 100px with 12px right padding
+  - Remove spacer column, use flex-grow for container image column
+- Update settings page to clarify option for hiding Compose containers from Docker UI
+- Fix formatting and improve readability in settings page
+- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.02.08...v2026.02.09)
 ###2026.02.08
 - Features: enable blank issues and add feature request template for contributions
 - Features: add issues section to issue template configuration
