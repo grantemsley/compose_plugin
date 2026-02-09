@@ -847,9 +847,9 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                     // Single update - show the SHA diff inline
                     var ct = updatesWithSha[0];
                     updateHtml += '<div style="font-family:monospace;font-size:0.8em;margin-top:2px;">';
-                    updateHtml += '<span style="color:#f80;">' + escapeHtml(ct.localSha) + '</span>';
+                    updateHtml += '<span style="color:#f80;" title="' + escapeAttr(ct.localSha) + '">' + escapeHtml(ct.localSha.substring(0, 8)) + '</span>';
                     updateHtml += ' <i class="fa fa-arrow-right" style="margin:0 2px;color:#3c3;font-size:0.9em;"></i> ';
-                    updateHtml += '<span style="color:#3c3;">' + escapeHtml(ct.remoteSha) + '</span>';
+                    updateHtml += '<span style="color:#3c3;" title="' + escapeAttr(ct.remoteSha) + '">' + escapeHtml(ct.remoteSha.substring(0, 8)) + '</span>';
                     updateHtml += '</div>';
                 } else if (updatesWithSha.length > 1) {
                     // Multiple updates - show expand hint
@@ -2204,13 +2204,13 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                     if (hasUpdate && localSha && remoteSha) {
                         // Has update - show current SHA → new SHA
                         html += '<br><span style="font-family:monospace;font-size:0.9em;">';
-                        html += '<span style="color:#f80;">' + escapeHtml(localSha) + '</span>';
+                        html += '<span style="color:#f80;" title="' + escapeAttr(localSha) + '">' + escapeHtml(localSha.substring(0, 8)) + '</span>';
                         html += ' <i class="fa fa-arrow-right" style="margin:0 4px;color:#3c3;"></i> ';
-                        html += '<span style="color:#3c3;">' + escapeHtml(remoteSha) + '</span>';
+                        html += '<span style="color:#3c3;" title="' + escapeAttr(remoteSha) + '">' + escapeHtml(remoteSha.substring(0, 8)) + '</span>';
                         html += '</span>';
                     } else if (localSha) {
                         // No update - just show current SHA (greyed)
-                        html += '<br><span style="font-family:monospace;font-size:0.9em;color:#666;">' + escapeHtml(localSha) + '</span>';
+                        html += '<br><span style="font-family:monospace;font-size:0.9em;color:#666;" title="' + escapeAttr(localSha) + '">' + escapeHtml(localSha.substring(0, 8)) + '</span>';
                     }
                 }
                 html += '</div></div></div>';
@@ -3374,13 +3374,25 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                 if (response.result === 'success') {
                     var containers = response.containers;
 
+                    // Normalize PascalCase keys from server to camelCase used by client
+                    containers.forEach(function(c) {
+                        if (c.UpdateStatus !== undefined && c.updateStatus === undefined) c.updateStatus = c.UpdateStatus;
+                        if (c.LocalSha !== undefined && c.localSha === undefined) c.localSha = c.LocalSha;
+                        if (c.RemoteSha !== undefined && c.remoteSha === undefined) c.remoteSha = c.RemoteSha;
+                        // Derive hasUpdate from updateStatus if not set
+                        if (c.hasUpdate === undefined && c.updateStatus) {
+                            c.hasUpdate = (c.updateStatus === 'update-available');
+                        }
+                    });
+
                     // Merge update status from stackUpdateStatus if available
                     if (stackUpdateStatus[project] && stackUpdateStatus[project].containers) {
                         containers.forEach(function(container) {
+                            var cName = container.Name || container.Service;
                             stackUpdateStatus[project].containers.forEach(function(update) {
-                                if (container.Name === update.container) {
+                                if (cName === update.container) {
                                     container.hasUpdate = update.hasUpdate;
-                                    container.updateStatus = update.status;
+                                    container.updateStatus = update.status || update.updateStatus;
                                     container.localSha = update.localSha || '';
                                     container.remoteSha = update.remoteSha || '';
                                 }
@@ -3441,16 +3453,16 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
         }
 
         // Mini Docker table - matches Docker tab columns
-        var html = '<table class="tablesorter shift" style="margin:0;font-size:0.95em;">';
+        var html = '<table class="tablesorter shift compose-ct-table">';
         html += '<thead><tr>';
-        html += '<th style="width:180px;">Container</th>';
-        html += '<th>Update</th>';
-        html += '<th>Source</th>';
-        html += '<th>Tag</th>';
-        html += '<th>Network</th>';
-        html += '<th>Container IP</th>';
-        html += '<th>Container Port</th>';
-        html += '<th>LAN IP:Port</th>';
+        html += '<th class="ct-col-name">Container</th>';
+        html += '<th class="ct-col-update">Update</th>';
+        html += '<th class="ct-col-source">Source</th>';
+        html += '<th class="ct-col-tag">Tag</th>';
+        html += '<th class="ct-col-net">Network</th>';
+        html += '<th class="ct-col-ip">Container IP</th>';
+        html += '<th class="ct-col-cport">Container Port</th>';
+        html += '<th class="ct-col-lport">LAN IP:Port</th>';
         html += '</tr></thead>';
         html += '<tbody>';
 
@@ -3530,7 +3542,7 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             html += '<tr data-container="' + escapeAttr(containerName) + '" data-state="' + escapeAttr(state) + '" data-stackid="' + escapeAttr(stackId) + '">';
 
             // Container name column - matches Docker tab exactly
-            html += '<td class="ct-name" style="width:180px;padding:8px;">';
+            html += '<td class="ct-name">';
             html += '<span class="outer ' + outerClass + '">';
             html += '<span id="' + uniqueId + '" class="hand" data-name="' + escapeAttr(containerName) + '" data-state="' + escapeAttr(state) + '" data-webui="' + escapeAttr(webui) + '" data-stackid="' + escapeAttr(stackId) + '">';
             // Use actual image like Docker tab - either container icon or default question.png
@@ -3567,9 +3579,9 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                 if (ctLocalSha && ctRemoteSha) {
                     // Always show SHA diff (not just in advanced view)
                     html += '<div style="font-family:monospace;font-size:0.85em;margin-top:2px;">';
-                    html += '<span style="color:#f80;">' + escapeHtml(ctLocalSha) + '</span>';
+                    html += '<span style="color:#f80;" title="' + escapeAttr(ctLocalSha) + '">' + escapeHtml(ctLocalSha.substring(0, 8)) + '</span>';
                     html += ' <i class="fa fa-arrow-right" style="margin:0 4px;color:#3c3;"></i> ';
-                    html += '<span style="color:#3c3;">' + escapeHtml(ctRemoteSha) + '</span>';
+                    html += '<span style="color:#3c3;" title="' + escapeAttr(ctRemoteSha) + '">' + escapeHtml(ctRemoteSha.substring(0, 8)) + '</span>';
                     html += '</div>';
                 }
             } else if (ctUpdateStatus === 'up-to-date') {
@@ -3577,7 +3589,7 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                 html += '<span class="green-text" style="white-space:nowrap;"><i class="fa fa-check fa-fw"></i> up-to-date</span>';
                 if (ctLocalSha) {
                     // Show SHA in advanced view only for up-to-date containers
-                    html += '<div class="advanced" style="font-family:monospace;font-size:0.85em;color:#666;">' + escapeHtml(ctLocalSha) + '</div>';
+                    html += '<div class="advanced" style="font-family:monospace;font-size:0.85em;color:#666;" title="' + escapeAttr(ctLocalSha) + '">' + escapeHtml(ctLocalSha.substring(0, 8)) + '</div>';
                 }
             } else {
                 // Unknown/not checked
@@ -3588,8 +3600,8 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             // Source (image name without tag)
             html += '<td><span class="docker_readmore" style="color:#606060;">' + escapeHtml(imageSource) + '</span></td>';
 
-            // Tag (image tag)
-            html += '<td><span class="docker_readmore" style="color:#f0a000;">' + escapeHtml(imageTag) + '</span></td>';
+            // Tag (image tag) — truncated with ellipsis via CSS if too long
+            html += '<td class="ct-col-tag-cell"><span class="ct-tag" title="' + escapeAttr(imageTag) + '">' + escapeHtml(imageTag) + '</span></td>';
 
             // Network
             html += '<td style="white-space:nowrap;"><span class="docker_readmore">' + networkNames.map(escapeHtml).join('<br>') + '</span></td>';
@@ -3710,6 +3722,10 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                 return;
             }
 
+            // Detect if an update check is currently in progress (spinner visible)
+            var $updateCell = $stackRow.find('td.updatecolumn');
+            var isChecking = $updateCell.find('.fa-refresh.fa-spin').length > 0;
+
             // Update the update-column using existing helper (expects stackInfo)
             var stackInfo = buildStackInfoFromCache(stackId, project);
             // Merge any previously saved update status so we don't lose 'checked' state
@@ -3717,9 +3733,32 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             ['lastChecked', 'updateAvailable', 'checking', 'updateStatus', 'checked'].forEach(function(k) {
                 if (typeof prevStatus[k] !== 'undefined') stackInfo[k] = prevStatus[k];
             });
+
+            // Also merge container-level update data from previous status
+            if (prevStatus.containers && stackInfo.containers) {
+                stackInfo.containers.forEach(function(c) {
+                    var cName = c.name || c.service;
+                    prevStatus.containers.forEach(function(pc) {
+                        var pcName = pc.name || pc.service || pc.container;
+                        if (cName === pcName) {
+                            if (pc.hasUpdate !== undefined && !c.hasUpdate) c.hasUpdate = pc.hasUpdate;
+                            if (pc.updateStatus && !c.updateStatus) c.updateStatus = pc.updateStatus;
+                            if (pc.localSha && !c.localSha) c.localSha = pc.localSha;
+                            if (pc.remoteSha && !c.remoteSha) c.remoteSha = pc.remoteSha;
+                            if (pc.isPinned !== undefined) c.isPinned = pc.isPinned;
+                        }
+                    });
+                });
+                // Recompute hasUpdate from merged containers
+                stackInfo.hasUpdate = stackInfo.containers.some(function(c) { return c.hasUpdate; });
+            }
+
             // Cache the merged update status and apply UI update
             stackUpdateStatus[project] = stackInfo;
-            updateStackUpdateUI(project, stackInfo);
+            // Skip updating the update column if a check is currently in progress
+            if (!isChecking) {
+                updateStackUpdateUI(project, stackInfo);
+            }
 
             // Update the stack row status icon and state text based on container states
             var $stateEl = $stackRow.find('.state');

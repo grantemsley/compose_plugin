@@ -290,3 +290,61 @@
 
 /* Ensure the container icon wrapper can be used as positioning context */
 .ct-name .hand { position: relative; display: inline-block; }
+
+/* ============================================
+   Container Detail Table (expanded stack rows)
+   Uses table-layout:fixed with percentage-based
+   column widths so every expanded stack shares
+   identical proportions.  Column classes make it
+   easy to toggle visibility from settings later.
+   ============================================ */
+.compose-ct-table {
+  table-layout: fixed;
+  width: 100%;
+  margin: 0;
+  font-size: 0.95em;
+}
+.compose-ct-table th,
+.compose-ct-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Column width distribution (totals ~100%) */
+.compose-ct-table .ct-col-name   { width: 18%; }
+.compose-ct-table .ct-col-update { width: 13%; }
+.compose-ct-table .ct-col-source { width: 17%; }
+.compose-ct-table .ct-col-tag    { width: 12%; }
+.compose-ct-table .ct-col-net    { width: 10%; }
+.compose-ct-table .ct-col-ip     { width: 10%; }
+.compose-ct-table .ct-col-cport  { width: 10%; }
+.compose-ct-table .ct-col-lport  { width: 10%; }
+
+/* Container name cell: allow wrapping for long names */
+.compose-ct-table .ct-name {
+  white-space: normal;
+  word-break: break-word;
+  padding: 8px;
+}
+/* Tag cell: truncated with ellipsis, full value on hover (title) */
+.compose-ct-table .ct-col-tag-cell {
+  max-width: 0;          /* forces text-overflow with fixed layout */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compose-ct-table .ct-tag {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  color: #f0a000;
+}
+/* Source column: allow wrapping for long image names */
+.compose-ct-table td:nth-child(3) {
+  white-space: normal;
+  word-break: break-all;
+  color: #606060;
+}
