@@ -266,11 +266,24 @@ function Update-PlgChangelog {
     
     $content = Get-Content $PlgPath -Raw
     
-    # Find the <CHANGES> section and insert new notes at the top
-    $changesPattern = '(<CHANGES>\r?\n)'
-    $replacement = "`$1$($NewNotes -join "`n")`n"
+    # XML-escape special characters to avoid breaking the PLG XML
+    $escape = {
+        param($s)
+        if ($null -eq $s) { return $s }
+        $s = $s -replace '&','&amp;'
+        $s = $s -replace '<','&lt;'
+        $s = $s -replace '>','&gt;'
+        return $s
+    }
+    $escapedNotes = $NewNotes | ForEach-Object { & $escape $_ }
     
-    $newContent = $content -replace $changesPattern, $replacement
+    # Replace the entire contents of the <CHANGES> block with the new, escaped notes
+    $pattern = '(?s)(<CHANGES>\r?\n).*?(\r?\n</CHANGES>)'
+    $newContent = [regex]::Replace($content, $pattern, { param($m) 
+        $head = $m.Groups[1].Value
+        $tail = $m.Groups[2].Value
+        return $head + ($escapedNotes -join "`n") + "`n" + $tail
+    })
     
     return $newContent
 }
