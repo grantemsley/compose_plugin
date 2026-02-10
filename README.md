@@ -58,17 +58,21 @@ Settings can be accessed via **Settings → Compose** in the unRAID web UI. The 
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| **Output Style** | Terminal | Choose between terminal (ttyd) or basic output for compose operations |
-| **Projects Folder** | `/boot/config/plugins/compose.manager/projects` | Location where compose project directories are stored |
-| **Autostart Force Recreate** | No | Force recreate containers during autostart |
-| **Show in Header Menu** | No | Display Compose Manager as a separate page in the header menu |
-| **Show Compose on Top** | No | Show compose stacks above Docker containers on the Docker tab |
-| **Hide Compose from Docker** | No | Hide compose-managed containers from the Docker containers table |
+| **Compose Project Directory** | `/boot/config/plugins/compose.manager/projects` | Location where compose project directories are stored |
+| **Rich Terminal Output** | Yes | Choose between terminal (ttyd) or basic output for compose operations |
+| **Recreate During Autostart** | No | Use `--force-recreate` when autostarting stacks |
+| **Wait for Docker Autostart** | No | Wait for Docker's autostart containers to finish before starting compose stacks |
+| **Docker Wait Timeout** | 120 seconds | Maximum time to wait for Docker autostart containers to stabilize |
+| **Stack Startup Timeout** | 300 seconds | Maximum time to wait for each stack to start during autostart |
+| **Show Compose in Header Menu** | No | Add a Compose tab to the main Unraid header navigation bar |
+| **Show Compose Stacks Above Docker** | No | Move the Compose Stacks section above Docker Containers (non-tabbed mode) |
+| **Hide Compose Containers from Docker** | No | Hide compose-managed containers from the Docker containers table |
 | **Show Dashboard Tile** | Yes | Display a Compose Stacks tile on the Dashboard |
-| **Hide Compose from Docker Tile** | No | Hide compose containers from the Dashboard Docker tile |
+| **Hide Compose Containers from Docker Tile on Dashboard** | No | Hide compose containers from the Dashboard Docker tile |
 | **Auto Check for Updates** | No | Automatically check for container image updates on page load |
-| **Auto Check Interval** | 1 day | How often to recheck for updates (0.04 = hourly, 7 = weekly) |
+| **Auto Check Interval (days)** | 1 | How often to recheck for updates (0.04 = hourly, 7 = weekly) |
 | **Debug Logging** | No | Log detailed compose information to syslog |
+| **Patch Docker Page** | No | Patch the Docker page for better compose display (Unraid 6.11 and earlier only) |
 
 ### Backup / Restore Settings
 
@@ -77,9 +81,9 @@ Settings can be accessed via **Settings → Compose** in the unRAID web UI. The 
 | **Backup Destination** | `/boot/config/plugins/compose.manager/backups` | Path where backup archives are stored |
 | **Backups to Keep** | 5 | Number of backup archives to retain (0 = unlimited) |
 | **Scheduled Backup** | No | Enable automatic scheduled backups via cron |
-| **Schedule Frequency** | Daily | Daily or weekly backup schedule |
-| **Schedule Day** | Monday | Day of week for weekly backups |
-| **Schedule Time** | 03:00 | Time of day for scheduled backups |
+| **Frequency** | Daily | Daily or weekly backup schedule |
+| **Day** | Monday | Day of week for weekly backups |
+| **Time** | 03:00 | Time of day for scheduled backups |
 
 ## Usage
 
