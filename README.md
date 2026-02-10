@@ -1,6 +1,6 @@
 # Compose Manager
 
-A plugin for [unRAID](https://unraid.net/) that installs Docker Compose and adds a management interface to the web UI.
+Compose Manager installs the Docker Compose CLI plugin on your unRAID server and provides a comprehensive web-based interface to create, run, update, back up, and restore Compose stacks directly from the unRAID dashboard. It includes per-stack autostart with configurable options, an integrated terminal for live command output, optional UI integration to hide Compose-managed containers, and tooling for testing and CI.
 
 ## Screenshots
 
@@ -23,22 +23,19 @@ The built-in editor provides multiple tabs for managing your compose stack:
 
 ## Features
 
-- **Docker Compose Integration** - Installs the Docker Compose CLI plugin on your unRAID server
-- **Web UI Management** - Provides a user-friendly interface to manage your compose stacks directly from the unRAID dashboard
-- **Stack Operations** - Start, stop, restart, update, and remove compose stacks with a single click
-- **Autostart Support** - Configure stacks to automatically start when the array starts, with optional force recreate
-- **Container Status** - View real-time status of containers within each stack (running, stopped, paused, restarting)
-- **Environment Files** - Support for custom `.env` file paths per stack
-- **Profiles Support** - Full support for Docker Compose profiles with auto-detection and default profiles
-- **Editor Integration** - Built-in editor for docker-compose.yml files with syntax highlighting
-- **Override Files** - Support for docker-compose.override.yml files
-- **Indirect Stacks** - Reference compose files stored in alternate locations
-- **Web Terminal** - Integrated terminal output via ttyd for compose operations
-- **unRAID Web UI Integration** - Optional patches to integrate compose containers with the native Docker UI
+- **Docker Compose Integration** - Installs the Docker Compose CLI plugin and manages stacks on your unRAID server.
+- **Web UI Management** - Create, edit, and manage Compose stacks directly from the unRAID dashboard.
+- **Stack Operations** - Start, stop, update, and remove stacks with one click (supports profiles and override files).
+- **Autostart & Shutdown** - Configurable autostart with wait/recreate options and improved shutdown handling.
+- **Visibility & Filtering** - Optionally hide or filter Compose-managed containers in the native Docker UI (behavior varies by unRAID version).
+- **Backup & Restore** - Manual and scheduled backups with selective restore from the UI.
+- **Web Terminal** - Integrated terminal for live, colorized compose command output.
+- **Developer & Testing Tools** - Unit tests and CI workflows to help contributors and ensure quality.
+
 
 ## Installation
 
-Install via the Community Applications plugin in unRAID, or manually install by navigating to:
+~~Install via the Community Applications plugin in unRAID~~, or manually install by navigating to:
 
 **Plugins → Install Plugin** and entering the plugin URL:
 ```
@@ -52,38 +49,13 @@ https://raw.githubusercontent.com/mstrhakr/compose_plugin/main/compose.manager.p
 
 ## Configuration
 
-Settings can be accessed via **Settings → Compose** in the unRAID web UI. The settings page has three tabs: **Settings**, **Backup/Restore**, and **Log**.
+Access **Settings → Compose** in the unRAID web UI. Key options:
 
-### General Settings
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Compose Project Directory** | `/boot/config/plugins/compose.manager/projects` | Location where compose project directories are stored |
-| **Rich Terminal Output** | Yes | Choose between terminal (ttyd) or basic output for compose operations |
-| **Recreate During Autostart** | No | Use `--force-recreate` when autostarting stacks |
-| **Wait for Docker Autostart** | No | Wait for Docker's autostart containers to finish before starting compose stacks |
-| **Docker Wait Timeout** | 120 seconds | Maximum time to wait for Docker autostart containers to stabilize |
-| **Stack Startup Timeout** | 300 seconds | Maximum time to wait for each stack to start during autostart |
-| **Show Compose in Header Menu** | No | Add a Compose tab to the main Unraid header navigation bar |
-| **Show Compose Stacks Above Docker** | No | Move the Compose Stacks section above Docker Containers (non-tabbed mode) |
-| **Hide Compose Containers from Docker** | No | Hide compose-managed containers from the Docker containers table |
-| **Show Dashboard Tile** | Yes | Display a Compose Stacks tile on the Dashboard |
-| **Hide Compose Containers from Docker Tile on Dashboard** | No | Hide compose containers from the Dashboard Docker tile |
-| **Auto Check for Updates** | No | Automatically check for container image updates on page load |
-| **Auto Check Interval (days)** | 1 | How often to recheck for updates (0.04 = hourly, 7 = weekly) |
-| **Debug Logging** | No | Log detailed compose information to syslog |
-| **Patch Docker Page** | No | Patch the Docker page for better compose display (Unraid 6.11 and earlier only) |
-
-### Backup / Restore Settings
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Backup Destination** | `/boot/config/plugins/compose.manager/backups` | Path where backup archives are stored |
-| **Backups to Keep** | 5 | Number of backup archives to retain (0 = unlimited) |
-| **Scheduled Backup** | No | Enable automatic scheduled backups via cron |
-| **Frequency** | Daily | Daily or weekly backup schedule |
-| **Day** | Monday | Day of week for weekly backups |
-| **Time** | 03:00 | Time of day for scheduled backups |
+- **Output Style** — Terminal (ttyd) for live, colorized command output or Basic for simpler logs.
+- **Projects Folder** — Default: `/boot/config/plugins/compose.manager/projects`. Changing it does not move existing projects.
+- **Autostart** — Enable per-stack autostart; optional force recreate and wait-for-Docker behavior with configurable timeouts.
+- **Hide Compose Containers** — Patch (Unraid 6.12–7.2) that removes Compose-managed containers from the Docker page and Dashboard tile to avoid duplicate entries.
+- **Debug to Log** — Send debug output to syslog for troubleshooting.
 
 ## Usage
 
@@ -116,6 +88,29 @@ For detailed guides, see the [docs](docs/) folder:
 - [Configuration](docs/configuration.md)
 - [Profiles](docs/profiles.md)
 
+## Development & Testing 🔧
+
+Quick start:
+
+- Install PHP dependencies: `composer install` (required to install PHPUnit and tooling).
+- Run unit tests: `php vendor/bin/phpunit --config phpunit.xml` (or `php vendor/bin/phpunit --testsuite unit`).
+- Run a single test file: `php vendor/bin/phpunit --config phpunit.xml tests/unit/ExampleTest.php`.
+
+Integration tests:
+
+- Add and initialize the `plugin-tests` submodule (if not already present):
+  - If the submodule is configured: `git submodule update --init --recursive`
+  - Or add it manually: `git submodule add https://github.com/mstrhakr/plugin-tests.git tests/plugin-tests && git submodule update --init --recursive`
+- See `tests/plugin-tests/README.md` for running integration suites and environment setup.
+
+Static analysis:
+
+- `composer run analyse` (runs PHPStan configured for this project).
+
+For full developer setup, test running, and contribution guidelines see `docs/development.md`. (Contains examples for coverage, CI notes, and integration testing tips.)
+
+Contributions are welcome — we added issue and PR templates to guide reports and pull requests. Please follow the templates when submitting issues or PRs.
+
 ## Support
 
 - [GitHub Issues](https://github.com/mstrhakr/compose_plugin/issues)
@@ -128,3 +123,4 @@ This project is open source. See the repository for license details.
 ## Credits
 
 Originally created by **dcflachs**. This fork maintained by **mstrhakr**.
+Huge thanks to the entire Unraid community, without you this would be impossible.

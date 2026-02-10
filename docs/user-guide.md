@@ -41,41 +41,6 @@ Each stack supports the following actions:
 | **Edit Stack** | Open the stack editor |
 | **Remove Stack** | Delete the stack configuration |
 
-## Profiles
-
-Docker Compose profiles let you selectively start groups of services.
-
-### Defining Profiles
-
-Add profiles to services in your `docker-compose.yml`:
-
-```yaml
-services:
-  webapp:
-    image: nginx:latest
-    # No profile - always starts
-
-  debugger:
-    image: busybox
-    profiles:
-      - debug
-    # Only starts with 'debug' profile
-```
-
-### Using Profiles
-
-- **Auto-Detection**: Compose Manager detects profiles when you save your compose file
-- **Profile Selection**: When starting a stack with profiles, you can choose which profile to activate
-- **Default Profiles**: Set default profiles in the Settings tab for autostart
-
-### Default Profiles for Autostart
-
-1. Open the stack editor
-2. Go to the **Settings** tab
-3. Enter profile names in "Default Profile(s)" (comma-separated)
-
-Example: `production,monitoring`
-
 ## Autostart
 
 Enable autostart to have stacks start automatically when the Unraid array starts.
@@ -87,6 +52,30 @@ Enable autostart to have stacks start automatically when the Unraid array starts
 ### Force Recreate
 
 Enable "Autostart Force Recreate" in settings to always recreate containers during autostart.
+
+### Recreate After Label Changes
+
+When Unraid-specific labels are modified via the Web UI, Compose Manager can optionally recreate affected containers so updated label metadata is applied without manual recreation steps.
+
+### Stack Recheck
+
+Use the stack "Recheck" action in the UI to re-evaluate a stack's state on the server. Results are persisted server-side to help with diagnostics and automated checks.
+
+### Backup / Restore
+
+Compose Manager provides a Backup & Restore interface under **Settings → Compose → Backup / Restore**:
+- **Create Backup** - Create a compressed archive of selected stacks and configuration
+- **List / Browse Backups** - Inspect available backup archives and their contents
+- **Restore** - Restore selected stacks from an archive (select which stacks to restore)
+- **Schedule** - Configure periodic backups with frequency and retention
+
+### Hiding and Filtering Compose Containers
+
+You can optionally hide compose-managed containers from the native Docker manager and Dashboard. Use the setting to toggle patching of the Docker page and enable server-side filters so only the desired containers/stacks are shown.
+
+### Display Options
+
+Enable the option to display Compose stacks above native Docker containers on the Dashboard for clearer stack-focused views.
 
 ## Environment Files
 

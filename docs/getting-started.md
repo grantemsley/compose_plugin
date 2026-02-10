@@ -7,11 +7,11 @@
 
 ## Installation
 
-### Via Community Applications (Recommended)
+### Via Community Applications (**NOT YET AVAILABLE**)
 
-1. Open the **Apps** tab in Unraid
-2. Search for "Compose Manager"
-3. Click **Install**
+1. ~~Open the **Apps** tab in Unraid~~
+2. ~~Search for "Compose Manager"~~
+3. ~~Click **Install**~~
 
 ### Manual Installation
 
@@ -44,3 +44,4 @@ Compose Manager adds a widget to your Unraid dashboard showing stack status at a
 
 - [User Guide](user-guide.md) - Learn about all the features
 - [Configuration](configuration.md) - Customize your settings
+- [Backup & Restore](configuration.md#backup--restore) - Configure backups and restores via **Settings → Compose → Backup / Restore** (manual and scheduled options)

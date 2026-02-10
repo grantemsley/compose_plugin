@@ -17,6 +17,15 @@ body:
     validations:
       required: true
 
+  - type: input
+    id: unraid_version
+    attributes:
+      label: Unraid Version
+      description: Which Unraid version are you running?
+      placeholder: "e.g., 6.12.13, 7.2.3"
+    validations:
+      required: true
+
   - type: textarea
     id: description
     attributes:
