@@ -245,17 +245,17 @@ foreach ($composeProjects as $project) {
             $years = floor($days / 365);
 
             if ($mins < 120) {
-                $stackUptime = "Uptime: " . $mins . " min" . ($mins !== 1 ? "s" : "");
+                $stackUptime = $mins . " min" . ($mins !== 1 ? "s" : "");
             } elseif ($hours < 48) {
-                $stackUptime = "Uptime: " . $hours . " hour" . ($hours !== 1 ? "s" : "");
+                $stackUptime = $hours . " hour" . ($hours !== 1 ? "s" : "");
             } elseif ($days < 14) {
-                $stackUptime = "Uptime: " . $days . " day" . ($days !== 1 ? "s" : "");
+                $stackUptime = $days . " day" . ($days !== 1 ? "s" : "");
             } elseif ($weeks < 8) {
-                $stackUptime = "Uptime: " . $weeks . " week" . ($weeks !== 1 ? "s" : "");
+                $stackUptime = $weeks . " week" . ($weeks !== 1 ? "s" : "");
             } elseif ($months < 24) {
-                $stackUptime = "Uptime: " . $months . " month" . ($months !== 1 ? "s" : "");
+                $stackUptime = $months . " month" . ($months !== 1 ? "s" : "");
             } else {
-                $stackUptime = "Uptime: " . $years . " year" . ($years !== 1 ? "s" : "");
+                $stackUptime = $years . " year" . ($years !== 1 ? "s" : "");
             }
         }
     }
