@@ -13,10 +13,56 @@ $cfg = parse_plugin_cfg($sName);
 $autoCheckUpdates = ($cfg['AUTO_CHECK_UPDATES'] ?? 'false') === 'true';
 $autoCheckDays = floatval($cfg['AUTO_CHECK_UPDATES_DAYS'] ?? '1');
 $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
+$hideComposeFromDocker = ($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') === 'true';
 
 // Note: Stack list is now loaded asynchronously via compose_list.php
 // This improves page load time by deferring expensive docker commands
 ?>
+
+<?php /* ── Critical inline CSS ──────────────────────────────────────────────
+   Guarantees table-layout, column widths, and advanced/basic visibility
+   are applied synchronously BEFORE any HTML renders — prevents FOUC.
+   Non-critical styles remain in comboButton.css loaded via <link>. */ ?>
+<style>
+/* Table structure — always fixed layout */
+#compose_stacks{width:100%;table-layout:fixed}
+/* Clip overflowing content in fixed-layout cells */
+#compose_stacks th,#compose_stacks td{overflow:hidden;text-overflow:ellipsis}
+/* Basic-view column widths (5 visible columns → 100%)
+   Middle 3 columns equal width; Stack + Autostart bookend. */
+#compose_stacks thead th.col-stack{width:33%}
+#compose_stacks thead th.col-update{width:18%}
+#compose_stacks thead th.col-containers{width:18%}
+#compose_stacks thead th.col-uptime{width:18%}
+#compose_stacks thead th.col-autostart{width:13%}
+/* Advanced-view column widths (8 visible columns → 100%)
+   Description + Path get the most space; compact everything else. */
+#compose_stacks.cm-advanced-view thead th.col-stack{width:14%}
+#compose_stacks.cm-advanced-view thead th.col-update{width:9%}
+#compose_stacks.cm-advanced-view thead th.col-containers{width:5%}
+#compose_stacks.cm-advanced-view thead th.col-uptime{width:8%}
+#compose_stacks.cm-advanced-view thead th.col-description{width:22%}
+#compose_stacks.cm-advanced-view thead th.col-compose{width:7%}
+#compose_stacks.cm-advanced-view thead th.col-path{width:29%}
+#compose_stacks.cm-advanced-view thead th.col-autostart{width:6%}
+/* Center the Containers column */
+#compose_stacks thead th.col-containers,
+#compose_stacks tbody td:nth-child(3){text-align:center}
+/* Autostart column: right-align content to push toggles to edge */
+#compose_stacks thead th.col-autostart,
+#compose_stacks > tbody > tr > td:last-child{text-align:right}
+/* Advanced/basic visibility — CSS-only so no flash of hidden content */
+#compose_stacks .cm-advanced{display:none}
+#compose_stacks.cm-advanced-view .cm-advanced{display:table-cell}
+#compose_stacks.cm-advanced-view div.cm-advanced{display:block}
+/* Detail row */
+#compose_stacks .stack-details-cell{width:auto!important}
+#compose_stacks tbody tr.stack-details-row{background-color:rgba(0,0,0,0.08)!important}
+/* Autostart cell */
+#compose_stacks td.nine{white-space:nowrap;padding-right:15px}
+/* Container sub-table source column: left-align (override theme) */
+.compose-ct-table th:nth-child(3),.compose-ct-table td:nth-child(3){text-align:left!important}
+</style>
 
 <script src="/plugins/compose.manager/javascript/ace/ace.js" type="text/javascript"></script>
 <script src="/plugins/compose.manager/javascript/js-yaml/js-yaml.min.js" type="text/javascript"></script>
@@ -33,6 +79,7 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
     var autoCheckUpdates = <?php echo json_encode($autoCheckUpdates); ?>;
     var autoCheckDays = <?php echo json_encode($autoCheckDays); ?>;
     var showComposeOnTop = <?php echo json_encode($showComposeOnTop); ?>;
+    var hideComposeFromDocker = <?php echo json_encode($hideComposeFromDocker); ?>;
 
     // Timers for async operations (plugin-specific to avoid collision with Unraid's global timers)
     var composeTimers = {};
@@ -155,6 +202,9 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
 
             // Show buttons now that content is loaded
             $('input[type=button]').show();
+
+            // Notify other features (e.g. hide-from-docker) that compose list is ready
+            $(document).trigger('compose-list-loaded');
         }).fail(function(xhr, status, error) {
             try {
                 composeClientDebug('composeLoadlist:failed', {
@@ -199,29 +249,34 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             addComposeStackContext(this.id);
         });
 
-        // Apply readmore to descriptions - scope to compose_stacks
-        $('#compose_stacks .docker_readmore').readmore({
+        // Apply readmore to descriptions - scope to compose_stacks, exclude container detail rows
+        $('#compose_stacks .docker_readmore').not('.stack-details-container .docker_readmore').readmore({
             maxHeight: 32,
             moreLink: "<a href='#' style='text-align:center'><i class='fa fa-chevron-down'></i></a>",
             lessLink: "<a href='#' style='text-align:center'><i class='fa fa-chevron-up'></i></a>"
         });
 
-        // Apply current view mode (advanced/basic) - scope to compose_stacks
+        // Apply current view mode (advanced/basic) via CSS class on table
         var advanced = $.cookie('compose_listview_mode') === 'advanced';
         if (advanced) {
-            $('#compose_stacks .advanced').show();
-            $('#compose_stacks .basic').hide();
+            $('#compose_stacks').addClass('cm-advanced-view');
         } else {
-            $('#compose_stacks .advanced').hide();
-            $('#compose_stacks .basic').show();
+            $('#compose_stacks').removeClass('cm-advanced-view');
         }
 
         // Load saved update status after list is loaded
         loadSavedUpdateStatus();
     }
 
-    $('head').append($('<link rel="stylesheet" type="text/css" />').attr('href', '<? autov("/plugins/compose.manager/styles/comboButton.css"); ?>'));
-    $('head').append($('<link rel="stylesheet" type="text/css" />').attr('href', '<? autov("/plugins/compose.manager/styles/editorModal.css"); ?>'));
+    // Load external stylesheets (non-critical styles — critical ones are inline above)
+    (function() {
+        var base = '<? autov("/plugins/compose.manager/styles/comboButton.css"); ?>';
+        var editor = '<? autov("/plugins/compose.manager/styles/editorModal.css"); ?>';
+        if (!$('link[href="' + base + '"]').length)
+            $('head').append($('<link rel="stylesheet" type="text/css" />').attr('href', base));
+        if (!$('link[href="' + editor + '"]').length)
+            $('head').append($('<link rel="stylesheet" type="text/css" />').attr('href', editor));
+    })();
 
     function basename(path) {
         return path.replace(/\\/g, '/').replace(/.*\//, '');
@@ -847,13 +902,13 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                     // Single update - show the SHA diff inline
                     var ct = updatesWithSha[0];
                     updateHtml += '<div style="font-family:monospace;font-size:0.8em;margin-top:2px;">';
-                    updateHtml += '<span style="color:#f80;">' + escapeHtml(ct.localSha) + '</span>';
+                    updateHtml += '<span style="color:#f80;" title="' + escapeAttr(ct.localSha) + '">' + escapeHtml(ct.localSha.substring(0, 8)) + '</span>';
                     updateHtml += ' <i class="fa fa-arrow-right" style="margin:0 2px;color:#3c3;font-size:0.9em;"></i> ';
-                    updateHtml += '<span style="color:#3c3;">' + escapeHtml(ct.remoteSha) + '</span>';
+                    updateHtml += '<span style="color:#3c3;" title="' + escapeAttr(ct.remoteSha) + '">' + escapeHtml(ct.remoteSha.substring(0, 8)) + '</span>';
                     updateHtml += '</div>';
                 } else if (updatesWithSha.length > 1) {
                     // Multiple updates - show expand hint
-                    updateHtml += '<div class="advanced" style="font-size:0.8em;color:#999;margin-top:2px;">Expand for details</div>';
+                    updateHtml += '<div class="cm-advanced" style="font-size:0.8em;color:#999;margin-top:2px;">Expand for details</div>';
                 }
             }
 
@@ -872,14 +927,14 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                 // Some containers pinned, rest up-to-date
                 var html = '<span class="green-text" style="white-space:nowrap;"><i class="fa fa-check fa-fw"></i> up-to-date</span>';
                 html += '<div style="font-size:0.8em;color:#17a2b8;margin-top:2px;"><i class="fa fa-thumb-tack fa-fw"></i> ' + pinnedCount + ' pinned</div>';
-                html += '<div class="advanced"><a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + escapeAttr(stackName) + '\', \'' + escapeAttr(stackId) + '\');"><span style="white-space:nowrap;"><i class="fa fa-cloud-download fa-fw"></i> force update</span></a></div>';
+                html += '<div class="cm-advanced"><a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + escapeAttr(stackName) + '\', \'' + escapeAttr(stackId) + '\');"><span style="white-space:nowrap;"><i class="fa fa-cloud-download fa-fw"></i> force update</span></a></div>';
                 $updateCell.html(html);
             } else {
                 // No updates, no pinned - green "up-to-date" style (like Docker tab)
                 // Basic view: just shows up-to-date
                 // Advanced view: shows force update link
                 var html = '<span class="green-text" style="white-space:nowrap;"><i class="fa fa-check fa-fw"></i> up-to-date</span>';
-                html += '<div class="advanced"><a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + escapeAttr(stackName) + '\', \'' + escapeAttr(stackId) + '\');"><span style="white-space:nowrap;"><i class="fa fa-cloud-download fa-fw"></i> force update</span></a></div>';
+                html += '<div class="cm-advanced"><a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + escapeAttr(stackName) + '\', \'' + escapeAttr(stackId) + '\');"><span style="white-space:nowrap;"><i class="fa fa-cloud-download fa-fw"></i> force update</span></a></div>';
                 $updateCell.html(html);
             }
         } else {
@@ -887,15 +942,9 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             $updateCell.html('<a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + escapeAttr(stackName) + '\', \'' + escapeAttr(stackId) + '\');"><i class="fa fa-cloud-download fa-fw"></i> pull updates</a>');
         }
 
-        // Apply current view mode to newly inserted advanced/basic elements
-        var advanced = $.cookie('compose_listview_mode') === 'advanced';
-        if (advanced) {
-            $updateCell.find('.advanced').show();
-            $updateCell.find('.basic').hide();
-        } else {
-            $updateCell.find('.advanced').hide();
-            $updateCell.find('.basic').show();
-        }
+        // Apply current view mode — cm-advanced elements are controlled by
+        // the .cm-advanced-view class on #compose_stacks (CSS-only, no need to
+        // show/hide individual elements here since CSS handles visibility).
 
         // Rebuild context menus to reflect update status (only target icon spans with data-stackid, not the row)
         $('[id^="stack-"][data-stackid][data-project="' + stackName + '"]').each(function() {
@@ -1004,18 +1053,54 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
     })
 
     // Apply advanced/basic view based on cookie (used after async load)
-    // Scoped to compose_stacks to avoid affecting Docker tab when tabs are joined
-    function applyListView() {
+    // Scoped to compose_stacks to avoid affecting Docker tab when tabs are joined.
+    // When animate=true (user clicked toggle), run a phased transition.
+    // When false (page load), instant class toggle.
+    // Uses compose-specific 'cm-advanced' / 'cm-advanced-view' classes
+    // so Docker tab's own '.advanced' toggle cannot interfere.
+    function applyListView(animate) {
         var advanced = $.cookie('compose_listview_mode') === 'advanced';
-        if (advanced) {
-            $('#compose_stacks .advanced').show();
-            $('#compose_stacks .basic').hide();
+        var $table = $('#compose_stacks');
+
+        if (animate) {
+            var $changing = $table.find('.cm-advanced');
+
+            if (advanced) {
+                // Showing advanced columns: make visible at opacity 0, then fade in
+                var startHeight = $table.outerHeight();
+                $changing.css('opacity', 0);
+                $table.addClass('cm-advanced-view');
+                var endHeight = $table.outerHeight();
+
+                $table.css({ height: startHeight, overflow: 'hidden' })
+                      .animate({ height: endHeight }, 400);
+                $changing.animate({ opacity: 1 }, 400).promise().done(function() {
+                    $table.css({ height: '', overflow: '' });
+                    $changing.css('opacity', '');
+                });
+            } else {
+                // Hiding advanced columns: fade out, then remove class
+                var startHeight = $table.outerHeight();
+                $changing.animate({ opacity: 0 }, 300).promise().done(function() {
+                    $table.removeClass('cm-advanced-view');
+                    var endHeight = $table.outerHeight();
+
+                    $table.css({ height: startHeight, overflow: 'hidden' })
+                          .animate({ height: endHeight }, 400, function() {
+                              $table.css({ height: '', overflow: '' });
+                              $changing.css('opacity', '');
+                          });
+                });
+            }
         } else {
-            $('#compose_stacks .advanced').hide();
-            $('#compose_stacks .basic').show();
+            if (advanced) {
+                $table.addClass('cm-advanced-view');
+            } else {
+                $table.removeClass('cm-advanced-view');
+            }
         }
-        // Apply readmore to descriptions
-        $('#compose_stacks .docker_readmore').readmore({
+        // Apply readmore to descriptions — exclude container detail rows to avoid double-application
+        $('#compose_stacks .docker_readmore').not('.stack-details-container .docker_readmore').readmore({
             maxHeight: 32,
             moreLink: "<a href='#' style='text-align:center'><i class='fa fa-chevron-down'></i></a>",
             lessLink: "<a href='#' style='text-align:center'><i class='fa fa-chevron-up'></i></a>"
@@ -1066,10 +1151,15 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
         if ($(".tabs").length) {
             $(".tabs").append(toggleHtml);
         } else {
-            // Standalone page (xmenu under Tasks) - add toggle before the content area
+            // Standalone page (xmenu under Tasks) - add toggle before the container area
             // Style it to float right above the table for consistent positioning
-            var standaloneToggle = $('<div class="compose-standalone-toggle" style="text-align:right;margin-bottom:10px;"></div>').html(toggleHtml);
-            $('#compose_stacks').before(standaloneToggle);
+            var standaloneToggle = $('<div class="ToggleViewMode"></div>').html(toggleHtml);
+            var $tableWrapper = $('#compose_stacks').closest('.TableContainer');
+            if ($tableWrapper.length) {
+                $tableWrapper.before(standaloneToggle);
+            } else {
+                $('#compose_stacks').before(standaloneToggle);
+            }
         }
         // Initialize the Advanced/Basic view toggle.
         // labels_placement:'left' puts both labels to the left of the slider.
@@ -1089,7 +1179,7 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             $.cookie('compose_listview_mode', $('.compose-advancedview').is(':checked') ? 'advanced' : 'basic', {
                 expires: 3650
             });
-            applyListView();
+            applyListView(true);
         });
 
         // Set up MutationObserver to detect when ebox (progress dialog) closes
@@ -2204,13 +2294,13 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                     if (hasUpdate && localSha && remoteSha) {
                         // Has update - show current SHA → new SHA
                         html += '<br><span style="font-family:monospace;font-size:0.9em;">';
-                        html += '<span style="color:#f80;">' + escapeHtml(localSha) + '</span>';
+                        html += '<span style="color:#f80;" title="' + escapeAttr(localSha) + '">' + escapeHtml(localSha.substring(0, 8)) + '</span>';
                         html += ' <i class="fa fa-arrow-right" style="margin:0 4px;color:#3c3;"></i> ';
-                        html += '<span style="color:#3c3;">' + escapeHtml(remoteSha) + '</span>';
+                        html += '<span style="color:#3c3;" title="' + escapeAttr(remoteSha) + '">' + escapeHtml(remoteSha.substring(0, 8)) + '</span>';
                         html += '</span>';
                     } else if (localSha) {
                         // No update - just show current SHA (greyed)
-                        html += '<br><span style="font-family:monospace;font-size:0.9em;color:#666;">' + escapeHtml(localSha) + '</span>';
+                        html += '<br><span style="font-family:monospace;font-size:0.9em;color:#666;" title="' + escapeAttr(localSha) + '">' + escapeHtml(localSha.substring(0, 8)) + '</span>';
                     }
                 }
                 html += '</div></div></div>';
@@ -3374,13 +3464,25 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                 if (response.result === 'success') {
                     var containers = response.containers;
 
+                    // Normalize PascalCase keys from server to camelCase used by client
+                    containers.forEach(function(c) {
+                        if (c.UpdateStatus !== undefined && c.updateStatus === undefined) c.updateStatus = c.UpdateStatus;
+                        if (c.LocalSha !== undefined && c.localSha === undefined) c.localSha = c.LocalSha;
+                        if (c.RemoteSha !== undefined && c.remoteSha === undefined) c.remoteSha = c.RemoteSha;
+                        // Derive hasUpdate from updateStatus if not set
+                        if (c.hasUpdate === undefined && c.updateStatus) {
+                            c.hasUpdate = (c.updateStatus === 'update-available');
+                        }
+                    });
+
                     // Merge update status from stackUpdateStatus if available
                     if (stackUpdateStatus[project] && stackUpdateStatus[project].containers) {
                         containers.forEach(function(container) {
+                            var cName = container.Name || container.Service;
                             stackUpdateStatus[project].containers.forEach(function(update) {
-                                if (container.Name === update.container) {
+                                if (cName === update.container) {
                                     container.hasUpdate = update.hasUpdate;
-                                    container.updateStatus = update.status;
+                                    container.updateStatus = update.status || update.updateStatus;
                                     container.localSha = update.localSha || '';
                                     container.remoteSha = update.remoteSha || '';
                                 }
@@ -3441,16 +3543,16 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
         }
 
         // Mini Docker table - matches Docker tab columns
-        var html = '<table class="tablesorter shift" style="margin:0;font-size:0.95em;">';
+        var html = '<table class="tablesorter shift compose-ct-table">';
         html += '<thead><tr>';
-        html += '<th style="width:180px;">Container</th>';
-        html += '<th>Update</th>';
-        html += '<th>Source</th>';
-        html += '<th>Tag</th>';
-        html += '<th>Network</th>';
-        html += '<th>Container IP</th>';
-        html += '<th>Container Port</th>';
-        html += '<th>LAN IP:Port</th>';
+        html += '<th class="ct-col-name">Container</th>';
+        html += '<th class="ct-col-update">Update</th>';
+        html += '<th class="ct-col-source">Source</th>';
+        html += '<th class="ct-col-tag">Tag</th>';
+        html += '<th class="ct-col-net">Network</th>';
+        html += '<th class="ct-col-ip">Container IP</th>';
+        html += '<th class="ct-col-cport">Container Port</th>';
+        html += '<th class="ct-col-lport">LAN IP:Port</th>';
         html += '</tr></thead>';
         html += '<tbody>';
 
@@ -3530,9 +3632,10 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             html += '<tr data-container="' + escapeAttr(containerName) + '" data-state="' + escapeAttr(state) + '" data-stackid="' + escapeAttr(stackId) + '">';
 
             // Container name column - matches Docker tab exactly
-            html += '<td class="ct-name" style="width:180px;padding:8px;">';
+            html += '<td class="ct-name">';
             html += '<span class="outer ' + outerClass + '">';
-            html += '<span id="' + uniqueId + '" class="hand" data-name="' + escapeAttr(containerName) + '" data-state="' + escapeAttr(state) + '" data-webui="' + escapeAttr(webui) + '" data-stackid="' + escapeAttr(stackId) + '">';
+            var containerShell = container.Shell || '/bin/sh';
+            html += '<span id="' + uniqueId + '" class="hand" data-name="' + escapeAttr(containerName) + '" data-state="' + escapeAttr(state) + '" data-webui="' + escapeAttr(webui) + '" data-stackid="' + escapeAttr(stackId) + '" data-shell="' + escapeAttr(containerShell) + '">';
             // Use actual image like Docker tab - either container icon or default question.png
             var iconSrc = (container.Icon && (isValidWebUIUrl(container.Icon) || container.Icon.startsWith('data:image/'))) ?
                 container.Icon :
@@ -3567,17 +3670,17 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                 if (ctLocalSha && ctRemoteSha) {
                     // Always show SHA diff (not just in advanced view)
                     html += '<div style="font-family:monospace;font-size:0.85em;margin-top:2px;">';
-                    html += '<span style="color:#f80;">' + escapeHtml(ctLocalSha) + '</span>';
+                    html += '<span style="color:#f80;" title="' + escapeAttr(ctLocalSha) + '">' + escapeHtml(ctLocalSha.substring(0, 8)) + '</span>';
                     html += ' <i class="fa fa-arrow-right" style="margin:0 4px;color:#3c3;"></i> ';
-                    html += '<span style="color:#3c3;">' + escapeHtml(ctRemoteSha) + '</span>';
+                    html += '<span style="color:#3c3;" title="' + escapeAttr(ctRemoteSha) + '">' + escapeHtml(ctRemoteSha.substring(0, 8)) + '</span>';
                     html += '</div>';
                 }
             } else if (ctUpdateStatus === 'up-to-date') {
                 // No update - green "up-to-date" style
                 html += '<span class="green-text" style="white-space:nowrap;"><i class="fa fa-check fa-fw"></i> up-to-date</span>';
                 if (ctLocalSha) {
-                    // Show SHA in advanced view only for up-to-date containers
-                    html += '<div class="advanced" style="font-family:monospace;font-size:0.85em;color:#666;">' + escapeHtml(ctLocalSha) + '</div>';
+                    // Show SHA in advanced view only for up-to-date containers (15 chars)
+                    html += '<div class="cm-advanced" style="font-family:monospace;font-size:0.85em;color:#666;" title="' + escapeAttr(ctLocalSha) + '">' + escapeHtml(ctLocalSha.substring(0, 15)) + '</div>';
                 }
             } else {
                 // Unknown/not checked
@@ -3588,8 +3691,8 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             // Source (image name without tag)
             html += '<td><span class="docker_readmore" style="color:#606060;">' + escapeHtml(imageSource) + '</span></td>';
 
-            // Tag (image tag)
-            html += '<td><span class="docker_readmore" style="color:#f0a000;">' + escapeHtml(imageTag) + '</span></td>';
+            // Tag (image tag) — truncated with ellipsis via CSS if too long
+            html += '<td class="ct-col-tag-cell"><span class="ct-tag" title="' + escapeAttr(imageTag) + '">' + escapeHtml(imageTag) + '</span></td>';
 
             // Network
             html += '<td style="white-space:nowrap;"><span class="docker_readmore">' + networkNames.map(escapeHtml).join('<br>') + '</span></td>';
@@ -3650,7 +3753,8 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             }, 120);
         } catch (e) {}
 
-        // Apply readmore to container details
+        // Apply readmore to container details — destroy first to avoid nesting wrappers
+        $container.find('.docker_readmore').readmore('destroy');
         $container.find('.docker_readmore').readmore({
             maxHeight: 32,
             moreLink: "<a href='#' style='text-align:center'><i class='fa fa-chevron-down'></i></a>",
@@ -3710,6 +3814,10 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                 return;
             }
 
+            // Detect if an update check is currently in progress (spinner visible)
+            var $updateCell = $stackRow.find('td.compose-updatecolumn');
+            var isChecking = $updateCell.find('.fa-refresh.fa-spin').length > 0;
+
             // Update the update-column using existing helper (expects stackInfo)
             var stackInfo = buildStackInfoFromCache(stackId, project);
             // Merge any previously saved update status so we don't lose 'checked' state
@@ -3717,9 +3825,32 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             ['lastChecked', 'updateAvailable', 'checking', 'updateStatus', 'checked'].forEach(function(k) {
                 if (typeof prevStatus[k] !== 'undefined') stackInfo[k] = prevStatus[k];
             });
+
+            // Also merge container-level update data from previous status
+            if (prevStatus.containers && stackInfo.containers) {
+                stackInfo.containers.forEach(function(c) {
+                    var cName = c.name || c.service;
+                    prevStatus.containers.forEach(function(pc) {
+                        var pcName = pc.name || pc.service || pc.container;
+                        if (cName === pcName) {
+                            if (pc.hasUpdate !== undefined && !c.hasUpdate) c.hasUpdate = pc.hasUpdate;
+                            if (pc.updateStatus && !c.updateStatus) c.updateStatus = pc.updateStatus;
+                            if (pc.localSha && !c.localSha) c.localSha = pc.localSha;
+                            if (pc.remoteSha && !c.remoteSha) c.remoteSha = pc.remoteSha;
+                            if (pc.isPinned !== undefined) c.isPinned = pc.isPinned;
+                        }
+                    });
+                });
+                // Recompute hasUpdate from merged containers
+                stackInfo.hasUpdate = stackInfo.containers.some(function(c) { return c.hasUpdate; });
+            }
+
             // Cache the merged update status and apply UI update
             stackUpdateStatus[project] = stackInfo;
-            updateStackUpdateUI(project, stackInfo);
+            // Skip updating the update column if a check is currently in progress
+            if (!isChecking) {
+                updateStackUpdateUI(project, stackInfo);
+            }
 
             // Update the stack row status icon and state text based on container states
             var $stateEl = $stackRow.find('.state');
@@ -3829,6 +3960,7 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
         var state = $el.data('state');
         var webui = $el.data('webui');
         var stackId = $el.data('stackid');
+        var shell = $el.data('shell') || '/bin/sh';
         var running = state === 'running';
         var paused = state === 'paused';
 
@@ -3853,22 +3985,24 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             });
         }
 
-        // Console (if running) - uses Unraid's openTerminal
+        // Console (if running) — ttyd + Shadowbox (same proven mechanism used for stack operations)
         if (running) {
             opts.push({
                 text: 'Console',
                 icon: 'fa-terminal',
                 action: function(e) {
                     e.preventDefault();
-                    if (typeof openTerminal === 'function') {
-                        openTerminal('docker', containerName, '/bin/bash');
-                    } else {
-                        swal({
-                            title: 'Console',
-                            text: 'Terminal not available',
-                            type: 'info'
-                        });
-                    }
+                    $.post(compURL, {action: 'containerConsole', container: containerName, shell: shell}, function(data) {
+                        if (data) {
+                            var height = Math.min(screen.availHeight, 800);
+                            var width  = Math.min(screen.availWidth, 1200);
+                            if (typeof openBox === 'function') {
+                                openBox(data, 'Console: ' + containerName, height, width, true);
+                            } else {
+                                Shadowbox.open({content: data, player: 'iframe', title: 'Console: ' + containerName, height: height, width: width});
+                            }
+                        }
+                    });
                 }
             });
             opts.push({
@@ -3933,7 +4067,7 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             action: function(e) {
                 e.preventDefault();
                 if (typeof openTerminal === 'function') {
-                    openTerminal('docker_logs', containerName);
+                    openTerminal('docker', containerName, '.log');
                 } else {
                     swal({
                         title: 'Logs',
@@ -4363,17 +4497,18 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
     </div>
 
     <span class='tipsterallowed' hidden></span>
-    <table id="compose_stacks" class="tablesorter shift">
+    <div class="TableContainer">
+    <table id="compose_stacks" class="tablesorter shift" style="table-layout:fixed;width:100%">
         <thead>
             <tr>
-                <th>Stack</th>
-                <th>Update</th>
-                <th>Containers</th>
-                <th>Uptime</th>
-                <th class="advanced">Description</th>
-                <th class="advanced">Compose</th>
-                <th class="advanced">Path</th>
-                <th class="nine">Autostart</th>
+                <th class="col-stack">Stack</th>
+                <th class="col-update">Update</th>
+                <th class="col-containers">Containers</th>
+                <th class="col-uptime">Uptime</th>
+                <th class="cm-advanced col-description">Description</th>
+                <th class="cm-advanced col-compose">Compose</th>
+                <th class="cm-advanced col-path">Path</th>
+                <th class="nine col-autostart">Autostart</th>
             </tr>
         </thead>
         <tbody id="compose_list">
@@ -4382,6 +4517,7 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
             </tr>
         </tbody>
     </table>
+    </div>
     <span class='tipsterallowed' hidden>
         <input type='button' value='Add New Stack' onclick='addStack();'>
         <input type='button' value='Start All' onclick='startAllStacks();' id='startAllBtn'>
@@ -4606,12 +4742,18 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
     <script>
         // Initialize editor modal after DOM is fully loaded
         $(function() {
-            updateModalOffset();
-            $(window).on('resize', updateModalOffset);
-            initEditorModal();
+            try {
+                updateModalOffset();
+                $(window).on('resize', updateModalOffset);
+                initEditorModal();
+            } catch (e) {
+                console.warn('Compose Manager: editor init error (non-fatal):', e);
+            }
+        });
 
-            // Reorder Compose section above Docker Containers if configured
-            // Only applies in non-tabbed mode (when pages are flat siblings under .content)
+        // Reorder Compose section above Docker Containers if configured
+        // Runs in its own $(function) to avoid being blocked by editor init errors
+        $(function() {
             (function reorderComposeAboveDocker() {
                 if (!showComposeOnTop) return;
                 // In tabbed mode the sections live in separate tabs; reordering is not applicable
@@ -4621,15 +4763,19 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                 if (!$content.length) return;
 
                 // Locate the two title divs by their text content
+                // Use find() with a filter instead of children() to handle any nesting edge-cases
                 var $dockerTitle = null;
                 var $composeTitle = null;
                 $content.children('div.title').each(function() {
                     var txt = $(this).text().trim();
                     if (!$dockerTitle && /Docker\s*Containers/i.test(txt)) $dockerTitle = $(this);
-                    if (!$composeTitle && /^Compose$/i.test(txt)) $composeTitle = $(this);
+                    if (!$composeTitle && /Compose/i.test(txt) && !/Docker/i.test(txt)) $composeTitle = $(this);
                 });
 
-                if (!$dockerTitle || !$composeTitle) return;
+                if (!$dockerTitle || !$composeTitle) {
+                    console.warn('Compose Manager: reorder skipped — dockerTitle:', !!$dockerTitle, 'composeTitle:', !!$composeTitle);
+                    return;
+                }
 
                 // Collect all nodes from the Compose title to the end of .content
                 var composeNodes = [];
@@ -4643,6 +4789,93 @@ $showComposeOnTop = ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') === 'true';
                 composeNodes.forEach(function(node) {
                     $content[0].insertBefore(node, $dockerTitle[0]);
                 });
+            })();
+        });
+
+        // Hide compose-managed containers from Docker Containers table if configured
+        // Runs in its own $(function) to avoid being blocked by other init errors
+        $(function() {
+            (function hideComposeContainersFromDocker() {
+                if (!hideComposeFromDocker) return;
+                // In tabbed mode this doesn't make sense
+                if ($('.tabs').length) return;
+
+                function getComposeContainerNames() {
+                    var names = {};
+                    // Primary source: data-containers attribute on stack rows
+                    // (populated by PHP at list-load time — always available)
+                    $('#compose_stacks .compose-sortable[data-containers]').each(function() {
+                        try {
+                            var list = JSON.parse($(this).attr('data-containers') || '[]');
+                            for (var i = 0; i < list.length; i++) {
+                                if (list[i]) names[list[i].toLowerCase()] = true;
+                            }
+                        } catch (e) {}
+                    });
+                    // Fallback: stack detail rows (if any stacks have been expanded)
+                    $('#compose_stacks .stack-details-row').each(function() {
+                        $(this).find('tr[data-container]').each(function() {
+                            var name = $(this).attr('data-container');
+                            if (name) names[name.toLowerCase()] = true;
+                        });
+                    });
+                    // Fallback: stackUpdateStatus (populated after update checks)
+                    if (typeof stackUpdateStatus !== 'undefined') {
+                        for (var stackName in stackUpdateStatus) {
+                            var info = stackUpdateStatus[stackName];
+                            if (info.containers) {
+                                for (var i = 0; i < info.containers.length; i++) {
+                                    var n = info.containers[i].name;
+                                    if (n) names[n.toLowerCase()] = true;
+                                }
+                            }
+                        }
+                    }
+                    return names;
+                }
+
+                function doHide() {
+                    var $dockerTable = $('#docker_list');
+                    if (!$dockerTable.length) return;
+
+                    var composeNames = getComposeContainerNames();
+                    if (Object.keys(composeNames).length === 0) return;
+
+                    $dockerTable.find('tr.sortable').each(function() {
+                        var $row = $(this);
+                        // Use a broad selector — just find the appname span anywhere in the first cell
+                        var rowName = $row.find('td:first span.appname').first().text().trim();
+                        if (!rowName) rowName = $row.find('td:first').text().trim();
+
+                        if (composeNames[rowName.toLowerCase()]) {
+                            $row.hide();
+                            // Also hide associated child/readmore rows
+                            $row.nextUntil('tr.sortable').hide();
+                        }
+                    });
+                }
+
+                // Re-run whenever compose list reloads (event fired by composeLoadlist)
+                $(document).on('compose-list-loaded', doHide);
+
+                // Watch for Docker table changes (rows load asynchronously via AJAX)
+                // Use polling until #docker_list exists, then attach MutationObserver
+                function attachDockerObserver() {
+                    var dockerTable = document.getElementById('docker_list');
+                    if (dockerTable) {
+                        var obs = new MutationObserver(function() { setTimeout(doHide, 300); });
+                        obs.observe(dockerTable, { childList: true, subtree: true });
+                        // Initial run now that docker table exists
+                        setTimeout(doHide, 500);
+                    } else {
+                        // docker_list not in DOM yet — retry
+                        setTimeout(attachDockerObserver, 500);
+                    }
+                }
+                attachDockerObserver();
+
+                // Also run after a generous delay as final fallback
+                setTimeout(doHide, 4000);
             })();
         });
     </script>

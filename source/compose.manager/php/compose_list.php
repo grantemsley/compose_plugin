@@ -118,6 +118,14 @@ foreach ($composeProjects as $project) {
     $actualContainerCount = count($projectContainers);
     $containerCount = $definedServices > 0 ? $definedServices : $actualContainerCount;
 
+    // Collect container names for the hide-from-docker feature (data attribute)
+    $containerNamesList = [];
+    foreach ($projectContainers as $ct) {
+        $n = $ct['Names'] ?? '';
+        if ($n) $containerNamesList[] = $n;
+    }
+    $containerNamesAttr = htmlspecialchars(json_encode($containerNamesList), ENT_QUOTES, 'UTF-8');
+
     // Determine states
     $isrunning = $runningCount > 0;
     $isexited = $stoppedCount > 0;
@@ -261,12 +269,12 @@ foreach ($composeProjects as $project) {
     $webuiUrlHtml = htmlspecialchars($webuiUrl, ENT_QUOTES, 'UTF-8');
 
     // Main row - Docker tab structure with expand arrow on left
-    $o .= "<tr class='compose-sortable' id='stack-row-$id' data-project='$projectHtml' data-projectname='$projectNameHtml' data-path='$pathHtml' data-isup='$isup' data-profiles='$profilesJson' data-webui='$webuiUrlHtml'>";
+    $o .= "<tr class='compose-sortable' id='stack-row-$id' data-project='$projectHtml' data-projectname='$projectNameHtml' data-path='$pathHtml' data-isup='$isup' data-profiles='$profilesJson' data-webui='$webuiUrlHtml' data-containers='$containerNamesAttr'>";
 
     // Name column: expand arrow, then icon with context menu, then name
-    $o .= "<td class='ct-name' style='width:220px;padding:8px'>";
+    $o .= "<td class='ct-name' style='padding:8px'>";
     // Expand arrow on the left (separate from the outer/inner structure)
-    $o .= "<span style='display:inline-block;width:20px;text-align:center;vertical-align:middle;'>";
+    $o .= "<span style='display:inline-block;width:20px;text-align:center;vertical-align:middle;margin-right:6px;'>";
     $o .= "<i class='fa fa-chevron-right expand-icon' id='expand-icon-$id' onclick='toggleStackDetails(\"$id\");event.stopPropagation();' style='cursor:pointer;'></i>";
     $o .= "</span>";
     // Icon and name using Docker's outer/inner structure
@@ -280,7 +288,7 @@ foreach ($composeProjects as $project) {
     // Add data-status attribute to the icon to aid debugging of initial render state
     $o .= "<i class='fa fa-$shape $status $color compose-status-icon' data-status='$status'></i><span class='state'>$statusLabel</span>";
     // Advanced: show project folder
-    $o .= "<div class='advanced' style='margin-top:4px;font-size:0.85em;color:#888;'>";
+    $o .= "<div class='cm-advanced' style='margin-top:4px;font-size:0.85em;color:#888;'>";
     $o .= "Project: $projectHtml";
     $o .= "</div>";
     $o .= "</span></span>";
@@ -306,7 +314,7 @@ foreach ($composeProjects as $project) {
     $o .= "<td><span class='$uptimeClass'>$uptimeDisplay</span></td>";
 
     // Description column (advanced only)
-    $o .= "<td class='advanced' style='word-break:break-all;'><span class='docker_readmore'>$descriptionHtml</span></td>";
+    $o .= "<td class='cm-advanced' style='word-break:break-all;'><span class='docker_readmore'>$descriptionHtml</span></td>";
 
     // Version/Image info column (advanced only) - shows compose file info
     $composeVersion = '';
@@ -315,10 +323,10 @@ foreach ($composeProjects as $project) {
             $composeVersion = 'Compose v' . $vMatch[1];
         }
     }
-    $o .= "<td class='advanced' style='color:#606060;font-size:12px;'>$composeVersion</td>";
+    $o .= "<td class='cm-advanced' style='color:#606060;font-size:12px;'>$composeVersion</td>";
 
     // Path column (advanced only)
-    $o .= "<td class='advanced' style='color:#606060;font-size:12px;'>$pathHtml</td>";
+    $o .= "<td class='cm-advanced' style='color:#606060;font-size:12px;'>$pathHtml</td>";
 
     // Auto Start toggle
     $o .= "<td class='nine'>";

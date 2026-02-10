@@ -312,7 +312,6 @@ $projects_exist = intval(shell_exec("ls -l ".$compose_root." | grep ^d | wc -l")
 <script>
 var caURL = "/plugins/compose.manager/php/exec.php";
 var skipPatchUI = <?php echo json_encode($option_patch_ui); ?>; // true when Unraid >= 6.12
-var initialHideCompose = <?php echo json_encode(($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') == 'true'); ?>;
 var logRefreshInterval = null;
 var autoScroll = true;
 
@@ -441,19 +440,57 @@ $(function() {
     $('.compose-toggle[name="PATCH_UI"]').prop('disabled', true);
   }
   
-  // Handle header menu toggle -> disable/enable compose-on-top
+  // Handle header menu toggle -> disable/enable compose-on-top and hide-from-docker
+  // Saves and restores the original checked state of dependent settings so toggling
+  // the header menu on then off preserves the user's previous selections.
   function toggleComposeOnTop() {
     var headerMenuEnabled = $('#SHOW_COMPOSE_IN_HEADER_MENU').is(':checked');
     var $onTop = $('#SHOW_COMPOSE_ON_TOP');
     var $wrapper = $onTop.closest('dl');
     if (headerMenuEnabled) {
-      // Uncheck first, then grey out
+      // Save current state before disabling
+      if (typeof $onTop.data('saved-state') === 'undefined') {
+        $onTop.data('saved-state', $onTop.is(':checked'));
+      }
       if ($onTop.is(':checked')) {
         $onTop.prop('checked', false).change();
       }
       $wrapper.css({ opacity: 0.4, pointerEvents: 'none' });
     } else {
       $wrapper.css({ opacity: 1, pointerEvents: '' });
+      // Restore previously saved state
+      var saved = $onTop.data('saved-state');
+      if (typeof saved !== 'undefined') {
+        $onTop.prop('checked', saved).change();
+        $onTop.removeData('saved-state');
+      }
+    }
+    // Also toggle hide-from-docker (only available in non-tabbed mode)
+    toggleHideFromDocker();
+  }
+
+  // Handle header menu toggle -> disable/enable hide compose from docker tab
+  function toggleHideFromDocker() {
+    var headerMenuEnabled = $('#SHOW_COMPOSE_IN_HEADER_MENU').is(':checked');
+    var $hide = $('#HIDE_COMPOSE_FROM_DOCKER');
+    var $wrapper = $hide.closest('dl');
+    if (headerMenuEnabled) {
+      // Save current state before disabling
+      if (typeof $hide.data('saved-state') === 'undefined') {
+        $hide.data('saved-state', $hide.is(':checked'));
+      }
+      if ($hide.is(':checked')) {
+        $hide.prop('checked', false).change();
+      }
+      $wrapper.css({ opacity: 0.4, pointerEvents: 'none' });
+    } else {
+      $wrapper.css({ opacity: 1, pointerEvents: '' });
+      // Restore previously saved state
+      var saved = $hide.data('saved-state');
+      if (typeof saved !== 'undefined') {
+        $hide.prop('checked', saved).change();
+        $hide.removeData('saved-state');
+      }
     }
   }
 
@@ -478,41 +515,6 @@ $(function() {
       // Remove name from checkbox so it doesn't submit
       $checkbox.removeAttr('name');
     });
-
-    // If hiding compose containers changed, run patch.sh before saving so change is immediate
-    var hideCompose = $('input[type="hidden"][name="HIDE_COMPOSE_FROM_DOCKER"]').val() === 'true';
-    if (hideCompose !== initialHideCompose) {
-      e.preventDefault();
-      var cmd = hideCompose ? 'apply' : 'remove';
-      var title = hideCompose ? 'Enable Hide Compose-managed Containers?' : 'Disable Hide Compose-managed Containers?';
-      var txt = hideCompose
-        ? 'Enabling will modify Docker UI system files using patches. Originals are backed up and reverse patches are stored under /usr/local/emhttp/plugins/compose.manager/patches/applied so the changes can be reverted. Verbose output will be written to /boot/config/plugins/compose.manager/patch_last_run.log and (if Debug Logging is enabled) to the syslog. Proceed?'
-        : 'Disabling will revert the patches and restore original Docker UI files from backups stored under /usr/local/emhttp/plugins/compose.manager/patches/applied. Verbose output will be written to /boot/config/plugins/compose.manager/patch_last_run.log and (if Debug Logging is enabled) to the syslog. Proceed?';
-      swal({
-        title: title,
-        text: txt,
-        type: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Yes, proceed'
-      }, function(confirmed) {
-        if (!confirmed) { window.location.reload(); return; }
-        $.post(caURL, {action: 'runPatch', cmd: cmd}, function(data) {
-          try { var result = JSON.parse(data); } catch(e) { var result = { result: 'error', output: data }; }
-          if (result.result !== 'success') {
-            swal('Patch Script','Patch operation returned an error. Check Debug Log (syslog) for full verbose output.','error');
-            console.error('runPatch output:', result.output || data);
-            // Do not proceed to save config when patch failed
-            return;
-          }
-          // Proceed to submit the form only on success (will write config)
-          console.log('runPatch succeeded');
-          $form.off('submit');
-          $form.submit();
-        }).fail(function() {
-          swal('Patch Script','Patch request failed (network/server error). Check Debug Log (syslog).','error');
-        });
-      });
-    }
 
   });
 
@@ -1115,7 +1117,7 @@ function browseRestoreArchive() {
 <dl>
   <dt style="cursor: help;" onclick="toggleHelp(this)">_(Show Compose in Header Menu)_:</dt>
   <dd>
-       <input type="checkbox" name="SHOW_COMPOSE_IN_HEADER_MENU" class="compose-toggle" <?=$cfg['SHOW_COMPOSE_IN_HEADER_MENU'] == 'true' ? 'checked' : ''?>>
+       <input type="checkbox" name="SHOW_COMPOSE_IN_HEADER_MENU" id="SHOW_COMPOSE_IN_HEADER_MENU" class="compose-toggle" <?=$cfg['SHOW_COMPOSE_IN_HEADER_MENU'] == 'true' ? 'checked' : ''?>>
     <blockquote class="inline_help">
     Add a Compose tab to the main Unraid header navigation bar for quick access.
     </blockquote>
@@ -1123,11 +1125,23 @@ function browseRestoreArchive() {
 </dl>
 
 <dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Show Compose Stacks Above Docker Containers)_:</dt>
+  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Show Compose Stacks Above Docker)_:</dt>
   <dd>
     <input type="checkbox" name="SHOW_COMPOSE_ON_TOP" id="SHOW_COMPOSE_ON_TOP" class="compose-toggle" <?=($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') == 'true' ? 'checked' : ''?>>
     <blockquote class="inline_help">
     When the Docker page is displayed without tabs, move the Compose Stacks section above the built-in Docker Containers section.<br>
+    This option is only available when "Show Compose in Header Menu" is set to No (non-tabbed mode).
+    </blockquote>
+  </dd>
+</dl>
+
+<dl>
+  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Hide Compose Containers from Docker)_:</dt>
+  <dd>
+    <input type="checkbox" name="HIDE_COMPOSE_FROM_DOCKER" id="HIDE_COMPOSE_FROM_DOCKER" class="compose-toggle" <?=($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') == 'true' ? 'checked' : ''?>>
+    <blockquote class="inline_help">
+    When enabled, containers managed by Compose stacks will be hidden from the Docker Containers table on the Docker tab.<br>
+    This avoids duplicate display when Compose stacks are shown on the same page.<br>
     This option is only available when "Show Compose in Header Menu" is set to No (non-tabbed mode).
     </blockquote>
   </dd>
@@ -1151,16 +1165,6 @@ function browseRestoreArchive() {
     Hide containers managed by Compose stacks from Unraid's Docker Containers dashboard tile.<br>
     This avoids duplicate entries when both the Compose Stacks tile and Docker Containers tile are visible on the Dashboard.<br>
     This option requires "Show Dashboard Tile" to be enabled.
-    </blockquote>
-  </dd>
-</dl>
-
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Hide Compose Containers from Docker UI via Patch)_:</dt>
-  <dd>
-    <input type="checkbox" name="HIDE_COMPOSE_FROM_DOCKER" class="compose-toggle" <?=($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') == 'true' ? 'checked' : ''?>>
-    <blockquote class="inline_help">
-    When enabled, compose-managed containers will be hidden from the main Docker tab and the Docker dashboard tile. This only affects the UI rendering and does not stop containers from running.
     </blockquote>
   </dd>
 </dl>

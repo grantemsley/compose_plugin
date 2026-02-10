@@ -1,7 +1,14 @@
 <?php
 require_once("/usr/local/emhttp/plugins/compose.manager/php/defines.php");
 
-$url = "/logterminal/$socket_name/";
+// Allow callers to override the socket name via query parameter
+// (used by per-container console/logs). Sanitise to alphanumeric + _ and -.
+$active_socket = $socket_name;
+if (!empty($_GET['socket'])) {
+    $active_socket = preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['socket']);
+}
+
+$url = "/logterminal/$active_socket/";
 
 $version = parse_ini_file("/etc/unraid-version");
 if ( version_compare($version['version'],"6.10.0", "<") )

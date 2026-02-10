@@ -15,9 +15,11 @@ require_once("/usr/local/emhttp/plugins/dynamix/include/Wrappers.php");
  *
  * @param string $string The message to log
  */
-function logger($string) {
-    $string = escapeshellarg($string);
-    exec("logger " . $string);
+if (!function_exists('logger')) {
+    function logger($string) {
+        $string = escapeshellarg($string);
+        exec("logger " . $string);
+    }
 }
 
 /**

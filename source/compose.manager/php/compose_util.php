@@ -60,5 +60,29 @@ switch ($_POST['action']) {
             echo json_encode(array('status' => 'missing_msg'));
         }
         break;
+    case 'containerConsole':
+        // Open a ttyd console for a specific container (docker exec -it <name> <shell>)
+        $containerName = $_POST['container'] ?? '';
+        $shell = $_POST['shell'] ?? 'sh';
+        if ($containerName) {
+            // Sanitise container name for use as socket filename
+            $safeName = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $containerName);
+            $socketName = "compose_ct_" . $safeName;
+
+            // Kill any existing ttyd on this socket
+            $pid = exec("pgrep -a ttyd | awk '/" . preg_quote($socketName, '/') . "\\.sock/{print \$1}'");
+            if ($pid) exec("kill " . intval($pid));
+            @unlink("/var/tmp/$socketName.sock");
+
+            // Start ttyd with docker exec
+            $cmd = "ttyd -R -o -i " . escapeshellarg("/var/tmp/$socketName.sock")
+                 . " docker exec -it " . escapeshellarg($containerName)
+                 . " " . escapeshellarg($shell) . " > /dev/null 2>&1 &";
+            exec($cmd);
+
+            // Return the show_ttyd page URL with the custom socket
+            echo "/plugins/compose.manager/php/show_ttyd.php?socket=" . urlencode($socketName);
+        }
+        break;
 }
 ?>

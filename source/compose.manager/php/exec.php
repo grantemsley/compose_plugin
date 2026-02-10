@@ -499,7 +499,7 @@ switch ($_POST['action']) {
                                     $labels = $inspect['Config']['Labels'] ?? [];
                                     $container['WebUI'] = $labels[$docker_label_webui] ?? '';
                                     $container['Icon'] = $labels[$docker_label_icon] ?? '';
-                                    $container['Shell'] = $labels[$docker_label_shell] ?? '/bin/bash';
+                                    $container['Shell'] = $labels[$docker_label_shell] ?? '/bin/sh';
                                     
                                     // Get update status from saved status file
                                     $updateStatusFile = "/var/lib/docker/unraid-update-status.json";

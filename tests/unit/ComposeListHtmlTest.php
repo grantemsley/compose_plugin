@@ -1,0 +1,165 @@
+<?php
+
+/**
+ * Unit Tests for Compose List HTML Structure
+ * 
+ * Tests the HTML output structure in compose_list.php, verifying column classes,
+ * update column selector, expand arrow spacing, and autostart cell class.
+ * These are source-level tests that verify the PHP template markup.
+ */
+
+declare(strict_types=1);
+
+namespace ComposeManager\Tests;
+
+use PluginTests\TestCase;
+
+class ComposeListHtmlTest extends TestCase
+{
+    private string $listPagePath;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->listPagePath = __DIR__ . '/../../source/compose.manager/php/compose_list.php';
+        $this->assertFileExists($this->listPagePath, 'compose_list.php must exist');
+    }
+
+    private function getPageSource(): string
+    {
+        return file_get_contents($this->listPagePath);
+    }
+
+    // ===========================================
+    // Update Column Class Tests
+    // ===========================================
+
+    public function testUpdateCellHasCorrectClass(): void
+    {
+        $source = $this->getPageSource();
+        // The update cell class must be 'compose-updatecolumn' (not 'updatecolumn')
+        $this->assertStringContainsString("class='compose-updatecolumn'", $source);
+    }
+
+    public function testUpdateCellDoesNotUseBareUpdateColumn(): void
+    {
+        $source = $this->getPageSource();
+        // Ensure we don't have the unprefixed class that would conflict with Docker tab
+        $this->assertStringNotContainsString("class='updatecolumn'", $source);
+    }
+
+    // ===========================================
+    // Expand Arrow Tests
+    // ===========================================
+
+    public function testExpandArrowIconClassExists(): void
+    {
+        $source = $this->getPageSource();
+        $this->assertStringContainsString('expand-icon', $source);
+        $this->assertStringContainsString('fa-chevron-right', $source);
+    }
+
+    // ===========================================
+    // Autostart Cell Tests
+    // ===========================================
+
+    public function testAutostartCellHasClassNine(): void
+    {
+        $source = $this->getPageSource();
+        // Autostart cell uses class 'nine' for CSS targeting
+        $this->assertStringContainsString("class='nine'", $source);
+    }
+
+    public function testAutostartCheckboxHasDataAttribute(): void
+    {
+        $source = $this->getPageSource();
+        // Autostart checkbox should have data-scriptName for the stack
+        $this->assertStringContainsString("class='auto_start'", $source);
+        $this->assertStringContainsString('data-scriptName', $source);
+    }
+
+    // ===========================================
+    // Stack Row Structure Tests
+    // ===========================================
+
+    public function testStackRowHasSortableClass(): void
+    {
+        $source = $this->getPageSource();
+        $this->assertStringContainsString("class='compose-sortable'", $source);
+    }
+
+    public function testStackRowHasDataAttributes(): void
+    {
+        $source = $this->getPageSource();
+        // Stack rows must have data attributes for JS interaction
+        $this->assertStringContainsString("data-project=", $source);
+        $this->assertStringContainsString("data-projectname=", $source);
+        $this->assertStringContainsString("data-isup=", $source);
+    }
+
+    public function testDetailRowStructure(): void
+    {
+        $source = $this->getPageSource();
+        // Expandable detail row hidden by default
+        $this->assertStringContainsString("class='stack-details-row'", $source);
+        $this->assertStringContainsString("style='display:none;'", $source);
+        $this->assertStringContainsString("class='stack-details-container'", $source);
+    }
+
+    // ===========================================
+    // Advanced View Column Tests
+    // ===========================================
+
+    public function testAdvancedColumnsUseCmAdvancedClass(): void
+    {
+        $source = $this->getPageSource();
+        // Advanced-only columns should use 'cm-advanced' (not bare 'advanced')
+        $this->assertStringContainsString("class='cm-advanced'", $source);
+    }
+
+    // ===========================================
+    // Container Count Display Tests
+    // ===========================================
+
+    public function testContainerCountDisplayExists(): void
+    {
+        $source = $this->getPageSource();
+        // Container count uses running/total format
+        $this->assertStringContainsString('$runningCount', $source);
+        $this->assertStringContainsString('$containerCount', $source);
+    }
+
+    // ===========================================
+    // Empty State Tests
+    // ===========================================
+
+    public function testNoStacksMessageExists(): void
+    {
+        $source = $this->getPageSource();
+        $this->assertStringContainsString('No Docker Compose stacks found', $source);
+        $this->assertStringContainsString('Add New Stack', $source);
+    }
+
+    // ===========================================
+    // Loading Spinner Tests
+    // ===========================================
+
+    public function testLoadingSpinnerInDetailRow(): void
+    {
+        $source = $this->getPageSource();
+        $this->assertStringContainsString('fa-spinner fa-spin compose-spinner', $source);
+        $this->assertStringContainsString('Loading containers...', $source);
+    }
+
+    // ===========================================
+    // Status Icon Tests
+    // ===========================================
+
+    public function testStatusIconHasDataAttribute(): void
+    {
+        $source = $this->getPageSource();
+        // Status icon should have data-status for debugging
+        $this->assertStringContainsString("data-status='", $source);
+        $this->assertStringContainsString('compose-status-icon', $source);
+    }
+}

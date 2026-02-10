@@ -4,4 +4,6 @@ Type="php"
 Menu="Docker:2"
 Cond="$var['fsState'] == 'Started' && exec('/etc/rc.d/rc.docker status | grep -v \"not\"') && (!file_exists('/boot/config/plugins/compose.manager/compose.manager.cfg') ? true : exec(\"grep '^SHOW_COMPOSE_IN_HEADER_MENU=' /boot/config/plugins/compose.manager/compose.manager.cfg 2>/dev/null | grep -v 'true'\"))"
 ---
+<link type="text/css" rel="stylesheet" href="<?autov('/plugins/compose.manager/styles/comboButton.css')?>">
+<link type="text/css" rel="stylesheet" href="<?autov('/plugins/compose.manager/styles/editorModal.css')?>">
 <?php include '/usr/local/emhttp/plugins/compose.manager/php/compose_manager_main.php';?>

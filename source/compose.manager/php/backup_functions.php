@@ -14,7 +14,7 @@ require_once("/usr/local/emhttp/plugins/compose.manager/php/defines.php");
  */
 function getBackupDestination()
 {
-    $cfg = @parse_ini_file("/boot/config/plugins/compose.manager/compose.manager.cfg");
+    $cfg = parse_plugin_cfg('compose.manager');
     $dest = $cfg['BACKUP_DESTINATION'] ?? '/boot/config/plugins/compose.manager/backups';
     return rtrim($dest, '/');
 }
@@ -118,7 +118,7 @@ function createBackup()
  */
 function applyRetentionPolicy($destination)
 {
-    $cfg = @parse_ini_file("/boot/config/plugins/compose.manager/compose.manager.cfg");
+    $cfg = parse_plugin_cfg('compose.manager');
     $retention = intval($cfg['BACKUP_RETENTION'] ?? 5);
 
     if ($retention <= 0) return; // 0 = unlimited
@@ -273,7 +273,7 @@ function restoreStacks($archivePath, $stacks)
  */
 function updateBackupCron()
 {
-    $cfg = @parse_ini_file("/boot/config/plugins/compose.manager/compose.manager.cfg");
+    $cfg = parse_plugin_cfg('compose.manager');
     $cronFile = '/etc/cron.d/compose-manager-backup';
     $script = '/usr/local/emhttp/plugins/compose.manager/scripts/backup_cron.sh';
 
@@ -325,10 +325,13 @@ function formatBytes($bytes)
 
 /**
  * Log a message to syslog with compose.manager tag.
+ * Guarded to avoid redeclaration when compose_util_functions.php is also loaded.
  */
-function logger($message)
-{
-    exec("logger -t 'compose.manager' " . escapeshellarg("[backup] " . $message));
+if (!function_exists('logger')) {
+    function logger($message)
+    {
+        exec("logger -t 'compose.manager' " . escapeshellarg("[backup] " . $message));
+    }
 }
 
 /**

@@ -3,6 +3,10 @@
 /build
 /tmp
 
+# Composer setup files
+composer-setup.php
+composer.phar
+
 # PHP dependencies (install via composer install)
 /vendor/
 
