@@ -2247,35 +2247,35 @@ $hideComposeFromDocker = ($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') === 'true
         // Action-specific configuration
         var config = {
             'up': {
-                title: 'Start Stack?',
+                title: 'Start ' + escapeHtml(stackName) + '?',
                 description: 'This will start all containers in <b>' + escapeHtml(stackName) + '</b>.',
                 listTitle: 'CONTAINERS TO START',
                 warning: 'Images will be pulled if not present locally.',
                 warningIcon: 'info-circle',
                 warningColor: '#08f',
-                confirmText: 'Yes, start stack',
+                confirmText: 'Start Stack',
                 showVersionArrow: false,
                 confirmedFn: ComposeUpConfirmed
             },
             'down': {
-                title: 'Stop Stack?',
-                description: 'This will stop and remove all containers in <b>' + escapeHtml(stackName) + '</b>.',
+                title: 'Stop ' + escapeHtml(stackName) + '?',
+                description: 'This will shut down all containers in <b>' + escapeHtml(stackName) + '</b>.',
                 listTitle: 'CONTAINERS TO STOP',
-                warning: 'Containers will be stopped and removed. Data in volumes will be preserved.',
+                warning: 'Containers will be removed but data in volumes is preserved.',
                 warningIcon: 'exclamation-triangle',
                 warningColor: '#f80',
-                confirmText: 'Yes, stop stack',
+                confirmText: 'Stop Stack',
                 showVersionArrow: false,
                 confirmedFn: ComposeDownConfirmed
             },
             'update': {
-                title: 'Update Stack?',
+                title: 'Update ' + escapeHtml(stackName) + '?',
                 description: 'This will pull the latest images and recreate containers in <b>' + escapeHtml(stackName) + '</b>.',
                 listTitle: 'CONTAINERS TO UPDATE',
-                warning: 'Running containers will be briefly interrupted.',
+                warning: 'Running containers will be recreated with the latest images.',
                 warningIcon: 'exclamation-triangle',
                 warningColor: '#f80',
-                confirmText: 'Yes, update stack',
+                confirmText: 'Update Stack',
                 showVersionArrow: true,
                 confirmedFn: UpdateStackConfirmed
             }
