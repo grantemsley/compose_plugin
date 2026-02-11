@@ -314,16 +314,7 @@ foreach ($composeProjects as $project) {
     $o .= "<td><span class='$uptimeClass'>$uptimeDisplay</span></td>";
 
     // Description column (advanced only)
-    $o .= "<td class='cm-advanced' style='word-break:break-all;'><span class='docker_readmore'>$descriptionHtml</span></td>";
-
-    // Version/Image info column (advanced only) - shows compose file info
-    $composeVersion = '';
-    if (isset($containersByProject[$sanitizedProjectName][0]['Labels'])) {
-        if (preg_match('/com\.docker\.compose\.version=([^,]+)/', $containersByProject[$sanitizedProjectName][0]['Labels'], $vMatch)) {
-            $composeVersion = 'Compose v' . $vMatch[1];
-        }
-    }
-    $o .= "<td class='cm-advanced' style='color:#606060;font-size:12px;'>$composeVersion</td>";
+    $o .= "<td class='cm-advanced' style='overflow-wrap:break-word;word-wrap:break-word;'><span class='docker_readmore'>$descriptionHtml</span></td>";
 
     // Path column (advanced only)
     $o .= "<td class='cm-advanced' style='color:#606060;font-size:12px;'>$pathHtml</td>";
@@ -337,7 +328,7 @@ foreach ($composeProjects as $project) {
 
     // Expandable details row (hidden by default)
     $o .= "<tr class='stack-details-row' id='details-row-$id' style='display:none;'>";
-    $o .= "<td colspan='10' class='stack-details-cell' style='padding:0 0 0 60px;background:rgba(0,0,0,0.05);'>";
+    $o .= "<td colspan='9' class='stack-details-cell' style='padding:0 0 0 60px;background:rgba(0,0,0,0.05);'>";
     $o .= "<div class='stack-details-container' id='details-container-$id' style='padding:8px 16px;'>";
     $o .= "<i class='fa fa-spinner fa-spin compose-spinner'></i> Loading containers...";
     $o .= "</div>";
@@ -347,7 +338,7 @@ foreach ($composeProjects as $project) {
 
 // If no stacks found, show a message
 if ($stackCount === 0) {
-    $o = "<tr><td colspan='8' style='text-align:center;padding:20px;color:#888;'>No Docker Compose stacks found. Click 'Add New Stack' to create one.</td></tr>";
+    $o = "<tr><td colspan='7' style='text-align:center;padding:20px;color:#888;'>No Docker Compose stacks found. Click 'Add New Stack' to create one.</td></tr>";
 }
 
 // Output the HTML
