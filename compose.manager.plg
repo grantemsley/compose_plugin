@@ -28,28 +28,48 @@
 >
 
 <CHANGES>
-###2026.02.11
-- Default console shell to /bin/bash with sh fallback
-  - Change default shell from /bin/sh to /bin/bash across all console entry points
-  - Add server-side fallback: check if bash exists in container via 'which', fall back to sh if not
-  - Affects: exec.php, compose_util.php, compose_manager_main.php, dashboard page
-- Fix backup scheduler, replace browse with upload, UI improvements
-  - Fix scheduled backup using root crontab instead of Unraid cron helper
-  - Replace 'Browse for Archive' with file upload via FormData/AJAX
-  - Validate uploaded archive type, duplicates, and destination writability
-  - Show stack names in restore confirmation dialog instead of count
-  - Replace save-settings popup (swal) with inline status banner
-  - Restrict help cursor to settings that have help text
-  - Simplify cron log output to single completion line
-  - Match restore status message width to backup tables
-  - Standardize backup/restore log format with category tags
-- Implement custom modal for adding new compose stacks with improved UI and error handling to remove swal2 dependency
-- Default stack description to blank instead of showing path
-- Fix addStack returning full path instead of directory name
-- Remove test report steps from PHP and BATS jobs in GitHub Actions workflow
-- Add packages permission to GitHub Actions workflow
-- Add permissions section to GitHub Actions workflow
-- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.02.10...v2026.02.11)
+###2026.02.11a
+- Features: show Compose CLI version in page title, remove per-row Compose column
+  - Display Docker Compose version (e.g. v2.40.3) next to page title via docker compose version --short
+  - Remove redundant per-row Compose version column (was always the same value)
+  - Redistribute column widths: description 22%ΓåÆ26%, path 29%ΓåÆ32%
+  - Fix description word-wrap: use overflow-wrap instead of word-break to wrap at word boundaries
+  - Improve dialog messaging: stack name in titles, softer stop language, terser confirm buttons
+  - Fix update column not refreshing after compose up/down with refreshStackRow() AJAX
+  - Fix race condition: skipNextComposeLoadlist one-shot flag prevents stale data overwrite
+  - Show previously-checked update status for stopped stacks instead of generic 'stopped'
+- Bug Fixes: improve stack action confirmation messages for clarity
+- Bug Fixes: interactive console, container logs, and Shadowbox white bar
+  - Console: use ttyd-exec wrapper (same as Unraid native docker console)
+  - Container logs: revert to custom AJAX + window.open() via show_ttyd.php,
+  - Shadowbox: inject CSS into parent document to darken all Shadowbox
+  - Use pkill -f for robust ttyd process cleanup with 300ms delay
+- Bug Fixes: console 502 and white bar on compose up
+  - Revert console URL to /logterminal/ (/webterminal/ proxies to /var/run/
+  - Use pkill -f for robust ttyd kill (ensures stale -R instances are gone)
+  - Add 300ms delay after kill for clean process exit
+  - Fix white bar: inline background #2b2b2b on html+body tags, reduced
+- Bug Fixes: use /webterminal/ for interactive console (writable WebSocket)
+  - Console now opens via /webterminal/ nginx proxy which supports
+  - Logs and stack operations remain on /logterminal/ (read-only)
+  - show_ttyd.php: flexbox layout, conditional Done button, scrollbar
+  - Dashboard + Compose page: console/logs open in new window popups
+  - Stack operations (up/down/etc) retain Shadowbox with Done button
+- Fix dashboard state sync and container actions
+  - Fix stack actions (stop/start/restart) not executing from dashboard
+  - Map action names correctly to compose_util.php endpoints
+  - Execute returned command URL via openBox() instead of ignoring it
+  - Fix container actions using wrong endpoint and parameter
+  - Use plugin's exec.php containerAction with container name
+  - Was posting to Events.php with container ID (never worked)
+  - Fix expanded stacks collapsing on refresh
+  - Use folder-based stable IDs instead of index-based IDs
+  - Restore expanded state and re-fetch containers after DOM rebuild
+  - Fix .closest() to .prev() for sibling container div lookup
+  - Only refresh Docker Containers tile when compose containers are visible
+  - Remove 3-port limit on container port display
+- Avoid double dashboard refresh on container actions
+- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.02.11...v2026.02.11a)
 
 </CHANGES>
 
