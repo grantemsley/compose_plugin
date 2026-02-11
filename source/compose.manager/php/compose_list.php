@@ -138,7 +138,7 @@ foreach ($composeProjects as $project) {
         $description = str_replace("\r", "", $description);
         $description = str_replace("\n", "<br>", $description);
     } else {
-        $description = isset($variables['description']) ? $variables['description'] : "No description<br>($compose_root/$project)";
+        $description = "";
     }
 
     $autostart = '';

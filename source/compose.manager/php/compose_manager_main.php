@@ -3964,7 +3964,7 @@ $hideComposeFromDocker = ($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') === 'true
         var state = $el.data('state');
         var webui = $el.data('webui');
         var stackId = $el.data('stackid');
-        var shell = $el.data('shell') || '/bin/sh';
+        var shell = $el.data('shell') || '/bin/bash';
         var running = state === 'running';
         var paused = state === 'paused';
 

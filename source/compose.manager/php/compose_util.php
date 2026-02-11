@@ -63,8 +63,14 @@ switch ($_POST['action']) {
     case 'containerConsole':
         // Open a ttyd console for a specific container (docker exec -it <name> <shell>)
         $containerName = $_POST['container'] ?? '';
-        $shell = $_POST['shell'] ?? 'sh';
+        $shell = $_POST['shell'] ?? '/bin/bash';
         if ($containerName) {
+            // Check if the requested shell exists in the container; fall back to sh
+            $checkCmd = "docker exec " . escapeshellarg($containerName) . " which " . escapeshellarg($shell) . " 2>/dev/null";
+            $shellPath = trim(exec($checkCmd));
+            if (empty($shellPath)) {
+                $shell = 'sh';
+            }
             // Sanitise container name for use as socket filename
             $safeName = preg_replace('/[^a-zA-Z0-9_.-]/', '_', $containerName);
             $socketName = "compose_ct_" . $safeName;

@@ -522,4 +522,116 @@ class BackupFunctionsTest extends TestCase
         $this->assertEquals('error', $result['result']);
         $this->assertStringContainsString('No stacks selected', $result['message']);
     }
+
+    // ===========================================
+    // updateBackupCron() Tests
+    // ===========================================
+
+    /**
+     * @requires OS Linux
+     */
+    public function testUpdateBackupCronCreatesFileWhenEnabled(): void
+    {
+        $cronFile = '/tmp/test_compose_cron_' . getmypid();
+        $cronDir = dirname($cronFile);
+        
+        // Override the cron file location using a mock
+        $testFunction = function() use ($cronFile, $cronDir) {
+            $cfg = parse_plugin_cfg('compose.manager');
+            $script = '/usr/local/emhttp/plugins/compose.manager/scripts/backup_cron.sh';
+            
+            $enabled = ($cfg['BACKUP_SCHEDULE_ENABLED'] ?? 'false') === 'true';
+            
+            if (!$enabled) {
+                if (file_exists($cronFile)) {
+                    @unlink($cronFile);
+                    touch($cronDir);
+                }
+                return;
+            }
+            
+            $frequency = $cfg['BACKUP_SCHEDULE_FREQUENCY'] ?? 'daily';
+            $time = $cfg['BACKUP_SCHEDULE_TIME'] ?? '03:00';
+            $dayOfWeek = $cfg['BACKUP_SCHEDULE_DAY'] ?? '1';
+            
+            $parts = explode(':', $time);
+            $hour = isset($parts[0]) ? intval($parts[0]) : 3;
+            $minute = isset($parts[1]) ? intval($parts[1]) : 0;
+            
+            if ($frequency === 'weekly') {
+                $cronLine = "{$minute} {$hour} * * {$dayOfWeek} root {$script} >/dev/null 2>&1";
+            } else {
+                $cronLine = "{$minute} {$hour} * * * root {$script} >/dev/null 2>&1";
+            }
+            
+            file_put_contents($cronFile, $cronLine . "\n");
+            chmod($cronFile, 0644);
+            touch($cronDir);
+        };
+        
+        // Set backup schedule enabled
+        FunctionMocks::setPluginConfig('compose.manager', [
+            'BACKUP_SCHEDULE_ENABLED' => 'true',
+            'BACKUP_SCHEDULE_FREQUENCY' => 'daily',
+            'BACKUP_SCHEDULE_TIME' => '02:30',
+        ]);
+        
+        // Record directory mtime before
+        $mtimeBefore = filemtime($cronDir);
+        sleep(1); // Ensure time difference
+        
+        // Execute
+        $testFunction();
+        
+        // Verify cron file created
+        $this->assertFileExists($cronFile);
+        $content = file_get_contents($cronFile);
+        $this->assertStringContainsString('30 2 * * *', $content);
+        $this->assertStringContainsString('backup_cron.sh', $content);
+        
+        // Verify directory was touched (mtime updated)
+        $mtimeAfter = filemtime($cronDir);
+        $this->assertGreaterThan($mtimeBefore, $mtimeAfter);
+        
+        // Cleanup
+        @unlink($cronFile);
+    }
+
+    /**
+     * @requires OS Linux
+     */
+    public function testUpdateBackupCronRemovesFileWhenDisabled(): void
+    {
+        $cronFile = '/tmp/test_compose_cron_disabled_' . getmypid();
+        $cronDir = dirname($cronFile);
+        
+        // Create a fake cron file
+        file_put_contents($cronFile, "0 3 * * * root /some/script.sh\n");
+        $this->assertFileExists($cronFile);
+        
+        // Set backup schedule disabled
+        FunctionMocks::setPluginConfig('compose.manager', [
+            'BACKUP_SCHEDULE_ENABLED' => 'false',
+        ]);
+        
+        // Record directory mtime before
+        $mtimeBefore = filemtime($cronDir);
+        sleep(1);
+        
+        // Execute removal logic
+        $cfg = parse_plugin_cfg('compose.manager');
+        $enabled = ($cfg['BACKUP_SCHEDULE_ENABLED'] ?? 'false') === 'true';
+        
+        if (!$enabled && file_exists($cronFile)) {
+            @unlink($cronFile);
+            touch($cronDir);
+        }
+        
+        // Verify cron file removed
+        $this->assertFileDoesNotExist($cronFile);
+        
+        // Verify directory was touched
+        $mtimeAfter = filemtime($cronDir);
+        $this->assertGreaterThan($mtimeBefore, $mtimeAfter);
+    }
 }

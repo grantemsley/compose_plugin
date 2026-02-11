@@ -316,7 +316,7 @@ $script = <<<'EOT'
             }
             opts.push({text:'Console', icon:'fa-terminal', action:function(e){
                 e.preventDefault();
-                openDockerTerminal(ctName, false, shell || 'sh');
+                openDockerTerminal(ctName, false, shell || '/bin/bash');
             }});
             opts.push({text:'Logs', icon:'fa-file-text-o', action:function(e){
                 e.preventDefault();
@@ -360,7 +360,7 @@ $script = <<<'EOT'
     // For console: openTerminal('docker', containerName, shell)
     function openDockerTerminal(name, isLogs, shell) {
         if (typeof window.openTerminal === 'function') {
-            window.openTerminal('docker', name, isLogs ? '.log' : (shell || 'sh'));
+            window.openTerminal('docker', name, isLogs ? '.log' : (shell || '/bin/bash'));
         } else {
             // Fallback if global function not available
             var url = isLogs
@@ -408,7 +408,7 @@ $script = <<<'EOT'
                         var imgSrc = ct.Icon || '/plugins/dynamix.docker.manager/images/question.png';
                         var escapedName = ct.Name.replace(/'/g, "\\'");
                         var webui = resolveContainerWebUI(ct.WebUI).replace(/'/g, "\\'");
-                        var shell = (ct.Shell || 'sh').replace(/'/g, "\\'");
+                        var shell = (ct.Shell || '/bin/bash').replace(/'/g, "\\'");
                         var shortId = ct.ID.substring(0, 12);
                         // Parse image to get repo and tag
                         var image = ct.Image || '';

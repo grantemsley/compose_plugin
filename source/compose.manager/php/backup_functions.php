@@ -102,7 +102,7 @@ function createBackup()
     $sizeBytes = filesize($archivePath);
     $sizeHuman = formatBytes($sizeBytes);
 
-    logger("Backup created: {$archiveName} ({$sizeHuman}, " . count($stacks) . " stacks)");
+    // Note: detailed logging is handled by the caller (exec.php or backup_cron.sh)
 
     return [
         'result' => 'success',
@@ -248,7 +248,6 @@ function restoreStacks($archivePath, $stacks)
 
         if ($exitCode === 0) {
             $restored[] = $stack;
-            logger("Restored stack: {$stack}");
         } else {
             $errors[] = $stack . ' (exit ' . $exitCode . ')';
         }
@@ -258,7 +257,7 @@ function restoreStacks($archivePath, $stacks)
         'result' => empty($errors) ? 'success' : (empty($restored) ? 'error' : 'warning'),
         'restored' => $restored,
         'errors' => $errors,
-        'message' => count($restored) . ' stack(s) restored successfully.'
+        'message' => count($restored) . ' stack(s) restored successfully: ' . implode(', ', $restored)
     ];
 
     if (!empty($errors)) {
@@ -270,20 +269,40 @@ function restoreStacks($archivePath, $stacks)
 
 /**
  * Install or remove the backup cron job.
+ * Uses root's crontab directly for maximum compatibility with Unraid's cron daemon.
  */
 function updateBackupCron()
 {
     $cfg = parse_plugin_cfg('compose.manager');
-    $cronFile = '/etc/cron.d/compose-manager-backup';
     $script = '/usr/local/emhttp/plugins/compose.manager/scripts/backup_cron.sh';
+    $marker = '#compose-manager-backup';
+
+    // Also clean up old /etc/cron.d file if it exists from previous versions
+    $oldCronFile = '/etc/cron.d/compose-manager-backup';
+    if (file_exists($oldCronFile)) {
+        @unlink($oldCronFile);
+    }
+
+    // Read current crontab, stripping any existing compose-manager-backup lines
+    $existing = '';
+    exec('crontab -l 2>/dev/null', $lines, $rc);
+    if ($rc === 0 && !empty($lines)) {
+        $filtered = array_filter($lines, function($line) use ($marker) {
+            return strpos($line, $marker) === false;
+        });
+        $existing = implode("\n", $filtered);
+        // Ensure it ends with a newline
+        $existing = rtrim($existing) . "\n";
+    }
 
     $enabled = ($cfg['BACKUP_SCHEDULE_ENABLED'] ?? 'false') === 'true';
 
     if (!$enabled) {
-        // Remove cron job if it exists
-        if (file_exists($cronFile)) {
-            @unlink($cronFile);
-        }
+        // Write back crontab without our line
+        $tmpFile = '/tmp/compose-manager-crontab.' . getmypid();
+        file_put_contents($tmpFile, $existing);
+        exec("crontab {$tmpFile}");
+        @unlink($tmpFile);
         return;
     }
 
@@ -291,21 +310,23 @@ function updateBackupCron()
     $time = $cfg['BACKUP_SCHEDULE_TIME'] ?? '03:00';
     $dayOfWeek = $cfg['BACKUP_SCHEDULE_DAY'] ?? '1'; // Monday
 
-    // Parse time
+    // Parse time - use directly as cron runs in server's local timezone
     $parts = explode(':', $time);
     $hour = isset($parts[0]) ? intval($parts[0]) : 3;
     $minute = isset($parts[1]) ? intval($parts[1]) : 0;
 
     if ($frequency === 'weekly') {
-        $cronLine = "{$minute} {$hour} * * {$dayOfWeek} root {$script} >/dev/null 2>&1";
+        $cronLine = "{$minute} {$hour} * * {$dayOfWeek} {$script} {$marker}";
     } else {
         // daily
-        $cronLine = "{$minute} {$hour} * * * root {$script} >/dev/null 2>&1";
+        $cronLine = "{$minute} {$hour} * * * {$script} {$marker}";
     }
 
-    file_put_contents($cronFile, $cronLine . "\n");
-    // Ensure correct permissions
-    chmod($cronFile, 0644);
+    // Write updated crontab
+    $tmpFile = '/tmp/compose-manager-crontab.' . getmypid();
+    file_put_contents($tmpFile, $existing . $cronLine . "\n");
+    exec("crontab {$tmpFile}");
+    @unlink($tmpFile);
 }
 
 /**

@@ -175,7 +175,7 @@ $projects_exist = intval(shell_exec("ls -l ".$compose_root." | grep ^d | wc -l")
   #compose-tab-backup .backup-section {
     margin-bottom: 20px;
   }
-  #compose-tab-backup dt {
+  #compose-tab-backup dl:has(blockquote.inline_help) > dt {
     cursor: help;
   }
   .backup-dest-input {
@@ -187,11 +187,13 @@ $projects_exist = intval(shell_exec("ls -l ".$compose_root." | grep ^d | wc -l")
   }
   .backup-archive-list {
     max-height: 150px;
-    max-width: 700px;
+    width: 700px;
+    max-width: 100%;
     overflow-y: auto;
     border: 1px solid rgba(128, 128, 128, 0.3);
     border-radius: 4px;
     margin: 4px 0;
+    box-sizing: border-box;
   }
   .backup-archive-list table {
     width: 100%;
@@ -223,12 +225,14 @@ $projects_exist = intval(shell_exec("ls -l ".$compose_root." | grep ^d | wc -l")
   }
   .backup-stack-checklist {
     max-height: 150px;
-    max-width: 700px;
+    width: 700px;
+    max-width: 100%;
     overflow-y: auto;
     border: 1px solid rgba(128, 128, 128, 0.3);
     border-radius: 4px;
-    padding: 4px 12px;
+    padding: 4px 8px;
     margin: 4px 0;
+    box-sizing: border-box;
   }
   .backup-stack-checklist label {
     display: block;
@@ -248,6 +252,9 @@ $projects_exist = intval(shell_exec("ls -l ".$compose_root." | grep ^d | wc -l")
     border-radius: 4px;
     font-size: 0.95em;
     display: none;
+    width: 700px;
+    max-width: 100%;
+    box-sizing: border-box;
   }
   .backup-status.success {
     display: block;
@@ -867,9 +874,10 @@ function restoreSelectedStacks() {
   if (stacks.length === 0 || !selectedArchive) return;
   
   // Show confirmation modal
+  var stackNames = stacks.join(', ');
   swal({
     title: 'Confirm Restore',
-    text: 'This action will permanently replace existing configurations for the selected stacks (' + stacks.length + ' stack' + (stacks.length > 1 ? 's' : '') + '). Confirm to proceed.',
+    text: 'This action will permanently replace existing configurations for the selected stacks (' + stackNames + '). Confirm to proceed.',
     type: 'warning',
     showCancelButton: true,
     confirmButtonText: 'Restore',
@@ -925,7 +933,7 @@ function deleteSelectedBackup() {
         if (result.result === 'success') {
           selectedArchive = null;
           selectedManifest = null;
-          $('#restore-stack-checklist').html('<span style="color:#888;">Select a backup archive above to see its contents.</span>');
+          $('#restore-stack-checklist').html('<span style="text-align:center;display:block;padding:15px;color:#888;font-size:0.85em;">Select a backup archive above to see its contents.</span>');
           $('#btn-restore-stacks').prop('disabled', true);
           loadBackupArchives();
         } else {
@@ -951,11 +959,8 @@ function toggleScheduleDay() {
 }
 
 function saveBackupSettings() {
-  // Collect all backup settings and save via the standard Unraid config mechanism
-  // We do this by posting to update.php with the right form fields
+  // Collect all backup settings and save via Ajax
   var settings = {
-    '#file': 'compose.manager/compose.manager.cfg',
-    '#section': '',
     'BACKUP_DESTINATION': $('#BACKUP_DESTINATION').val() || '/boot/config/plugins/compose.manager/backups',
     'BACKUP_RETENTION': $('#BACKUP_RETENTION').val() || '5',
     'BACKUP_SCHEDULE_ENABLED': $('#BACKUP_SCHEDULE_ENABLED').is(':checked') ? 'true' : 'false',
@@ -964,64 +969,71 @@ function saveBackupSettings() {
     'BACKUP_SCHEDULE_DAY': $('#BACKUP_SCHEDULE_DAY').val() || '1'
   };
   
-  // We also need to include all existing settings so they aren't lost
-  // Use a hidden form approach similar to the settings tab
-  var $form = $('<form>', {
-    method: 'POST',
-    action: '/update.php',
-    target: 'progressFrame'
+  // Save via Ajax with the new saveBackupSettings action
+  var $btn = $('#btn-save-backup-settings');
+  $btn.prop('disabled', true).val('Saving...');
+  
+  $.post(caURL, {
+    action: 'saveBackupSettings',
+    settings: JSON.stringify(settings)
+  }, function(response) {
+    var result = JSON.parse(response);
+    $btn.prop('disabled', false).val('Save Settings');
+    
+    if (result.result === 'success') {
+      showBackupStatus('#backup-create-status', 'Backup settings saved.', 'success');
+    } else {
+      showBackupStatus('#backup-create-status', result.message || 'Failed to save settings', 'error');
+    }
+  }).fail(function() {
+    $btn.prop('disabled', false).val('Save Settings');
+    showBackupStatus('#backup-create-status', 'Failed to communicate with server', 'error');
   });
-  
-  // Get current settings from the main form and pass them through too
-  $('form[name="compose_manager_settings"] input[type="hidden"]').each(function() {
-    $form.append($(this).clone());
-  });
-  
-  // Add backup-specific fields
-  for (var key in settings) {
-    $form.append($('<input>', { type: 'hidden', name: key, value: settings[key] }));
-  }
-  
-  $form.appendTo('body').submit().remove();
-  
-  // Also update the cron job
-  setTimeout(function() {
-    $.post(caURL, { action: 'updateBackupCron' }, function() {
-      // Cron updated silently
-    });
-  }, 1000);
 }
 
-function browseRestoreArchive() {
-  // Allow manual path entry via prompt
-  var currentPath = selectedArchive || '';
-  var path = prompt('Enter the full path to a backup .tar.gz archive:', currentPath);
-  if (path && path.trim()) {
-    selectedArchive = path.trim();
-    
-    // Deselect table rows
-    $('#backup-archive-list tr').removeClass('selected').find('input[type="radio"]').prop('checked', false);
-    
-    // Load stack list from external file
-    $('#restore-stack-checklist').html('<span style="color:#888;font-style:italic;">Reading archive contents...</span>');
-    $('#btn-restore-stacks').prop('disabled', true);
-    hideBackupStatus('#restore-status');
-    
-    $.post(caURL, { action: 'readManifest', archive: path.trim() }, function(data) {
+function uploadBackupArchive(input) {
+  if (!input.files || !input.files[0]) return;
+  var file = input.files[0];
+  
+  // Validate extension
+  if (!file.name.match(/\.(tar\.gz|tgz)$/i)) {
+    swal('Invalid File', 'Please select a .tar.gz archive file.', 'error');
+    input.value = '';
+    return;
+  }
+  
+  var formData = new FormData();
+  formData.append('action', 'uploadBackup');
+  formData.append('file', file);
+  
+  showBackupStatus('#restore-status', 'Uploading ' + file.name + '...', 'info');
+  
+  $.ajax({
+    url: caURL,
+    type: 'POST',
+    data: formData,
+    processData: false,
+    contentType: false,
+    success: function(data) {
       try {
         var result = JSON.parse(data);
-        if (result.result === 'success' && result.stacks) {
-          selectedManifest = result;
-          renderStackChecklist(result.stacks);
-          showBackupStatus('#restore-status', 'Loaded archive: ' + path.trim(), 'info');
+        if (result.result === 'success') {
+          showBackupStatus('#restore-status', 'Uploaded: ' + file.name, 'success');
+          loadBackupArchives();
         } else {
-          $('#restore-stack-checklist').html('<span style="color:#f44;">' + escapeHtml(result.message || 'Failed to read archive.') + '</span>');
+          showBackupStatus('#restore-status', result.message || 'Upload failed.', 'error');
         }
       } catch(e) {
-        $('#restore-stack-checklist').html('<span style="color:#f44;">Error parsing response.</span>');
+        showBackupStatus('#restore-status', 'Error parsing upload response.', 'error');
       }
-    });
-  }
+    },
+    error: function() {
+      showBackupStatus('#restore-status', 'Upload request failed.', 'error');
+    },
+    complete: function() {
+      input.value = '';
+    }
+  });
 }
 
 </script>
@@ -1272,7 +1284,7 @@ function browseRestoreArchive() {
 </dl>
 
 <dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Scheduled Backup)_:</dt>
+  <dt>_(Scheduled Backup)_:</dt>
   <dd>
       <input type="checkbox" id="BACKUP_SCHEDULE_ENABLED" class="compose-toggle" 
            <?=($cfg['BACKUP_SCHEDULE_ENABLED'] ?? 'false') == 'true' ? 'checked' : ''?>
@@ -1345,13 +1357,10 @@ function browseRestoreArchive() {
     </div>
     <div style="margin-top:5px; display:flex; gap:8px;">
       <input type="button" value="_(Refresh)_" onclick="loadBackupArchives()">
-      <input type="button" value="_(Browse for Archive...)_" onclick="browseRestoreArchive()">
+      <input type="button" value="_(Upload Archive...)_" onclick="$('#backup-upload-input').click()">
+      <input type="file" id="backup-upload-input" accept=".tar.gz,.tgz" style="display:none;" onchange="uploadBackupArchive(this)">
       <input type="button" value="_(Delete Selected)_" onclick="deleteSelectedBackup()">
     </div>
-    <blockquote class="inline_help">
-    Select a backup archive from the list, or browse for a .zip file elsewhere on the system.<br>
-    Only archives matching the <code>backup_YYYY-MM-DD_HH-MM.tar.gz</code> naming pattern are listed automatically.
-    </blockquote>
   </dd>
 </dl>
 
@@ -1359,7 +1368,7 @@ function browseRestoreArchive() {
   <dt>_(Stacks in Archive)_:</dt>
   <dd>
     <div class="backup-stack-checklist" id="restore-stack-checklist">
-      <span style="color:#888;">_(Select a backup archive above to see its contents.)_</span>
+      <span style="text-align:center;display:block;padding:15px;color:#888;font-size:0.85em;">_(Select a backup archive above to see its contents.)_</span>
     </div>
   </dd>
 </dl>

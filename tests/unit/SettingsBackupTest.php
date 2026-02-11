@@ -218,10 +218,11 @@ class SettingsBackupTest extends TestCase
         $this->assertStringContainsString('loadBackupArchives()', $source);
     }
 
-    public function testBrowseArchiveButton(): void
+    public function testUploadArchiveButton(): void
     {
         $source = $this->getPageSource();
-        $this->assertStringContainsString('browseRestoreArchive()', $source);
+        $this->assertStringContainsString('uploadBackupArchive(', $source);
+        $this->assertStringContainsString('id="backup-upload-input"', $source);
     }
 
     public function testDeleteSelectedBackupButton(): void
