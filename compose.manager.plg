@@ -28,62 +28,28 @@
 >
 
 <CHANGES>
-###2026.02.10
-- Bug Fixes: simplify uptime display by removing redundant text
-- Bug Fixes: improve settings descriptions and add new options in README
-- Bug Fixes: update selector for update column in compose manager
-- Bug Fixes: adjust autostart column width and padding, revert SHA to 15 chars, fix LAN IP:Port alignment
-- Bug Fixes: isolate reorder/hide IIFEs, add compose-list-loaded event, match Docker table styling
-- Bug Fixes: add Unraid version input field to bug report template
-- Bug Fixes: vertical spacing accumulation, console shell, and log terminal URL
-  - Scope readmore plugin to exclude container detail rows (.not('.stack-details-container .docker_readmore')) preventing nested wrapper accumulation on expand/collapse
-  - Destroy readmore before reapplying in renderContainerDetails to avoid double-application
-  - Fix console: use container.Shell from API (fallback /bin/sh) instead of hardcoded /bin/bash, add data-shell attribute
-  - Fix logs: use openTerminal('docker', name, '.log') matching Unraid's expected format instead of openTerminal('docker_logs', name)
-- Bug Fixes: container table improvements - PascalCase normalization, update status preservation, uniform columns, tag/SHA truncation
-  - Normalize PascalCase server response (UpdateStatus, LocalSha, RemoteSha) to camelCase in loadStackContainerDetails
-  - Preserve container-level update status during expand/collapse in updateParentStackFromContainers
-  - Detect checking-in-progress state to avoid overwriting spinner with stale data
-  - Replace inline table styles with CSS class-based layout (compose-ct-table) for uniform column widths
-  - Add text-overflow ellipsis for tag column with tooltip on hover
-  - Truncate SHA hashes to 8 characters with full SHA in tooltip (stack summary, update dialog, container detail)
-- Bug Fixes: adjust patch script behavior and messages in PLG install section
-- Bug Fixes: improve PLG changelog update by XML-escaping special characters and replacing changelog instead of appending
-- Documentation: update introduction in README to provide a detailed overview of Compose Manager functionality
-- Documentation: update README, configuration, getting started, and user guide with new features and enhancements plus add development.md file for devs
-- Chores: remove unused helper functions and associated tests
-- Add unit tests, update docs, remove composer artifacts
-  - Add BackupFunctionsTest: tests for backup/restore helper functions
-  - Add ComposeManagerMainTest: tests for main page CSS/JS structure
-  - Add ComposeListHtmlTest: tests for compose list HTML output
-  - Add SettingsBackupTest: tests for settings page backup/restore markup
-  - Update README.md and docs/configuration.md with current settings
-  - Fix logger() redeclaration between backup_functions.php and compose_util_functions.php
-  - Use parse_plugin_cfg() instead of parse_ini_file() in backup_functions.php
-  - Remove composer-setup.php and composer.phar from repo
-  - Add composer setup files to .gitignore
-- Add Hide Compose from Docker Tab setting, fix advanced column widths
-  - Add 'Hide Compose Containers from Docker Tab' setting above 'Show Dashboard Tile'
-  - Fix column widths for advanced view: assign explicit percentages to all 8
-  - Add toggleHideFromDocker() dependency function linked to header menu toggle
-- Fix column shift, remove hide-compose setting, fix settings dependencies, add animation
-  - Add table-layout:fixed to #compose_stacks with column width percentages
-  - Remove HIDE_COMPOSE_FROM_DOCKER setting from UI (HTML, JS var, form handler)
-  - Add missing id attribute to SHOW_COMPOSE_IN_HEADER_MENU checkbox so
-  - Increase dashboard row vertical padding (stack 4px-&gt;8px, container 3px-&gt;6px)
-  - Implement animated applyListView(animate) with phased opacity+height
-- Left-align expand arrow and add 20px edge padding to Stack and Autostart columns
-- Fix LAN IP:Port column to show resolved IP matching WebUI logic
-- Prettify stack action dialog: spacing, padding, and remove trailing border
-- Fix WebUI URL resolution (server-side, matching Unraid logic) and adjust autostart column padding
-- Fix WebUI URL resolution: resolve [PORT:xxxx] to host-mapped port and [IP] to container IP for non-bridge networks
-- Fix dashboard stack expand arrow shifting on toggle
-- Revert docs/configuration.md to upstream main
-- Remove ComposeManagerMainTest.php
-- Remove size-specific tests (column widths, pixel margins/padding)
-- Fix 5 issues: advanced view isolation, column centering/stability, console shell, CSS loading
-- Fix 6 issues: column widths, advanced/basic toggle, renames, hide-from-docker, settings state
-- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.02.09b...v2026.02.10)
+###2026.02.11
+- Default console shell to /bin/bash with sh fallback
+  - Change default shell from /bin/sh to /bin/bash across all console entry points
+  - Add server-side fallback: check if bash exists in container via 'which', fall back to sh if not
+  - Affects: exec.php, compose_util.php, compose_manager_main.php, dashboard page
+- Fix backup scheduler, replace browse with upload, UI improvements
+  - Fix scheduled backup using root crontab instead of Unraid cron helper
+  - Replace 'Browse for Archive' with file upload via FormData/AJAX
+  - Validate uploaded archive type, duplicates, and destination writability
+  - Show stack names in restore confirmation dialog instead of count
+  - Replace save-settings popup (swal) with inline status banner
+  - Restrict help cursor to settings that have help text
+  - Simplify cron log output to single completion line
+  - Match restore status message width to backup tables
+  - Standardize backup/restore log format with category tags
+- Implement custom modal for adding new compose stacks with improved UI and error handling to remove swal2 dependency
+- Default stack description to blank instead of showing path
+- Fix addStack returning full path instead of directory name
+- Remove test report steps from PHP and BATS jobs in GitHub Actions workflow
+- Add packages permission to GitHub Actions workflow
+- Add permissions section to GitHub Actions workflow
+- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.02.10...v2026.02.11)
 
 </CHANGES>
 
