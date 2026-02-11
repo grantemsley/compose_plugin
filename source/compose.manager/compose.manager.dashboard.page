@@ -368,10 +368,13 @@ $script = <<<'EOT'
             containerAction: action
         }, function() {
             // exec.php runs docker commands synchronously, so this fires after completion
-            loadComposeStacks();
-            // Also refresh Unraid's Docker Containers tile if compose containers are visible there
             if (!window.hideDockerComposeContainers && typeof window.loadlist === 'function') {
+                // Compose containers are visible in Docker tile — loadlist() refreshes it,
+                // and our loadlist hook (below) will also trigger loadComposeStacks()
                 window.loadlist();
+            } else {
+                // Compose containers hidden from Docker tile — only refresh our stacks (faster)
+                loadComposeStacks();
             }
         });
     }
@@ -592,12 +595,12 @@ $script = <<<'EOT'
                 $('.compose-dash-stack.stopped').hide();
             }
             noStacks();
-            
+
             // Hide compose-managed containers from the Docker Containers dashboard tile
             if (window.hideDockerComposeContainers && data.composeContainerNames && data.composeContainerNames.length > 0) {
                 setupComposeContainerHiding(data.composeContainerNames);
             }
-            
+
             debugLog('Loaded', data.stacks.length, 'stacks, context menus attached via onclick');
         }, 'json').fail(function() {
             $('#compose_stacks_status').text('Stacks -- Error loading');
@@ -621,29 +624,29 @@ $script = <<<'EOT'
         }
     }
     window.noStacks = noStacks;
-    
+
     // Hide compose-managed containers from Unraid's Docker Containers dashboard tile.
     // Docker containers load asynchronously via loadlist() -> $.post('DashboardApps.php')
     // We use $(document).ajaxComplete() to detect when Docker containers are loaded,
     // and a CSS class with !important to prevent jQuery animations from re-showing elements.
     var composeContainerNameSet = null;
     var hideContainersSetup = false;
-    
+
     function setupComposeContainerHiding(containerNames) {
         if (!containerNames || containerNames.length === 0) return;
-        
+
         debugLog('Setting up compose container hiding for:', containerNames);
         console.log('[ComposeManager] Container names to hide:', containerNames);
-        
+
         // Build a lookup object for fast case-insensitive matching
         composeContainerNameSet = {};
         containerNames.forEach(function(n) { composeContainerNameSet[n.toLowerCase()] = true; });
-        
+
         // Inject CSS class for hiding (uses !important to override jQuery animations like hideMe)
         if (!$('#compose-hide-style').length) {
             $('head').append('<style id="compose-hide-style">.compose-hidden-container { display: none !important; }</style>');
         }
-        
+
         // Only set up the ajaxComplete handler once
         if (!hideContainersSetup) {
             hideContainersSetup = true;
@@ -658,7 +661,7 @@ $script = <<<'EOT'
                 }
             });
         }
-        
+
         // Fallback: run several times in case Docker loaded before us
         doHideContainers();
         setTimeout(doHideContainers, 500);
@@ -666,20 +669,20 @@ $script = <<<'EOT'
         setTimeout(doHideContainers, 3000);
         setTimeout(doHideContainers, 5000);
     }
-    
+
     function doHideContainers() {
         if (!composeContainerNameSet) return;
-        
+
         var $dockerView = $('#docker_view');
         if (!$dockerView.length) return;
-        
+
         var hiddenCount = 0;
         // DashboardApps.php renders: <span class="outer solid apps started/stopped/paused">
         $dockerView.find('span.outer.apps').each(function() {
             var $el = $(this);
             // Skip if we already hid this element
             if ($el.hasClass('compose-hidden-container')) return;
-            
+
             var name = extractContainerName($el);
             if (name && composeContainerNameSet[name.toLowerCase()]) {
                 debugLog('Hiding Docker tile container:', name);
@@ -688,13 +691,13 @@ $script = <<<'EOT'
                 hiddenCount++;
             }
         });
-        
+
         if (hiddenCount > 0) {
             debugLog('Hidden', hiddenCount, 'compose containers from Docker tile');
             updateDockerTileCounts();
         }
     }
-    
+
     function extractContainerName($el) {
         // Strategy 1: Parse onclick="addDockerContainerContext('ContainerName','ImageId',...)"
         // from child <span id="..." class="hand"> element
@@ -708,7 +711,7 @@ $script = <<<'EOT'
             var match = onclick.match(/addDockerContainerContext\(\s*'([^']+)'/);
             if (match) return match[1];
         }
-        
+
         // Strategy 2: Inner span text
         // DashboardApps.php renders: <span class="inner"><span class="...">ContainerName</span>...
         var $inner = $el.find('span.inner > span').first();
@@ -716,10 +719,10 @@ $script = <<<'EOT'
             var t = $inner.text().trim();
             if (t) return t;
         }
-        
+
         return null;
     }
-    
+
     function updateDockerTileCounts() {
         // Recalculate visible Docker container counts excluding hidden compose containers
         var started = $('#docker_view').find('span.outer.apps.started').not('.compose-hidden-container').length;
@@ -727,7 +730,7 @@ $script = <<<'EOT'
         var paused  = $('#docker_view').find('span.outer.apps.paused').not('.compose-hidden-container').length;
         $('.apps.switch').html("Containers -- Started: " + started + ", Stopped: " + stopped + ", Paused: " + paused);
     }
-    
+
     $(function() {
         // Initialize toggle switch (like Docker's apps toggle)
         var cookie = (typeof $.cookie === 'function' && $.cookie('unraid_settings')) ? JSON.parse($.cookie('unraid_settings')) : {};
