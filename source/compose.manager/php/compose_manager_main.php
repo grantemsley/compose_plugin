@@ -1319,46 +1319,87 @@ $hideComposeFromDocker = ($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') === 'true
     });
 
     function addStack() {
-        var formHtml = '<div class="swal-text" style="font-weight: bold; padding-left: 0px; margin-top: 0px;">Stack Name</div>';
-        formHtml += '<br>';
-        formHtml += "<input type='text' id='swal-stack-name' class='swal-input-show' placeholder='Stack Name' style='width:100%;'>";
-        formHtml += '<br><br>';
-        formHtml += '<div class="swal-text" style="font-weight: bold; padding-left: 0px; margin-top: 0px;">Description (optional)</div>';
-        formHtml += '<br>';
-        formHtml += "<input type='text' id='swal-stack-desc' class='swal-input-show' placeholder='Description' style='width:100%;'>";
+        // Show custom modal for stack creation
+        var modalHtml = `
+            <div id="compose-stack-modal-overlay" class="compose-modal-overlay" style="display:flex;">
+                <div class="compose-modal" role="dialog" aria-modal="true" aria-labelledby="compose-stack-modal-title" aria-describedby="compose-stack-modal-desc" tabindex="-1">
+                    <div class="compose-modal-header">
+                        <span id="compose-stack-modal-title">Add New Compose Stack</span>
+                        <button type="button" class="editor-modal-close" onclick="closeComposeStackModal()" aria-label="Close modal"><i class="fa fa-times"></i></button>
+                    </div>
+                    <div class="compose-modal-body">
+                        <div style="font-weight:bold;margin-bottom:8px;">Stack Name</div>
+                        <input type="text" id="compose-stack-name" placeholder="Stack Name" autofocus>
+                        <div id="compose-stack-modal-desc" style="font-weight:bold;margin-bottom:8px;">Description (optional)</div>
+                        <input type="text" id="compose-stack-desc" placeholder="Description">
+                        <div id="compose-stack-modal-error" style="color:#f44336;margin-bottom:8px;display:none;"></div>
+                    </div>
+                    <div class="compose-modal-footer">
+                        <button class="cancel swal-btn-cancel" onclick="closeComposeStackModal()">Cancel</button>
+                        <button class="swal-btn-warning" onclick="submitComposeStackModal()">Create</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        // Remove any existing modal
+        var existingOverlay = document.getElementById('compose-stack-modal-overlay');
+        if (existingOverlay) {
+            existingOverlay.remove();
+        }
+        // Insert modal into body
+        var tempDiv = document.createElement('div');
+        tempDiv.innerHTML = modalHtml;
+        document.body.appendChild(tempDiv.firstElementChild);
 
-        swal({
-            title: "Add New Compose Stack",
-            text: formHtml,
-            html: true,
-            showCancelButton: true,
-            closeOnConfirm: false
-        }, function(isConfirm) {
-            if (!isConfirm) return; // User cancelled
-
-            var new_stack_name = document.getElementById('swal-stack-name').value.trim();
-            var new_stack_desc = document.getElementById('swal-stack-desc').value.trim();
-
-            if (!new_stack_name) {
-                swal("Error", "Please enter a stack name", "error");
-                return false;
+        window.closeComposeStackModal = function() {
+            var overlay = document.getElementById('compose-stack-modal-overlay');
+            if (overlay) {
+                overlay.remove();
             }
+        };
 
+        window.submitComposeStackModal = function() {
+            var name = document.getElementById('compose-stack-name').value.trim();
+            var desc = document.getElementById('compose-stack-desc').value.trim();
+            var errorDiv = document.getElementById('compose-stack-modal-error');
+            if (!name) {
+                errorDiv.textContent = "Please enter a stack name.";
+                errorDiv.style.display = "block";
+                return;
+            }
+            errorDiv.style.display = "none";
+            // Disable all buttons in the modal
+            var modal = document.getElementById('compose-stack-modal-overlay');
+            if (modal) {
+                var btns = modal.querySelectorAll('button');
+                btns.forEach(function(btn) { btn.disabled = true; });
+            }
             $.post(
                 caURL, {
                     action: 'addStack',
-                    stackName: new_stack_name,
-                    stackDesc: new_stack_desc
+                    stackName: name,
+                    stackDesc: desc
                 },
                 function(data) {
+                    window.closeComposeStackModal();
                     if (data) {
-                        var response = JSON.parse(data);
+                        var response;
+                        try {
+                            response = JSON.parse(data);
+                        } catch (e) {
+                            // Handle invalid or unexpected JSON response
+                            if (window.console && console.error) {
+                                console.error("Failed to parse addStack response:", e, data);
+                            }
+                            swal({
+                                title: "Failed to create stack",
+                                text: "Unexpected response from server",
+                                type: "error"
+                            });
+                            return;
+                        }
                         if (response.result == "success") {
-                            // Close the swal dialog and open editor
-                            swal.close();
-                            // Open the editor modal for the newly created stack
                             openEditorModalByProject(response.project, response.projectName);
-                            // Refresh the list in the background
                             composeLoadlist();
                         } else {
                             swal({
@@ -1376,13 +1417,14 @@ $hideComposeFromDocker = ($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') === 'true
                     }
                 }
             ).fail(function() {
+                window.closeComposeStackModal();
                 swal({
                     title: "Failed to create stack",
                     text: "Request failed",
                     type: "error"
                 });
             });
-        });
+        };
     }
 
     function deleteStack(myID) {
