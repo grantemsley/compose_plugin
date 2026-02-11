@@ -1,7 +1,8 @@
 <?php
+
 /**
  * Compose Util Functions for Compose Manager
- * 
+ *
  * Contains utility functions used by compose_util.php for compose command execution.
  * Separated from compose_util.php to allow unit testing without triggering the switch statement.
  */
@@ -16,7 +17,8 @@ require_once("/usr/local/emhttp/plugins/dynamix/include/Wrappers.php");
  * @param string $string The message to log
  */
 if (!function_exists('logger')) {
-    function logger($string) {
+    function logger($string)
+    {
         $string = escapeshellarg($string);
         exec("logger " . $string);
     }
@@ -59,6 +61,7 @@ function echoComposeCommand($action, $recreate = false)
     $path = isset($_POST['path']) ? urldecode($_POST['path']) : "";
     $profile = isset($_POST['profile']) ? urldecode($_POST['profile']) : "";
     $unRaidVars = parse_ini_file("/var/local/emhttp/var.ini");
+    $originalAction = $action;
     if ($unRaidVars['mdState'] != "STARTED") {
         echo $plugin_root . "/scripts/arrayNotStarted.sh";
         if ($debug) {
@@ -129,7 +132,7 @@ function echoComposeCommand($action, $recreate = false)
             if ($debug) {
                 logger($composeCommand);
             }
-            $composeCommand = "/plugins/compose.manager/php/show_ttyd.php";
+            $composeCommand = "/plugins/compose.manager/php/show_ttyd.php" . ($originalAction !== 'logs' ? "?done=1" : "");
         } else {
             $i = 0;
             $composeCommand = array_reduce($composeCommand, function ($v1, $v2) use (&$i) {
@@ -250,7 +253,7 @@ function echoComposeCommandMultiple($action, $paths)
         if ($debug) {
             logger("Multi-stack command: " . $bashScript);
         }
-        echo "/plugins/compose.manager/php/show_ttyd.php";
+        echo "/plugins/compose.manager/php/show_ttyd.php?done=1";
     } else {
         // For nchan/traditional output, create a temporary bash script that runs all commands
         $tmpScript = "/tmp/compose_multi_" . uniqid() . ".sh";

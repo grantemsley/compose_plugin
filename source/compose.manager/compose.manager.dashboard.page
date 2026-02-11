@@ -292,17 +292,17 @@ $script = <<<'EOT'
     }
 
     function openStackLogs(stackName) {
-        // Open combined logs for the stack using the same approach as the Compose page
+        // Open combined logs for the stack in a new window
         var projectPath = '/boot/config/plugins/compose.manager/projects/' + stackName;
         $.post('/plugins/compose.manager/php/compose_util.php', {
             action: 'composeLogs',
             path: projectPath
         }, function(data) {
-            if (data && typeof openBox === 'function') {
-                openBox(data, 'Stack ' + stackName + ' Logs', 800, 1200, true);
-            } else if (data) {
-                // Fallback: open in shadowbox or new window
-                Shadowbox.open({content: data, player: 'iframe', title: 'Stack ' + stackName + ' Logs', height: 800, width: 1200});
+            if (data) {
+                var h = Math.min(screen.availHeight, 800);
+                var w = Math.min(screen.availWidth, 1200);
+                window.open(data, 'Logs_' + stackName.replace(/[^a-zA-Z0-9]/g, '_'),
+                    'height=' + h + ',width=' + w + ',resizable=yes,scrollbars=yes');
             }
         });
     }
@@ -379,18 +379,34 @@ $script = <<<'EOT'
         });
     }
 
-    // Open terminal - call global openTerminal (from Unraid's HeadInlineJS.php)
-    // For logs: openTerminal('docker', containerName, '.log')
-    // For console: openTerminal('docker', containerName, shell)
     function openDockerTerminal(name, isLogs, shell) {
-        if (typeof window.openTerminal === 'function') {
-            window.openTerminal('docker', name, isLogs ? '.log' : (shell || '/bin/bash'));
+        if (isLogs) {
+            // Logs — start ttyd via plugin, open in new window
+            $.post('/plugins/compose.manager/php/compose_util.php', {
+                action: 'containerLogs',
+                container: name
+            }, function(data) {
+                if (data) {
+                    var h = Math.min(screen.availHeight, 800);
+                    var w = Math.min(screen.availWidth, 1200);
+                    window.open(data, 'Logs_' + name.replace(/[^a-zA-Z0-9]/g, '_'),
+                        'height=' + h + ',width=' + w + ',resizable=yes,scrollbars=yes');
+                }
+            });
         } else {
-            // Fallback if global function not available
-            var url = isLogs
-                ? '/logterminal/' + name.replace(/[ #]/g, '_') + '.log/'
-                : '/webterminal/docker/';
-            window.open(url, '_blank');
+            // Console — start ttyd via plugin, open in new window
+            $.post('/plugins/compose.manager/php/compose_util.php', {
+                action: 'containerConsole',
+                container: name,
+                shell: shell || '/bin/bash'
+            }, function(data) {
+                if (data) {
+                    var h = Math.min(screen.availHeight, 800);
+                    var w = Math.min(screen.availWidth, 1200);
+                    window.open(data, 'Console_' + name.replace(/[^a-zA-Z0-9]/g, '_'),
+                        'height=' + h + ',width=' + w + ',resizable=yes,scrollbars=yes');
+                }
+            });
         }
     }
 

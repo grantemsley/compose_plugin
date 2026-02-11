@@ -2389,8 +2389,8 @@ $hideComposeFromDocker = ($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') === 'true
     }
 
     function ComposeLogs(pathOrProject, profile = "") {
-        var height = 800;
-        var width = 1200;
+        var height = Math.min(screen.availHeight, 800);
+        var width = Math.min(screen.availWidth, 1200);
         // Support both project name (legacy) and path
         var path = pathOrProject.includes('/') ? pathOrProject : compose_root + "/" + pathOrProject;
         $.post(compURL, {
@@ -2399,7 +2399,8 @@ $hideComposeFromDocker = ($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') === 'true
             profile: profile
         }, function(data) {
             if (data) {
-                openBox(data, "Stack " + basename(path) + " Logs", height, width, true);
+                window.open(data, 'Logs_' + basename(path),
+                    'height=' + height + ',width=' + width + ',resizable=yes,scrollbars=yes');
             }
         })
     }
@@ -4031,7 +4032,7 @@ $hideComposeFromDocker = ($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') === 'true
             });
         }
 
-        // Console (if running) — ttyd + Shadowbox (same proven mechanism used for stack operations)
+        // Console (if running) — start ttyd, open in new window
         if (running) {
             opts.push({
                 text: 'Console',
@@ -4042,11 +4043,8 @@ $hideComposeFromDocker = ($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') === 'true
                         if (data) {
                             var height = Math.min(screen.availHeight, 800);
                             var width  = Math.min(screen.availWidth, 1200);
-                            if (typeof openBox === 'function') {
-                                openBox(data, 'Console: ' + containerName, height, width, true);
-                            } else {
-                                Shadowbox.open({content: data, player: 'iframe', title: 'Console: ' + containerName, height: height, width: width});
-                            }
+                            window.open(data, 'Console_' + containerName.replace(/[^a-zA-Z0-9]/g, '_'),
+                                'height=' + height + ',width=' + width + ',resizable=yes,scrollbars=yes');
                         }
                     });
                 }
@@ -4106,21 +4104,23 @@ $hideComposeFromDocker = ($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') === 'true
             divider: true
         });
 
-        // Logs - uses Unraid's openTerminal
+        // Logs - start ttyd via plugin, open in new window
         opts.push({
             text: 'Logs',
             icon: 'fa-navicon',
             action: function(e) {
                 e.preventDefault();
-                if (typeof openTerminal === 'function') {
-                    openTerminal('docker', containerName, '.log');
-                } else {
-                    swal({
-                        title: 'Logs',
-                        text: 'Terminal not available',
-                        type: 'info'
-                    });
-                }
+                $.post(compURL, {
+                    action: 'containerLogs',
+                    container: containerName
+                }, function(data) {
+                    if (data) {
+                        var height = Math.min(screen.availHeight, 800);
+                        var width  = Math.min(screen.availWidth, 1200);
+                        window.open(data, 'Logs_' + containerName.replace(/[^a-zA-Z0-9]/g, '_'),
+                            'height=' + height + ',width=' + width + ',resizable=yes,scrollbars=yes');
+                    }
+                });
             }
         });
 
