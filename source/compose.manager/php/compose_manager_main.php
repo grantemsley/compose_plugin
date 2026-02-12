@@ -3686,13 +3686,17 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
             $expandIcon.removeClass('expanded');
             expandedStacks[stackId] = false;
         } else {
-            // Expand
-            $detailsRow.slideDown(200);
             $expandIcon.addClass('expanded');
             expandedStacks[stackId] = true;
 
-            // Load container details if not cached or cache is stale
-            loadStackContainerDetails(stackId, project);
+            if (stackContainersCache[stackId]) {
+                // Cached — content is already rendered in the DOM from last load.
+                // Just slide down without re-fetching to avoid flash/layout shift.
+                $detailsRow.slideDown(200);
+            } else {
+                // First load: fetch data, row stays hidden until render completes
+                loadStackContainerDetails(stackId, project);
+            }
         }
     }
 
@@ -3764,10 +3768,13 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                         });
                     } catch (e) {}
                     renderContainerDetails(stackId, containers, project);
+                    // Slide down details row now that content is rendered
+                    $('#details-row-' + stackId).slideDown(200);
                 } else {
                     // Escape error message to prevent XSS
                     var errorMsg = escapeHtml(response.message || 'Failed to load container details');
                     $container.html('<div class="stack-details-error"><i class="fa fa-exclamation-triangle"></i> ' + errorMsg + '</div>');
+                    $('#details-row-' + stackId).slideDown(200);
                     stackDetailsLoading[stackId] = false;
                     try {
                         composeClientDebug('loadStackContainerDetails:error', {
@@ -3779,6 +3786,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 }
             } else {
                 $container.html('<div class="stack-details-error"><i class="fa fa-exclamation-triangle"></i> Failed to load container details</div>');
+                $('#details-row-' + stackId).slideDown(200);
                 stackDetailsLoading[stackId] = false;
                 try {
                     composeClientDebug('loadStackContainerDetails:empty-response', {
@@ -3789,6 +3797,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
             }
         }).fail(function() {
             $container.html('<div class="stack-details-error"><i class="fa fa-exclamation-triangle"></i> Failed to load container details</div>');
+            $('#details-row-' + stackId).slideDown(200);
             stackDetailsLoading[stackId] = false;
             try {
                 composeClientDebug('loadStackContainerDetails:failed', {
