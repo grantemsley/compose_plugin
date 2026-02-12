@@ -85,7 +85,7 @@ log "=== Compose Manager Shutdown Begin ==="
 # Collect all stacks (not just autostart ones - we need to stop everything)
 declare -a stacks_to_stop
 
-for dir in $COMPOSE_ROOT/*; do
+for dir in "$COMPOSE_ROOT"/*; do
     if [ -d "$dir" ]; then
         if [ -f "$dir/docker-compose.yml" ] || [ -f "$dir/indirect" ]; then
             # Get stack name

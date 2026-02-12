@@ -152,7 +152,7 @@ do
       envFile="$2"
       shift 2
       
-      if [ -f $envFile ]; then
+      if [ -f "$envFile" ]; then
         echo "using .env: $envFile"
       else
         echo ".env doesn't exist: $envFile"
@@ -175,7 +175,7 @@ do
       ;;
     -d | --project_dir )
       if [ -d "$2" ]; then
-        for file in $( find $2 -maxdepth 1 -type f -name '*compose*.yml' ); do
+        for file in $( find "$2" -maxdepth 1 -type f -name '*compose*.yml' ); do
           files="$files -f ${file@Q}"
         done
       fi
@@ -346,7 +346,7 @@ case $command in
         fi
         echo ""
         echo "Cleaning up old images..."
-        eval docker rmi ${images[*]} 2>/dev/null || true
+        docker rmi "${images[@]}" 2>/dev/null || true
       fi
       
       # Save stack started timestamp after update
@@ -388,7 +388,7 @@ case $command in
     if [ "$debug" = true ]; then
       log_msg "DEBUG" "docker compose ls -a --format json"
     fi
-    eval docker compose ls -a --format json 2>&1
+    docker compose ls -a --format json 2>&1
     ;;
 
   ps)
@@ -396,7 +396,7 @@ case $command in
     if [ "$debug" = true ]; then
       log_msg "DEBUG" "docker ps -a --filter label=com.docker.compose.project --format json"
     fi
-    eval docker ps -a --filter 'label=com.docker.compose.project' --format json 2>&1
+    docker ps -a --filter 'label=com.docker.compose.project' --format json 2>&1
     ;;
 
   logs)
@@ -404,6 +404,10 @@ case $command in
       log_msg "DEBUG" "docker compose $envFile $files $options logs -f"
     fi
     eval docker compose $envFile $files $options logs -f 2>&1
+    exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+      log_msg "ERROR" "Failed to stream logs (exit code: $exit_code)"
+    fi
     ;;
 
   *)

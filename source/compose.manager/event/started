@@ -160,7 +160,7 @@ fi
 declare -a stacks_to_start
 declare -A stack_priorities
 
-for dir in $COMPOSE_ROOT/*; do
+for dir in "$COMPOSE_ROOT"/*; do
     if [ -d "$dir" ]; then
         if [ -f "$dir/docker-compose.yml" ] || [ -f "$dir/indirect" ]; then
             if [ -f "$dir/autostart" ] && [ "true" == "$(< "$dir/autostart")" ]; then
