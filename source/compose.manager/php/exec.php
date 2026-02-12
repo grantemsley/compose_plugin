@@ -478,6 +478,13 @@ switch ($_POST['action']) {
         }
 
         $containers = [];
+        // Load update status once before the loop (static data, doesn't change per-container)
+        $updateStatusFile = "/var/lib/docker/unraid-update-status.json";
+        $updateStatus = [];
+        if (is_file($updateStatusFile)) {
+            $updateStatus = json_decode(file_get_contents($updateStatusFile), true) ?: [];
+        }
+
         if ($output) {
             // docker compose ps --format json outputs one JSON object per line
             $lines = explode("\n", trim($output));
@@ -601,12 +608,7 @@ switch ($_POST['action']) {
                                         $container['WebUI'] = $resolvedURL;
                                     }
 
-                                    // Get update status from saved status file
-                                    $updateStatusFile = "/var/lib/docker/unraid-update-status.json";
-                                    $updateStatus = [];
-                                    if (is_file($updateStatusFile)) {
-                                        $updateStatus = json_decode(file_get_contents($updateStatusFile), true) ?: [];
-                                    }
+                                    // Get update status from saved status file (read once before loop)
                                     $imageName = $container['Image'];
                                     // Ensure image has a tag for lookup
                                     if (strpos($imageName, ':') === false) {
@@ -718,6 +720,34 @@ switch ($_POST['action']) {
 
         if ($output) {
             $lines = explode("\n", trim($output));
+
+            // Load the update status data ONCE before the loop instead of per-container
+            $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
+            $statusDirty = false;
+
+            // First pass: clear cached local SHAs for all images that need checking
+            foreach ($lines as $line) {
+                if (!empty($line)) {
+                    $container = json_decode($line, true);
+                    if ($container) {
+                        $image = $container['Image'] ?? '';
+                        if ($image) {
+                            $image = normalizeImageForUpdateCheck($image);
+                            if (isset($updateStatusData[$image])) {
+                                $updateStatusData[$image]['local'] = null;
+                                $statusDirty = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Save once after clearing all cached SHAs
+            if ($statusDirty) {
+                DockerUtil::saveJSON($dockerManPaths['update-status'], $updateStatusData);
+            }
+
+            // Second pass: check updates and collect results
             foreach ($lines as $line) {
                 if (!empty($line)) {
                     $container = json_decode($line, true);
@@ -729,21 +759,11 @@ switch ($_POST['action']) {
                             // Normalize image name (strip docker.io/ prefix, @sha256: digest, add library/ for official images)
                             $image = normalizeImageForUpdateCheck($image);
 
-                            // Clear cached local SHA to force re-inspection of the actual image
-                            // This is needed because Unraid's reloadUpdateStatus uses cached values
-                            // which can be stale after docker compose pull
-                            $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
-                            if (isset($updateStatusData[$image])) {
-                                // Clear the local SHA to force fresh inspection
-                                $updateStatusData[$image]['local'] = null;
-                                DockerUtil::saveJSON($dockerManPaths['update-status'], $updateStatusData);
-                            }
-
                             // Check update status using Unraid's DockerUpdate class
                             $DockerUpdate->reloadUpdateStatus($image);
                             $updateStatus = $DockerUpdate->getUpdateStatus($image);
 
-                            // Get SHA values from the status file
+                            // Re-read status data (may have been updated by reloadUpdateStatus)
                             $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
                             $localSha = '';
                             $remoteSha = '';

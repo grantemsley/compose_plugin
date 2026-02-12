@@ -238,16 +238,3 @@ if [ $failed -gt 0 ] || [ $timedout -gt 0 ]; then
     exit 1
 fi
 exit 0
-        esac
-        rm -f "$dir/autostart_result"
-    fi
-done
-
-log "=== Compose Manager Autostart Complete ==="
-log "Results: $succeeded succeeded, $failed failed, $timedout timed out (of $total_stacks total)"
-
-# Exit with error if any failed
-if [ $failed -gt 0 ] || [ $timedout -gt 0 ]; then
-    exit 1
-fi
-exit 0
