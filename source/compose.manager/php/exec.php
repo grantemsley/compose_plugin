@@ -248,13 +248,13 @@ switch ($_POST['action']) {
 
     case 'clearUpdateCache':
         // Clear the compose manager update status cache
-        $composeUpdateStatusFile = "/boot/config/plugins/compose.manager/update-status.json";
+        $composeUpdateStatusFile = COMPOSE_UPDATE_STATUS_FILE;
         if (is_file($composeUpdateStatusFile)) {
             unlink($composeUpdateStatusFile);
         }
         // Also clear entries from Unraid's update status that were created by compose manager
         // by removing entries that don't correspond to running Docker containers
-        $unraidUpdateStatusFile = "/var/lib/docker/unraid-update-status.json";
+        $unraidUpdateStatusFile = UNRAID_UPDATE_STATUS_FILE;
         if (is_file($unraidUpdateStatusFile)) {
             require_once("/usr/local/emhttp/plugins/dynamix.docker.manager/include/DockerClient.php");
             $DockerClient = new DockerClient();
@@ -479,7 +479,7 @@ switch ($_POST['action']) {
 
         $containers = [];
         // Load update status once before the loop (static data, doesn't change per-container)
-        $updateStatusFile = "/var/lib/docker/unraid-update-status.json";
+        $updateStatusFile = UNRAID_UPDATE_STATUS_FILE;
         $updateStatus = [];
         if (is_file($updateStatusFile)) {
             $updateStatus = json_decode(file_get_contents($updateStatusFile), true) ?: [];
@@ -715,7 +715,7 @@ switch ($_POST['action']) {
 
         // Load the update status file to get SHA values
         $dockerManPaths = [
-            'update-status' => "/var/lib/docker/unraid-update-status.json"
+            'update-status' => UNRAID_UPDATE_STATUS_FILE
         ];
 
         if ($output) {
@@ -801,7 +801,7 @@ switch ($_POST['action']) {
         echo json_encode(['result' => 'success', 'updates' => $updateResults, 'projectName' => $projectName]);
 
         // Save the update status for this stack
-        $composeUpdateStatusFile = "/boot/config/plugins/compose.manager/update-status.json";
+        $composeUpdateStatusFile = COMPOSE_UPDATE_STATUS_FILE;
         $savedStatus = [];
         if (is_file($composeUpdateStatusFile)) {
             $savedStatus = json_decode(file_get_contents($composeUpdateStatusFile), true) ?: [];
@@ -825,7 +825,7 @@ switch ($_POST['action']) {
 
         // Path to update status file
         $dockerManPaths = [
-            'update-status' => "/var/lib/docker/unraid-update-status.json"
+            'update-status' => UNRAID_UPDATE_STATUS_FILE
         ];
 
         // Iterate through all stacks
@@ -949,7 +949,7 @@ switch ($_POST['action']) {
         }
 
         // Save the update status for all stacks
-        $composeUpdateStatusFile = "/boot/config/plugins/compose.manager/update-status.json";
+        $composeUpdateStatusFile = COMPOSE_UPDATE_STATUS_FILE;
         $savedStatus = $allUpdates;
         foreach ($savedStatus as $stackKey => &$stackData) {
             $stackData['lastChecked'] = time();
@@ -960,7 +960,7 @@ switch ($_POST['action']) {
         break;
     case 'getSavedUpdateStatus':
         // Load saved update status from file
-        $composeUpdateStatusFile = "/boot/config/plugins/compose.manager/update-status.json";
+        $composeUpdateStatusFile = COMPOSE_UPDATE_STATUS_FILE;
         if (is_file($composeUpdateStatusFile)) {
             $savedStatus = json_decode(file_get_contents($composeUpdateStatusFile), true);
             if ($savedStatus) {

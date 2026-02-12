@@ -15,4 +15,8 @@ $docker_label_webui = "net.unraid.docker.webui";
 $docker_label_shell = "net.unraid.docker.shell";
 $docker_label_managed_name = "composeman";
 $compose_root = locate_compose_root($sName);
+
+// Centralised file-path constants — avoid scattering identical literals
+define('COMPOSE_UPDATE_STATUS_FILE', '/boot/config/plugins/compose.manager/update-status.json');
+define('UNRAID_UPDATE_STATUS_FILE', '/var/lib/docker/unraid-update-status.json');
 ?>
