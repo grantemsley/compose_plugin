@@ -440,10 +440,11 @@ class ExecActionsTest extends TestCase
 
         $stackPath = $this->createTestStack('test-stack');
 
-        // Create the target directory so realpath() resolves it in CI
+        // Create the target directory so realpath() resolves it in CI.
+        // Skip if /mnt/ isn't writable (runner permissions vary).
         $envDir = '/mnt/user/appdata';
-        if (!is_dir($envDir)) {
-            @mkdir($envDir, 0755, true);
+        if (!is_dir($envDir) && !@mkdir($envDir, 0755, true)) {
+            $this->markTestSkipped('Cannot create /mnt/user/appdata/ (insufficient permissions).');
         }
         
         $customPath = $envDir . '/custom.env';
