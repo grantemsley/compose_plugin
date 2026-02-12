@@ -174,7 +174,7 @@ foreach ($composeProjects as $project) {
         $profilestext = @file_get_contents("$compose_root/$project/profiles");
         $profiles = json_decode($profilestext, false);
     }
-    $profilesJson = json_encode($profiles ? $profiles : []);
+    $profilesJson = htmlspecialchars(json_encode($profiles ? $profiles : []), ENT_QUOTES, 'UTF-8');
 
     // Determine status text and class for badge
     $statusText = "Stopped";

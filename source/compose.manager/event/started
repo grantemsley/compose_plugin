@@ -81,53 +81,54 @@ start_stack() {
     
     log "Starting stack: $stack_name"
     
-    # Build command arguments
-    local override=""
+    # Build command as an array to avoid shell injection via string interpolation
+    local -a cmd_args=("$COMPOSE_WRAPPER" -c up)
+
+    if [ -f "$dir/indirect" ]; then
+        local indirect
+        indirect=$(< "$dir/indirect")
+        cmd_args+=(-d "$indirect")
+    else
+        cmd_args+=(-f "$dir/docker-compose.yml")
+    fi
+
+    cmd_args+=(-p "$sanitized_name" -s "$dir")
+
     if [ -f "$dir/docker-compose.override.yml" ]; then
-        override="-f ${dir}/docker-compose.override.yml"
+        cmd_args+=(-f "$dir/docker-compose.override.yml")
     fi
-    
-    local envpath=""
+
     if [ -f "$dir/envpath" ]; then
-        envpath="-e $(< "$dir/envpath")"
+        local env_file
+        env_file=$(< "$dir/envpath")
+        cmd_args+=(-e "$env_file")
     fi
-    
+
     # Read default profile(s) for autostart
-    local profiles=""
     if [ -f "$dir/default_profile" ]; then
-        local default_profiles=$(< "$dir/default_profile")
+        local default_profiles
+        default_profiles=$(< "$dir/default_profile")
         IFS=',' read -ra PROFILE_ARRAY <<< "$default_profiles"
         for p in "${PROFILE_ARRAY[@]}"; do
             p=$(echo "$p" | xargs)  # trim whitespace
             if [ -n "$p" ]; then
-                profiles="$profiles -g $p"
+                cmd_args+=(-g "$p")
             fi
         done
     fi
-    
-    local recreate=""
+
     if [ "$AUTOSTART_FORCE_RECREATE" = "true" ]; then
-        recreate="--recreate"
+        cmd_args+=(--recreate)
     fi
-    
-    local debug=""
+
     if [ "$DEBUG_TO_LOG" = "true" ]; then
-        debug="--debug"
+        cmd_args+=(--debug)
     fi
-    
-    # Build the command
-    local cmd=""
-    if [ -f "$dir/indirect" ]; then
-        local indirect=$(< "$dir/indirect")
-        cmd="$COMPOSE_WRAPPER -c up -d '$indirect' -p '$sanitized_name' -s '$dir' $recreate $debug $override $envpath $profiles"
-    else
-        cmd="$COMPOSE_WRAPPER -c up -f '$dir/docker-compose.yml' -p '$sanitized_name' -s '$dir' $recreate $debug $override $envpath $profiles"
-    fi
-    
+
     # Execute with timeout, capture output for logging
     local output
     local exit_code
-    output=$(timeout $STARTUP_TIMEOUT bash -c "$cmd" 2>&1)
+    output=$(timeout "$STARTUP_TIMEOUT" "${cmd_args[@]}" 2>&1)
     exit_code=$?
     
     local duration=$(($(date +%s) - start_time))

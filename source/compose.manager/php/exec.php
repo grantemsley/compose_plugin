@@ -113,7 +113,10 @@ switch ($_POST['action']) {
     case 'changeName':
         $script = getPostScript();
         $newName = isset($_POST['newName']) ? trim($_POST['newName']) : "";
-        file_put_contents("$compose_root/$script/name", trim($newName));
+        // Strip characters that could cause shell injection when name is
+        // used in bash scripts (e.g. event/started autostart)
+        $newName = preg_replace('/[^a-zA-Z0-9 _.\-()\[\]]/', '', $newName);
+        file_put_contents("$compose_root/$script/name", $newName);
         echo json_encode(['result' => 'success', 'message' => '']);
         break;
     case 'changeDesc':
