@@ -49,13 +49,7 @@ switch ($_POST['action']) {
 
         #Create stack folder
         $stackName = isset($_POST['stackName']) ? trim($_POST['stackName']) : "";
-        $folderName = str_replace('"', "", $stackName);
-        $folderName = str_replace("'", "", $folderName);
-        $folderName = str_replace("&", "", $folderName);
-        $folderName = str_replace("(", "", $folderName);
-        $folderName = str_replace(")", "", $folderName);
-        $folderName = preg_replace("/ {2,}/", " ", $folderName);
-        $folderName = preg_replace("/\s/", "_", $folderName);
+        $folderName = sanitizeFolderName($stackName);
         $folder = "$compose_root/$folderName";
         while (true) {
             if (is_dir($folder)) {
@@ -1120,7 +1114,7 @@ switch ($_POST['action']) {
             break;
         }
 
-        $pendingRecheckFile = "/boot/config/plugins/compose.manager/pending-recheck.json";
+        $pendingRecheckFile = PENDING_RECHECK_FILE;
         $pending = [];
         if (is_file($pendingRecheckFile)) {
             $pending = json_decode(file_get_contents($pendingRecheckFile), true) ?: [];
@@ -1137,7 +1131,7 @@ switch ($_POST['action']) {
 
     case 'getPendingRecheckStacks':
         // Get list of stacks that need recheck
-        $pendingRecheckFile = "/boot/config/plugins/compose.manager/pending-recheck.json";
+        $pendingRecheckFile = PENDING_RECHECK_FILE;
         $pending = [];
         if (is_file($pendingRecheckFile)) {
             $pending = json_decode(file_get_contents($pendingRecheckFile), true) ?: [];
@@ -1156,7 +1150,7 @@ switch ($_POST['action']) {
             break;
         }
 
-        $pendingRecheckFile = "/boot/config/plugins/compose.manager/pending-recheck.json";
+        $pendingRecheckFile = PENDING_RECHECK_FILE;
         $pending = [];
         if (is_file($pendingRecheckFile)) {
             $pending = json_decode(file_get_contents($pendingRecheckFile), true) ?: [];
