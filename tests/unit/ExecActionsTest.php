@@ -439,8 +439,14 @@ class ExecActionsTest extends TestCase
         }
 
         $stackPath = $this->createTestStack('test-stack');
+
+        // Create the target directory so realpath() resolves it in CI
+        $envDir = '/mnt/user/appdata';
+        if (!is_dir($envDir)) {
+            @mkdir($envDir, 0755, true);
+        }
         
-        $customPath = '/mnt/user/appdata/custom.env';
+        $customPath = $envDir . '/custom.env';
         $output = $this->executeAction('setEnvPath', [
             'script' => 'test-stack',
             'envPath' => $customPath,
