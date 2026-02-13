@@ -299,9 +299,9 @@ function updateBackupCron()
 
     if (!$enabled) {
         // Write back crontab without our line
-        $tmpFile = '/tmp/compose-manager-crontab.' . getmypid();
+        $tmpFile = tempnam('/tmp', 'compose-cron-');
         file_put_contents($tmpFile, $existing);
-        exec("crontab {$tmpFile}");
+        exec("crontab " . escapeshellarg($tmpFile));
         @unlink($tmpFile);
         return;
     }
@@ -323,9 +323,9 @@ function updateBackupCron()
     }
 
     // Write updated crontab
-    $tmpFile = '/tmp/compose-manager-crontab.' . getmypid();
+    $tmpFile = tempnam('/tmp', 'compose-cron-');
     file_put_contents($tmpFile, $existing . $cronLine . "\n");
-    exec("crontab {$tmpFile}");
+    exec("crontab " . escapeshellarg($tmpFile));
     @unlink($tmpFile);
 }
 
@@ -361,14 +361,13 @@ if (!function_exists('logger')) {
  */
 function resolveArchivePath($filenameOrPath, $directory = null)
 {
-    // If it's an absolute path and exists, use it directly
-    if (strpos($filenameOrPath, '/') !== false && file_exists($filenameOrPath)) {
-        return $filenameOrPath;
-    }
+    // Always use basename to prevent path traversal — the archive is resolved
+    // relative to the backup destination, never from an arbitrary absolute path.
+    $filename = basename($filenameOrPath);
 
     // Try the explicitly provided directory first
     if ($directory !== null && $directory !== '') {
-        $candidate = rtrim($directory, '/') . '/' . basename($filenameOrPath);
+        $candidate = rtrim($directory, '/') . '/' . $filename;
         if (file_exists($candidate)) {
             return $candidate;
         }
@@ -376,7 +375,7 @@ function resolveArchivePath($filenameOrPath, $directory = null)
 
     // Otherwise look in the configured backup destination
     $dest = getBackupDestination();
-    $candidate = $dest . '/' . basename($filenameOrPath);
+    $candidate = $dest . '/' . $filename;
     if (file_exists($candidate)) {
         return $candidate;
     }

@@ -8,1423 +8,1527 @@ Menu="Utilities"
 include "/usr/local/emhttp/plugins/dynamix.docker.manager/include/DockerClient.php";
 require_once("/usr/local/emhttp/plugins/compose.manager/php/defines.php");
 $cfg = parse_plugin_cfg($sName);
-$ui_patch_button_type = (!$option_patch_ui && strcmp($cfg['PATCH_UI'],"true") == 0 && !isset($composemanDockerClientPatch)) ? "Button" : "Hidden";
-$ui_unpatch_button_type = (!$option_patch_ui && strcmp($cfg['PATCH_UI'],"false") == 0 && isset($composemanDockerClientPatch)) ? "Button" : "Hidden";
+$ui_patch_button_type = (!$option_patch_ui && strcmp($cfg['PATCH_UI'], "true") == 0 && !isset($composemanDockerClientPatch)) ? "Button" : "Hidden";
+$ui_unpatch_button_type = (!$option_patch_ui && strcmp($cfg['PATCH_UI'], "false") == 0 && isset($composemanDockerClientPatch)) ? "Button" : "Hidden";
 
-$option_patch_ui = version_compare(parse_ini_file('/etc/unraid-version')['version'],'6.12.0-RC0', '>=');
+$option_patch_ui = version_compare(parse_ini_file('/etc/unraid-version')['version'], '6.12.0-RC0', '>=');
 $ui_patch_help_class = $option_patch_ui ? "hidden" : "inline_help"; // hide help on 6.12+ (integration built-in) //
 
 
-$projects_exist = intval(shell_exec("ls -l ".$compose_root." | grep ^d | wc -l")) != 0;
+$projects_exist = intval(shell_exec("ls -l " . $compose_root . " | grep ^d | wc -l")) != 0;
 ?>
-<link type="text/css" rel="stylesheet" href="<?autov('/webGui/styles/jquery.switchbutton.css')?>">
-<script src="<?autov('/webGui/javascript/jquery.switchbutton.js')?>"></script>
+<link type="text/css" rel="stylesheet" href="<? autov('/webGui/styles/jquery.switchbutton.css') ?>">
+<script src="<? autov('/webGui/javascript/jquery.switchbutton.js') ?>"></script>
 <style>
-  <?php
-      if ($option_patch_ui)
-      {
+    <?php
+    if ($option_patch_ui) {
         echo "#compose-tab-settings dl:nth-last-of-type(2){display:none;}";
-      }
-  ?>
-  /* Toggle switch overrides */
-  #compose-tab-settings .switch-button-background,
-  #compose-tab-backup .switch-button-background {
-    margin: 4px 0 0 0;
-  }
-  #compose-tab-settings .switch-button-label,
-  #compose-tab-backup .switch-button-label {
-    margin-top: 2px;
-  }
-  /* Tab styles */
-  .compose-tabs {
-    display: flex;
-    border-bottom: 1px solid rgba(128, 128, 128, 0.3);
-    margin-bottom: 20px;
-  }
-  .compose-tab {
-    padding: 10px 20px;
-    cursor: pointer;
-    border: 1px solid transparent;
-    border-bottom: none;
-    margin-bottom: -1px;
-    background: transparent;
-    color: inherit;
-    opacity: 0.7;
-    transition: opacity 0.2s, background 0.2s;
-  }
-  .compose-tab:hover {
-    background: rgba(128, 128, 128, 0.1);
-    opacity: 1;
-  }
-  .compose-tab.active {
-    border: 1px solid rgba(128, 128, 128, 0.3);
-    border-bottom: 1px solid transparent;
-    background: inherit;
-    font-weight: bold;
-    opacity: 1;
-    position: relative;
-  }
-  .compose-tab.active::after {
-    content: '';
-    position: absolute;
-    bottom: -1px;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: var(--header-background, #ff8c2f);
-  }
-  .compose-tab-content {
-    display: none;
-  }
-  .compose-tab-content.active {
-    display: block;
-  }
-  /* Section headers */
-  #compose-tab-settings h2 {
-    margin: 25px 0 15px 0;
-    padding-bottom: 8px;
-    border-bottom: 1px solid rgba(128, 128, 128, 0.3);
-    font-size: 1.2em;
-    font-weight: 600;
-    color: inherit;
-  }
-  #compose-tab-settings h2:first-of-type {
-    margin-top: 10px;
-  }
-  /* Button styling */
-  #compose-tab-settings .orange-button,
-  #compose-tab-backup .orange-button {
-    background: linear-gradient(to bottom, #f97316 0%, #ea580c 100%);
-    border: 1px solid #c2410c;
-    color: #fff;
-  }
-  #compose-tab-settings .orange-button:hover,
-  #compose-tab-backup .orange-button:hover {
-    background: linear-gradient(to bottom, #fb923c 0%, #f97316 100%);
-  }
-  #compose-tab-settings .slim-button {
-    padding: 4px 12px;
-    margin-left: 10px;
-  }
-  /* Disabled input styling */
-  #compose-tab-settings input:disabled,
-  #compose-tab-backup input:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  /* Improved blockquote help text */
-  #compose-tab-settings blockquote,
-  #compose-tab-backup blockquote {
-    margin: 5px 0 15px 0;
-    padding: 8px 12px;
-    border-left: 3px solid rgba(128, 128, 128, 0.3);
-    font-size: 0.9em;
-    color: #888;
-  }
-  #compose-tab-settings blockquote p,
-  #compose-tab-backup blockquote p {
-    margin: 0;
-  }
-  #compose-tab-settings blockquote code,
-  #compose-tab-backup blockquote code {
-    background: rgba(128, 128, 128, 0.15);
-    padding: 1px 5px;
-    border-radius: 3px;
-    font-size: 0.95em;
-  }
-  /* Log viewer styles */
-  #compose-log-container {
-    font-family: monospace;
-    font-size: 12px;
-    background: #1e1e1e;
-    color: #d4d4d4;
-    padding: 10px;
-    border-radius: 4px;
-    height: 500px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-  }
-  #compose-log-container .log-timestamp {
-    color: #6a9955;
-  }
-  #compose-log-container .log-source {
-    color: #569cd6;
-  }
-  #compose-log-container .log-message {
-    color: #d4d4d4;
-  }
-  .log-controls {
-    margin-bottom: 10px;
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .log-controls select, .log-controls input[type="text"] {
-    padding: 5px;
-  }
-  .log-controls input[type="text"] {
-    width: 200px;
-  }
-  #log-line-count {
-    margin-left: auto;
-    color: #888;
-  }
-  /* Backup / Restore tab styles */
-  #compose-tab-backup .backup-section {
-    margin-bottom: 20px;
-  }
-  #compose-tab-backup dl:has(blockquote.inline_help) > dt {
-    cursor: help;
-  }
-  .backup-dest-input {
-    width: 400px;
-  }
-  .backup-dest-input::placeholder {
-    color: #888;
-    opacity: 1;
-  }
-  .backup-archive-list {
-    max-height: 150px;
-    width: 700px;
-    max-width: 100%;
-    overflow-y: auto;
-    border: 1px solid rgba(128, 128, 128, 0.3);
-    border-radius: 4px;
-    margin: 4px 0;
-    box-sizing: border-box;
-  }
-  .backup-archive-list table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: auto;
-  }
-  .backup-archive-list th {
-    position: sticky;
-    top: 0;
-    background: var(--body-background, #1c1b1b);
-    padding: 4px 8px;
-    text-align: left;
-    font-size: 0.85em;
-    border-bottom: 1px solid rgba(128, 128, 128, 0.3);
-    white-space: nowrap;
-  }
-  .backup-archive-list td {
-    padding: 3px 8px;
-    font-size: 0.85em;
-    border-bottom: 1px solid rgba(128, 128, 128, 0.1);
-    white-space: nowrap;
-  }
-  .backup-archive-list tr.selected {
-    background: rgba(255, 140, 47, 0.15);
-  }
-  .backup-archive-list tr:hover {
-    background: rgba(128, 128, 128, 0.1);
-    cursor: pointer;
-  }
-  .backup-stack-checklist {
-    max-height: 150px;
-    width: 700px;
-    max-width: 100%;
-    overflow-y: auto;
-    border: 1px solid rgba(128, 128, 128, 0.3);
-    border-radius: 4px;
-    padding: 4px 8px;
-    margin: 4px 0;
-    box-sizing: border-box;
-  }
-  .backup-stack-checklist label {
-    display: block;
-    padding: 2px 0;
-    cursor: pointer;
-    font-size: 0.9em;
-  }
-  .backup-stack-checklist label:hover {
-    background: rgba(128, 128, 128, 0.1);
-  }
-  .backup-stack-checklist input[type="checkbox"] {
-    margin-right: 8px;
-  }
-  .backup-status {
-    margin: 10px 0;
-    padding: 8px 12px;
-    border-radius: 4px;
-    font-size: 0.95em;
-    display: none;
-    width: 700px;
-    max-width: 100%;
-    box-sizing: border-box;
-  }
-  .backup-status.success {
-    display: block;
-    background: rgba(76, 175, 80, 0.15);
-    border: 1px solid rgba(76, 175, 80, 0.4);
-    color: #4caf50;
-  }
-  .backup-status.error {
-    display: block;
-    background: rgba(244, 67, 54, 0.15);
-    border: 1px solid rgba(244, 67, 54, 0.4);
-    color: #f44336;
-  }
-  .backup-status.info {
-    display: block;
-    background: rgba(33, 150, 243, 0.15);
-    border: 1px solid rgba(33, 150, 243, 0.4);
-    color: #2196f3;
-  }
-  .backup-actions {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-  }
-  .backup-actions .spinner {
-    display: none;
-    width: 16px;
-    height: 16px;
-    border: 2px solid rgba(128,128,128,0.3);
-    border-top: 2px solid #ff8c2f;
-    border-radius: 50%;
-    animation: backup-spin 0.8s linear infinite;
-  }
-  @keyframes backup-spin {
-    to { transform: rotate(360deg); }
-  }
-  .schedule-options {
-    margin: 5px 0 0 0;
-    display: flex;
-    gap: 15px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .schedule-options label {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-  .schedule-options select {
-    padding: 4px 8px;
-    min-width: 120px;
-  }
-  .schedule-options input[type="time"] {
-    padding: 4px 6px;
-  }
-  .browse-path-container {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
+    }
+    ?>
+
+    /* Toggle switch overrides */
+    #compose-tab-settings .switch-button-background,
+    #compose-tab-backup .switch-button-background {
+        margin: 4px 0 0 0;
+    }
+
+    #compose-tab-settings .switch-button-label,
+    #compose-tab-backup .switch-button-label {
+        margin-top: 2px;
+    }
+
+    /* Tab styles */
+    .compose-tabs {
+        display: flex;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+        margin-bottom: 20px;
+    }
+
+    .compose-tab {
+        padding: 10px 20px;
+        cursor: pointer;
+        border: 1px solid transparent;
+        border-bottom: none;
+        margin-bottom: -1px;
+        background: transparent;
+        color: inherit;
+        opacity: 0.7;
+        transition: opacity 0.2s, background 0.2s;
+    }
+
+    .compose-tab:hover {
+        background: rgba(128, 128, 128, 0.1);
+        opacity: 1;
+    }
+
+    .compose-tab.active {
+        border: 1px solid rgba(128, 128, 128, 0.3);
+        border-bottom: 1px solid transparent;
+        background: inherit;
+        font-weight: bold;
+        opacity: 1;
+        position: relative;
+    }
+
+    .compose-tab.active::after {
+        content: '';
+        position: absolute;
+        bottom: -1px;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: var(--header-background, #ff8c2f);
+    }
+
+    .compose-tab-content {
+        display: none;
+    }
+
+    .compose-tab-content.active {
+        display: block;
+    }
+
+    /* Section headers */
+    #compose-tab-settings h2 {
+        margin: 25px 0 15px 0;
+        padding-bottom: 8px;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+        font-size: 1.2em;
+        font-weight: 600;
+        color: inherit;
+    }
+
+    #compose-tab-settings h2:first-of-type {
+        margin-top: 10px;
+    }
+
+    /* Button styling */
+    #compose-tab-settings .orange-button,
+    #compose-tab-backup .orange-button {
+        background: linear-gradient(to bottom, #f97316 0%, #ea580c 100%);
+        border: 1px solid #c2410c;
+        color: #fff;
+    }
+
+    #compose-tab-settings .orange-button:hover,
+    #compose-tab-backup .orange-button:hover {
+        background: linear-gradient(to bottom, #fb923c 0%, #f97316 100%);
+    }
+
+    #compose-tab-settings .slim-button {
+        padding: 4px 12px;
+        margin-left: 10px;
+    }
+
+    /* Disabled input styling */
+    #compose-tab-settings input:disabled,
+    #compose-tab-backup input:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Improved blockquote help text */
+    #compose-tab-settings blockquote,
+    #compose-tab-backup blockquote {
+        margin: 5px 0 15px 0;
+        padding: 8px 12px;
+        border-left: 3px solid rgba(128, 128, 128, 0.3);
+        font-size: 0.9em;
+        color: #888;
+    }
+
+    #compose-tab-settings blockquote p,
+    #compose-tab-backup blockquote p {
+        margin: 0;
+    }
+
+    #compose-tab-settings blockquote code,
+    #compose-tab-backup blockquote code {
+        background: rgba(128, 128, 128, 0.15);
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-size: 0.95em;
+    }
+
+    /* Log viewer styles */
+    #compose-log-container {
+        font-family: monospace;
+        font-size: 12px;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 10px;
+        border-radius: 4px;
+        height: 500px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    #compose-log-container .log-timestamp {
+        color: #6a9955;
+    }
+
+    #compose-log-container .log-source {
+        color: #569cd6;
+    }
+
+    #compose-log-container .log-message {
+        color: #d4d4d4;
+    }
+
+    .log-controls {
+        margin-bottom: 10px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .log-controls select,
+    .log-controls input[type="text"] {
+        padding: 5px;
+    }
+
+    .log-controls input[type="text"] {
+        width: 200px;
+    }
+
+    #log-line-count {
+        margin-left: auto;
+        color: #888;
+    }
+
+    /* Backup / Restore tab styles */
+    #compose-tab-backup .backup-section {
+        margin-bottom: 20px;
+    }
+
+    #compose-tab-backup dl:has(blockquote.inline_help)>dt {
+        cursor: help;
+    }
+
+    .backup-dest-input {
+        width: 400px;
+    }
+
+    .backup-dest-input::placeholder {
+        color: #888;
+        opacity: 1;
+    }
+
+    .backup-archive-list {
+        max-height: 150px;
+        width: 700px;
+        max-width: 100%;
+        overflow-y: auto;
+        border: 1px solid rgba(128, 128, 128, 0.3);
+        border-radius: 4px;
+        margin: 4px 0;
+        box-sizing: border-box;
+    }
+
+    .backup-archive-list table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: auto;
+    }
+
+    .backup-archive-list th {
+        position: sticky;
+        top: 0;
+        background: var(--body-background, #1c1b1b);
+        padding: 4px 8px;
+        text-align: left;
+        font-size: 0.85em;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+        white-space: nowrap;
+    }
+
+    .backup-archive-list td {
+        padding: 3px 8px;
+        font-size: 0.85em;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.1);
+        white-space: nowrap;
+    }
+
+    .backup-archive-list tr.selected {
+        background: rgba(255, 140, 47, 0.15);
+    }
+
+    .backup-archive-list tr:hover {
+        background: rgba(128, 128, 128, 0.1);
+        cursor: pointer;
+    }
+
+    .backup-stack-checklist {
+        max-height: 150px;
+        width: 700px;
+        max-width: 100%;
+        overflow-y: auto;
+        border: 1px solid rgba(128, 128, 128, 0.3);
+        border-radius: 4px;
+        padding: 4px 8px;
+        margin: 4px 0;
+        box-sizing: border-box;
+    }
+
+    .backup-stack-checklist label {
+        display: block;
+        padding: 2px 0;
+        cursor: pointer;
+        font-size: 0.9em;
+    }
+
+    .backup-stack-checklist label:hover {
+        background: rgba(128, 128, 128, 0.1);
+    }
+
+    .backup-stack-checklist input[type="checkbox"] {
+        margin-right: 8px;
+    }
+
+    .backup-status {
+        margin: 10px 0;
+        padding: 8px 12px;
+        border-radius: 4px;
+        font-size: 0.95em;
+        display: none;
+        width: 700px;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    .backup-status.success {
+        display: block;
+        background: rgba(76, 175, 80, 0.15);
+        border: 1px solid rgba(76, 175, 80, 0.4);
+        color: #4caf50;
+    }
+
+    .backup-status.error {
+        display: block;
+        background: rgba(244, 67, 54, 0.15);
+        border: 1px solid rgba(244, 67, 54, 0.4);
+        color: #f44336;
+    }
+
+    .backup-status.info {
+        display: block;
+        background: rgba(33, 150, 243, 0.15);
+        border: 1px solid rgba(33, 150, 243, 0.4);
+        color: #2196f3;
+    }
+
+    .backup-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .backup-actions .spinner {
+        display: none;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(128, 128, 128, 0.3);
+        border-top: 2px solid #ff8c2f;
+        border-radius: 50%;
+        animation: backup-spin 0.8s linear infinite;
+    }
+
+    @keyframes backup-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .schedule-options {
+        margin: 5px 0 0 0;
+        display: flex;
+        gap: 15px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .schedule-options label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .schedule-options select {
+        padding: 4px 8px;
+        min-width: 120px;
+    }
+
+    .schedule-options input[type="time"] {
+        padding: 4px 6px;
+    }
+
+    .browse-path-container {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
 </style>
 <script>
-var caURL = "/plugins/compose.manager/php/exec.php";
-var skipPatchUI = <?php echo json_encode($option_patch_ui); ?>; // true when Unraid >= 6.12
-var logRefreshInterval = null;
-var autoScroll = true;
+    var caURL = "/plugins/compose.manager/php/exec.php";
+    var skipPatchUI = <?php echo json_encode($option_patch_ui); ?>; // true when Unraid >= 6.12
+    var logRefreshInterval = null;
+    var autoScroll = true;
 
-function toggleHelp(dt) {
-  var dl = dt.closest('dl');
-  var blockquote = dl.querySelector('blockquote.inline_help');
-  if (blockquote) {
-    $(blockquote).slideToggle('fast');
-  }
-}
-
-function patchWebui() {
-  if (skipPatchUI) { swal('Not available','Patch Docker Page is not needed on Unraid 6.12+ (integration is built-in).','info'); return; }
-  $.post(caURL,{action:'patchUI'}, function(data) {
-    window.location.reload();
-  })
-}
-
-function unpatchWebui() {
-  if (skipPatchUI) { swal('Not available','Unpatching the Docker page is not supported on Unraid 6.12+.','info'); return; }
-  $.post(caURL,{action:'unPatchUI'}, function(data) {
-    window.location.reload();
-  })
-}
-
-function clearUpdateCache() {
-  swal({
-    title: 'Clear Update Cache',
-    text: 'This will clear the update status cache and remove stale entries. You will need to check for updates again.',
-    type: 'warning',
-    showCancelButton: true,
-    confirmButtonText: 'Clear Cache'
-  }, function(confirmed) {
-    if (!confirmed) return;
-    $.post(caURL, {action: 'clearUpdateCache'}, function(data) {
-      var result = JSON.parse(data);
-      if (result.result === 'success') {
-        swal('Success', 'Update cache has been cleared.', 'success');
-      } else {
-        swal('Error', result.message || 'Failed to clear cache', 'error');
-      }
-    });
-  });
-}
-
-function checkProjectFolder() {
-  var projects_folder_not_empty = <?php echo json_encode($projects_exist); ?>;
-  var original_folder = "<?php echo $cfg['PROJECTS_FOLDER'] ?>";
-
-  if(projects_folder_not_empty & ($(this).val() != original_folder))
-  {
-    $("#PROJECTS_FOLDER_WARNING").show();
-  }
-  else
-  {
-    $("#PROJECTS_FOLDER_WARNING").hide();
-  }
-}
-
-function toggleAutoCheckInterval() {
-  var autoCheckEnabled = $('#AUTO_CHECK_UPDATES').is(':checked');
-  $('#AUTO_CHECK_UPDATES_DAYS').prop('disabled', !autoCheckEnabled);
-}
-
-$(function() {
-  var _ignorePatchUIChange = true; // prevent change handler from firing during initialization
-  $('#PROJECTS_FOLDER').on("input", null, null, checkProjectFolder);
-
-  // Helper to initialize toggles as switchButton (only once)
-  function initSwitchToggles($scope) {
-    $scope.find('.compose-toggle').each(function() {
-      var $cb = $(this);
-      // Always try to destroy, regardless of data
-      try { $cb.switchButton('destroy'); } catch(e) {}
-      $cb.switchButton({
-        labels_placement: 'right',
-        on_label: 'YES',
-        off_label: 'NO'
-      });
-    });
-  }
-  
-
-  // Handle dashboard tile toggle -> disable/enable hide containers option
-  function toggleHideContainers() {
-    var dashboardTileEnabled = $('#SHOW_DASHBOARD_TILE').is(':checked');
-    var $hide = $('#HIDE_DOCKER_COMPOSE_CONTAINERS');
-    var $wrapper = $hide.closest('dl');
-    if (!dashboardTileEnabled) {
-      if ($hide.is(':checked')) {
-        $hide.prop('checked', false).change();
-      }
-      $wrapper.css({ opacity: 0.4, pointerEvents: 'none' });
-    } else {
-      $wrapper.css({ opacity: 1, pointerEvents: '' });
-    }
-  }
-
-  // Patch UI toggle: confirm action and run patch.sh via server (uses existing ajax handlers)
-  if (!skipPatchUI) {
-    $('.compose-toggle[name="PATCH_UI"]').on('change', function(e) {
-      if (_ignorePatchUIChange) { _ignorePatchUIChange = false; return; }
-      var $cb = $(this);
-      var checked = $cb.is(':checked');
-      swal({
-        title: checked ? 'Patch Docker Page' : 'Unpatch Docker Page',
-        text: checked ? 'This will patch the Docker page to better display compose-managed containers. Apply now?' : 'This will remove the Docker page patch and restore the original UI. Proceed?',
-        type: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'Yes, proceed'
-      }, function(confirmed) {
-        if (!confirmed) {
-          // revert UI to previous state
-          _ignorePatchUIChange = true;
-          $cb.prop('checked', !checked);
-          // reload to ensure switch UI reflects actual state
-          window.location.reload();
-          return;
+    function toggleHelp(dt) {
+        var dl = dt.closest('dl');
+        var blockquote = dl.querySelector('blockquote.inline_help');
+        if (blockquote) {
+            $(blockquote).slideToggle('fast');
         }
-        // Call existing ajax helpers which execute patch.sh on the server and reload
-        if (checked) patchWebui(); else unpatchWebui();
-      });
-    });
-  } else {
-    // If Unraid >=6.12 then patch UI option is not applicable — keep checkbox disabled and show inline message
-    $('.compose-toggle[name="PATCH_UI"]').prop('disabled', true);
-  }
-  
-  // Handle header menu toggle -> disable/enable compose-on-top and hide-from-docker
-  // Saves and restores the original checked state of dependent settings so toggling
-  // the header menu on then off preserves the user's previous selections.
-  function toggleComposeOnTop() {
-    var headerMenuEnabled = $('#SHOW_COMPOSE_IN_HEADER_MENU').is(':checked');
-    var $onTop = $('#SHOW_COMPOSE_ON_TOP');
-    var $wrapper = $onTop.closest('dl');
-    if (headerMenuEnabled) {
-      // Save current state before disabling
-      if (typeof $onTop.data('saved-state') === 'undefined') {
-        $onTop.data('saved-state', $onTop.is(':checked'));
-      }
-      if ($onTop.is(':checked')) {
-        $onTop.prop('checked', false).change();
-      }
-      $wrapper.css({ opacity: 0.4, pointerEvents: 'none' });
-    } else {
-      $wrapper.css({ opacity: 1, pointerEvents: '' });
-      // Restore previously saved state
-      var saved = $onTop.data('saved-state');
-      if (typeof saved !== 'undefined') {
-        $onTop.prop('checked', saved).change();
-        $onTop.removeData('saved-state');
-      }
     }
-    // Also toggle hide-from-docker (only available in non-tabbed mode)
-    toggleHideFromDocker();
-  }
 
-  // Handle header menu toggle -> disable/enable hide compose from docker tab
-  function toggleHideFromDocker() {
-    var headerMenuEnabled = $('#SHOW_COMPOSE_IN_HEADER_MENU').is(':checked');
-    var $hide = $('#HIDE_COMPOSE_FROM_DOCKER');
-    var $wrapper = $hide.closest('dl');
-    if (headerMenuEnabled) {
-      // Save current state before disabling
-      if (typeof $hide.data('saved-state') === 'undefined') {
-        $hide.data('saved-state', $hide.is(':checked'));
-      }
-      if ($hide.is(':checked')) {
-        $hide.prop('checked', false).change();
-      }
-      $wrapper.css({ opacity: 0.4, pointerEvents: 'none' });
-    } else {
-      $wrapper.css({ opacity: 1, pointerEvents: '' });
-      // Restore previously saved state
-      var saved = $hide.data('saved-state');
-      if (typeof saved !== 'undefined') {
-        $hide.prop('checked', saved).change();
-        $hide.removeData('saved-state');
-      }
-    }
-  }
-
-  // Convert checkbox values to true/false strings before form submission
-  $('form[name="compose_manager_settings"]').on('submit', function(e) {
-    var $form = $(this);
-
-    $('.compose-toggle').each(function() {
-      var $checkbox = $(this);
-      var name = $checkbox.attr('name');
-      // Remove any existing hidden field for this setting
-      $('input[type="hidden"][name="' + name + '"]').remove();
-      // Determine the value based on the setting type
-      var value;
-      if (name === 'OUTPUTSTYLE') {
-        value = $checkbox.is(':checked') ? 'ttyd' : 'basic';
-      } else {
-        value = $checkbox.is(':checked') ? 'true' : 'false';
-      }
-      // Add hidden field with the appropriate value
-      $checkbox.before('<input type="hidden" name="' + name + '" value="' + value + '">');
-      // Remove name from checkbox so it doesn't submit
-      $checkbox.removeAttr('name');
-    });
-
-  });
-
-  // Tab switching
-  $('.compose-tab').on('click', function() {
-    var tabId = $(this).data('tab');
-    // Show content
-    $('.compose-tab-content').removeClass('active');
-    var $activeTab = $('#compose-tab-' + tabId).addClass('active');
-    // Update tab state
-    $('.compose-tab').removeClass('active');
-    $(this).addClass('active');
-    // Save tab preference
-    localStorage.setItem('compose-settings-tab', tabId);
-    // Start/stop log refresh based on tab
-    if (tabId === 'log') {
-      loadLogs();
-      startLogRefresh();
-    } else {
-      stopLogRefresh();
-    }
-    // Always load backup archives when switching to backup tab
-    if (tabId === 'backup') {
-      loadBackupArchives();
-    }
-  });
-
-  // On page load, initialize toggles for all tabs only once
-  initSwitchToggles($('.compose-tab-content'));
-
-  // Apply hide containers on load and on change
-  toggleHideContainers();
-  // Use delegated binding to survive switch-button DOM wrapping/replacement
-  $(document).on('change', '#SHOW_DASHBOARD_TILE', toggleHideContainers);
-  
-  // Apply compose on top on load and on change
-  toggleComposeOnTop();
-  $('#SHOW_COMPOSE_IN_HEADER_MENU').change(toggleComposeOnTop);
-
-  // Handle auto-check toggle state change
-  $('#AUTO_CHECK_UPDATES').change(function() {
-    toggleAutoCheckInterval();
-  });
-
-  // allow patch UI change handler to run now that switches are initialized
-  _ignorePatchUIChange = false;
-  var savedTab = localStorage.getItem('compose-settings-tab') || 'settings';
-  // Remove all active classes first
-  $('.compose-tab, .compose-tab-content').removeClass('active');
-  // Set only the correct tab and content as active
-  $('.compose-tab[data-tab="' + savedTab + '"]').addClass('active');
-  $('#compose-tab-' + savedTab).addClass('active');
-  // If the default tab is backup, load the backup list immediately
-  if (savedTab === 'backup') {
-    loadBackupArchives();
-  }
-});
-
-function loadLogs() {
-  var lines = $('#log-lines').val() || 100;
-  var filter = $('#log-filter').val() || '';
-
-  $.post(caURL, {
-    action: 'getLogs',
-    lines: lines,
-    filter: filter
-  }, function(data) {
-    try {
-      var result = JSON.parse(data);
-      if (result.result === 'success') {
-        $('#compose-log-container').html(formatLogEntries(result.logs));
-        $('#log-line-count').text(result.count + ' lines');
-        if (autoScroll) {
-          var container = document.getElementById('compose-log-container');
-          container.scrollTop = container.scrollHeight;
+    function patchWebui() {
+        if (skipPatchUI) {
+            swal('Not available', 'Patch Docker Page is not needed on Unraid 6.12+ (integration is built-in).', 'info');
+            return;
         }
-      } else {
-        $('#compose-log-container').html('<span style="color: #f44;">Error loading logs: ' + (result.message || 'Unknown error') + '</span>');
-      }
-    } catch(e) {
-      $('#compose-log-container').html('<span style="color: #f44;">Error parsing response</span>');
+        $.post(caURL, {
+            action: 'patchUI'
+        }, function(data) {
+            window.location.reload();
+        })
     }
-  });
-}
 
-function formatLogEntries(logs) {
-  if (!logs || logs.length === 0) {
-    return '<span style="color: #888;">No log entries found. Enable Debug Logging in Settings to capture compose commands.</span>';
-  }
-
-  var html = '';
-  logs.forEach(function(entry) {
-    html += '<div class="log-entry">';
-    html += '<span class="log-timestamp">' + escapeHtml(entry.timestamp) + '</span> ';
-    html += '<span class="log-source">' + escapeHtml(entry.source) + '</span>: ';
-    html += '<span class="log-message">' + escapeHtml(entry.message) + '</span>';
-    html += '</div>';
-  });
-  return html;
-}
-
-function escapeHtml(text) {
-  var div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-function startLogRefresh() {
-  stopLogRefresh();
-  var interval = parseInt($('#log-refresh').val()) || 0;
-  if (interval > 0) {
-    logRefreshInterval = setInterval(loadLogs, interval * 1000);
-  }
-}
-
-function stopLogRefresh() {
-  if (logRefreshInterval) {
-    clearInterval(logRefreshInterval);
-    logRefreshInterval = null;
-  }
-}
-
-function clearLogs() {
-  swal({
-    title: 'Clear Logs',
-    text: 'This will clear compose-related entries from the syslog. Are you sure?',
-    type: 'warning',
-    showCancelButton: true,
-    confirmButtonText: 'Clear'
-  }, function(confirmed) {
-    if (!confirmed) return;
-    // Note: We can't actually clear syslog entries, so just refresh
-    loadLogs();
-  });
-}
-
-function downloadLogs() {
-  var lines = $('#log-lines').val() || 100;
-  var filter = $('#log-filter').val() || '';
-
-  $.post(caURL, {
-    action: 'getLogs',
-    lines: lines,
-    filter: filter
-  }, function(data) {
-    try {
-      var result = JSON.parse(data);
-      if (result.result === 'success' && result.logs) {
-        var text = result.logs.map(function(entry) {
-          return entry.timestamp + ' ' + entry.source + ': ' + entry.message;
-        }).join('\n');
-
-        var blob = new Blob([text], {type: 'text/plain'});
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = 'compose-manager-logs.txt';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }
-    } catch(e) {
-      swal('Error', 'Failed to download logs', 'error');
+    function unpatchWebui() {
+        if (skipPatchUI) {
+            swal('Not available', 'Unpatching the Docker page is not supported on Unraid 6.12+.', 'info');
+            return;
+        }
+        $.post(caURL, {
+            action: 'unPatchUI'
+        }, function(data) {
+            window.location.reload();
+        })
     }
-  });
-}
 
-function toggleAutoScroll() {
-  autoScroll = $('#log-autoscroll').is(':checked');
-}
-
-// =========================================================
-// Backup / Restore Functions
-// =========================================================
-
-var selectedArchive = null;
-var selectedManifest = null;
-
-function showBackupStatus(elementId, message, type) {
-  var $el = $(elementId);
-  $el.removeClass('success error info').addClass(type).text(message).show();
-  if (type === 'success') {
-    setTimeout(function() { $el.fadeOut(); }, 8000);
-  }
-}
-
-function hideBackupStatus(elementId) {
-  $(elementId).hide();
-}
-
-function setBackupSpinner(buttonSelector, spinning) {
-  var $btn = $(buttonSelector);
-  var $spinner = $btn.siblings('.spinner');
-  if (spinning) {
-    $btn.prop('disabled', true);
-    $spinner.show();
-  } else {
-    $btn.prop('disabled', false);
-    $spinner.hide();
-  }
-}
-
-function createBackupNow() {
-  hideBackupStatus('#backup-create-status');
-  setBackupSpinner('#btn-create-backup', true);
-  
-  $.post(caURL, { action: 'createBackup' }, function(data) {
-    setBackupSpinner('#btn-create-backup', false);
-    try {
-      var result = JSON.parse(data);
-      if (result.result === 'success') {
-        showBackupStatus('#backup-create-status', 
-          'Backup created: ' + result.archive + ' (' + result.size + ', ' + result.stacks + ' stacks)', 'success');
-        loadBackupArchives();
-      } else {
-        showBackupStatus('#backup-create-status', result.message || 'Backup failed.', 'error');
-      }
-    } catch(e) {
-      showBackupStatus('#backup-create-status', 'Error parsing response.', 'error');
+    function clearUpdateCache() {
+        swal({
+            title: 'Clear Update Cache',
+            text: 'This will clear the update status cache and remove stale entries. You will need to check for updates again.',
+            type: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Clear Cache'
+        }, function(confirmed) {
+            if (!confirmed) return;
+            $.post(caURL, {
+                action: 'clearUpdateCache'
+            }, function(data) {
+                var result = JSON.parse(data);
+                if (result.result === 'success') {
+                    swal('Success', 'Update cache has been cleared.', 'success');
+                } else {
+                    swal('Error', result.message || 'Failed to clear cache', 'error');
+                }
+            });
+        });
     }
-  }).fail(function() {
-    setBackupSpinner('#btn-create-backup', false);
-    showBackupStatus('#backup-create-status', 'Request failed.', 'error');
-  });
-}
 
-function loadBackupArchives() {
-  var dir = $('#BACKUP_DESTINATION').val() || '';
-  var $list = $('#backup-archive-list');
-  $list.html('<tr><td colspan="4" style="text-align:center;padding:15px;color:#888;font-style:italic;">Loading...</td></tr>');
-  
-  $.post(caURL, { action: 'listBackups', directory: dir }, function(data) {
-    try {
-      var result = JSON.parse(data);
-      if (result.result === 'success') {
-        renderArchiveList(result.archives);
-      } else {
-        $list.html('<tr><td colspan="4" style="text-align:center;color:#f44;">Error loading archives</td></tr>');
-      }
-    } catch(e) {
-      $list.html('<tr><td colspan="4" style="text-align:center;color:#f44;">Error parsing response</td></tr>');
-    }
-  });
-}
+    function checkProjectFolder() {
+        var projects_folder_not_empty = <?php echo json_encode($projects_exist); ?>;
+        var original_folder = "<?php echo $cfg['PROJECTS_FOLDER'] ?>";
 
-function renderArchiveList(archives) {
-  var $list = $('#backup-archive-list');
-  
-  if (!archives || archives.length === 0) {
-    $list.html('<tr><td colspan="4" style="text-align:center;padding:15px;color:#888;">No backups found. Create one using the button above.</td></tr>');
-    return;
-  }
-  
-  var html = '';
-  archives.forEach(function(a) {
-    var date = a.modified ? new Date(a.modified).toLocaleString() : a.filename;
-    html += '<tr data-archive="' + escapeHtml(a.filename) + '" onclick="selectArchive(this)">';
-    html += '<td><input type="radio" name="backup_archive_select" style="pointer-events:none;"></td>';
-    html += '<td>' + escapeHtml(a.filename) + '</td>';
-    html += '<td>' + escapeHtml(a.size) + '</td>';
-    html += '<td>' + escapeHtml(date) + '</td>';
-    html += '</tr>';
-  });
-  
-  $list.html(html);
-}
-
-function selectArchive(row) {
-  var $row = $(row);
-  var archive = $row.data('archive');
-  
-  // Update selection UI
-  $('#backup-archive-list tr').removeClass('selected').find('input[type="radio"]').prop('checked', false);
-  $row.addClass('selected').find('input[type="radio"]').prop('checked', true);
-  
-  selectedArchive = archive;
-  selectedManifest = null;
-  
-  // Load stack list from archive
-  $('#restore-stack-checklist').html('<span style="color:#888;font-style:italic;">Reading archive contents...</span>');
-  $('#btn-restore-stacks').prop('disabled', true);
-  hideBackupStatus('#restore-status');
-  
-  var dir = $('#BACKUP_DESTINATION').val() || '';
-  $.post(caURL, { action: 'readManifest', archive: archive, directory: dir }, function(data) {
-    try {
-      var result = JSON.parse(data);
-      if (result.result === 'success' && result.stacks) {
-        selectedManifest = result;
-        renderStackChecklist(result.stacks);
-      } else {
-        $('#restore-stack-checklist').html('<span style="color:#f44;">' + escapeHtml(result.message || 'Failed to read archive.') + '</span>');
-      }
-    } catch(e) {
-      $('#restore-stack-checklist').html('<span style="color:#f44;">Error parsing response.</span>');
-    }
-  }).fail(function() {
-    $('#restore-stack-checklist').html('<span style="color:#f44;">Request failed. Check server logs.</span>');
-  });
-}
-
-function renderStackChecklist(stacks) {
-  var $checklist = $('#restore-stack-checklist');
-  
-  if (!stacks || stacks.length === 0) {
-    $checklist.html('<span style="color:#888;">No stacks found in this archive.</span>');
-    return;
-  }
-  
-  var html = '<label style="font-weight:bold;border-bottom:1px solid rgba(128,128,128,0.2);padding-bottom:6px;margin-bottom:4px;">' +
-    '<input type="checkbox" id="restore-select-all" onchange="toggleRestoreSelectAll(this)"> Select All (' + stacks.length + ' stacks)</label>';
-  
-  stacks.forEach(function(stack) {
-    html += '<label><input type="checkbox" class="restore-stack-cb" value="' + escapeHtml(stack) + '" onchange="updateRestoreButton()"> ' + escapeHtml(stack) + '</label>';
-  });
-  
-  $checklist.html(html);
-  updateRestoreButton();
-}
-
-function toggleRestoreSelectAll(cb) {
-  var checked = $(cb).is(':checked');
-  $('.restore-stack-cb').prop('checked', checked);
-  updateRestoreButton();
-}
-
-function updateRestoreButton() {
-  var $stackCbs = $('.restore-stack-cb');
-  var count = $stackCbs.filter(':checked').length;
-  $('#btn-restore-stacks').prop('disabled', count === 0);
-  $('#restore-selected-count').text(count > 0 ? count + ' selected' : '');
-  // Update Select All checkbox state
-  var $selectAll = $('#restore-select-all');
-  if ($selectAll.length) {
-    if (count === $stackCbs.length && $stackCbs.length > 0) {
-      $selectAll.prop('checked', true);
-    } else {
-      $selectAll.prop('checked', false);
-    }
-  }
-}
-
-function restoreSelectedStacks() {
-  var stacks = [];
-  $('.restore-stack-cb:checked').each(function() {
-    stacks.push($(this).val());
-  });
-  
-  if (stacks.length === 0 || !selectedArchive) return;
-  
-  // Show confirmation modal
-  var stackNames = stacks.join(', ');
-  swal({
-    title: 'Confirm Restore',
-    text: 'This action will permanently replace existing configurations for the selected stacks (' + stackNames + '). Confirm to proceed.',
-    type: 'warning',
-    showCancelButton: true,
-    confirmButtonText: 'Restore',
-    cancelButtonText: 'Cancel',
-    confirmButtonColor: '#f97316'
-  }, function() {
-    doRestore(stacks);
-  });
-}
-
-function doRestore(stacks) {
-  hideBackupStatus('#restore-status');
-  setBackupSpinner('#btn-restore-stacks', true);
-  
-  $.post(caURL, {
-    action: 'restoreBackup',
-    archive: selectedArchive,
-    stacks: JSON.stringify(stacks)
-  }, function(data) {
-    setBackupSpinner('#btn-restore-stacks', false);
-    try {
-      var result = JSON.parse(data);
-      if (result.result === 'success') {
-        showBackupStatus('#restore-status', result.message, 'success');
-      } else if (result.result === 'warning') {
-        showBackupStatus('#restore-status', result.message, 'info');
-      } else {
-        showBackupStatus('#restore-status', result.message || 'Restore failed.', 'error');
-      }
-    } catch(e) {
-      showBackupStatus('#restore-status', 'Error parsing response.', 'error');
-    }
-  }).fail(function() {
-    setBackupSpinner('#btn-restore-stacks', false);
-    showBackupStatus('#restore-status', 'Request failed.', 'error');
-  });
-}
-
-function deleteSelectedBackup() {
-  if (!selectedArchive) return;
-  
-  swal({
-    title: 'Delete Backup',
-    text: 'Delete "' + selectedArchive + '"? This cannot be undone.',
-    type: 'warning',
-    showCancelButton: true,
-    confirmButtonText: 'Delete',
-    confirmButtonColor: '#d33'
-  }, function() {
-    $.post(caURL, { action: 'deleteBackup', archive: selectedArchive }, function(data) {
-      try {
-        var result = JSON.parse(data);
-        if (result.result === 'success') {
-          selectedArchive = null;
-          selectedManifest = null;
-          $('#restore-stack-checklist').html('<span style="text-align:center;display:block;padding:15px;color:#888;font-size:0.85em;">Select a backup archive above to see its contents.</span>');
-          $('#btn-restore-stacks').prop('disabled', true);
-          loadBackupArchives();
+        if (projects_folder_not_empty & ($(this).val() != original_folder)) {
+            $("#PROJECTS_FOLDER_WARNING").show();
         } else {
-          swal('Error', result.message || 'Failed to delete backup.', 'error');
+            $("#PROJECTS_FOLDER_WARNING").hide();
         }
-      } catch(e) {
-        swal('Error', 'Error parsing response.', 'error');
-      }
-    });
-  });
-}
-
-function toggleBackupSchedule() {
-  var enabled = $('#BACKUP_SCHEDULE_ENABLED').is(':checked');
-  $('#backup-schedule-options input, #backup-schedule-options select').prop('disabled', !enabled);
-  toggleScheduleDay();
-}
-
-function toggleScheduleDay() {
-  var freq = $('#BACKUP_SCHEDULE_FREQUENCY').val();
-  var scheduleEnabled = $('#BACKUP_SCHEDULE_ENABLED').is(':checked');
-  $('#BACKUP_SCHEDULE_DAY').prop('disabled', freq !== 'weekly' || !scheduleEnabled);
-}
-
-function saveBackupSettings() {
-  // Collect all backup settings and save via Ajax
-  var settings = {
-    'BACKUP_DESTINATION': $('#BACKUP_DESTINATION').val() || '/boot/config/plugins/compose.manager/backups',
-    'BACKUP_RETENTION': $('#BACKUP_RETENTION').val() || '5',
-    'BACKUP_SCHEDULE_ENABLED': $('#BACKUP_SCHEDULE_ENABLED').is(':checked') ? 'true' : 'false',
-    'BACKUP_SCHEDULE_FREQUENCY': $('#BACKUP_SCHEDULE_FREQUENCY').val() || 'daily',
-    'BACKUP_SCHEDULE_TIME': $('#BACKUP_SCHEDULE_TIME').val() || '03:00',
-    'BACKUP_SCHEDULE_DAY': $('#BACKUP_SCHEDULE_DAY').val() || '1'
-  };
-  
-  // Save via Ajax with the new saveBackupSettings action
-  var $btn = $('#btn-save-backup-settings');
-  $btn.prop('disabled', true).val('Saving...');
-  
-  $.post(caURL, {
-    action: 'saveBackupSettings',
-    settings: JSON.stringify(settings)
-  }, function(response) {
-    var result = JSON.parse(response);
-    $btn.prop('disabled', false).val('Save Settings');
-    
-    if (result.result === 'success') {
-      showBackupStatus('#backup-create-status', 'Backup settings saved.', 'success');
-    } else {
-      showBackupStatus('#backup-create-status', result.message || 'Failed to save settings', 'error');
     }
-  }).fail(function() {
-    $btn.prop('disabled', false).val('Save Settings');
-    showBackupStatus('#backup-create-status', 'Failed to communicate with server', 'error');
-  });
-}
 
-function uploadBackupArchive(input) {
-  if (!input.files || !input.files[0]) return;
-  var file = input.files[0];
-  
-  // Validate extension
-  if (!file.name.match(/\.(tar\.gz|tgz)$/i)) {
-    swal('Invalid File', 'Please select a .tar.gz archive file.', 'error');
-    input.value = '';
-    return;
-  }
-  
-  var formData = new FormData();
-  formData.append('action', 'uploadBackup');
-  formData.append('file', file);
-  
-  showBackupStatus('#restore-status', 'Uploading ' + file.name + '...', 'info');
-  
-  $.ajax({
-    url: caURL,
-    type: 'POST',
-    data: formData,
-    processData: false,
-    contentType: false,
-    success: function(data) {
-      try {
-        var result = JSON.parse(data);
-        if (result.result === 'success') {
-          showBackupStatus('#restore-status', 'Uploaded: ' + file.name, 'success');
-          loadBackupArchives();
+    function toggleAutoCheckInterval() {
+        var autoCheckEnabled = $('#AUTO_CHECK_UPDATES').is(':checked');
+        $('#AUTO_CHECK_UPDATES_DAYS').prop('disabled', !autoCheckEnabled);
+    }
+
+    $(function() {
+        var _ignorePatchUIChange = true; // prevent change handler from firing during initialization
+        $('#PROJECTS_FOLDER').on("input", null, null, checkProjectFolder);
+
+        // Helper to initialize toggles as switchButton (only once)
+        function initSwitchToggles($scope) {
+            $scope.find('.compose-toggle').each(function() {
+                var $cb = $(this);
+                // Always try to destroy, regardless of data
+                try {
+                    $cb.switchButton('destroy');
+                } catch (e) {}
+                $cb.switchButton({
+                    labels_placement: 'right',
+                    on_label: 'YES',
+                    off_label: 'NO'
+                });
+            });
+        }
+
+
+        // Handle dashboard tile toggle -> disable/enable hide containers option
+        function toggleHideContainers() {
+            var dashboardTileEnabled = $('#SHOW_DASHBOARD_TILE').is(':checked');
+            var $hide = $('#HIDE_DOCKER_COMPOSE_CONTAINERS');
+            var $wrapper = $hide.closest('dl');
+            if (!dashboardTileEnabled) {
+                if ($hide.is(':checked')) {
+                    $hide.prop('checked', false).change();
+                }
+                $wrapper.css({
+                    opacity: 0.4,
+                    pointerEvents: 'none'
+                });
+            } else {
+                $wrapper.css({
+                    opacity: 1,
+                    pointerEvents: ''
+                });
+            }
+        }
+
+        // Patch UI toggle: confirm action and run patch.sh via server (uses existing ajax handlers)
+        if (!skipPatchUI) {
+            $('.compose-toggle[name="PATCH_UI"]').on('change', function(e) {
+                if (_ignorePatchUIChange) {
+                    _ignorePatchUIChange = false;
+                    return;
+                }
+                var $cb = $(this);
+                var checked = $cb.is(':checked');
+                swal({
+                    title: checked ? 'Patch Docker Page' : 'Unpatch Docker Page',
+                    text: checked ? 'This will patch the Docker page to better display compose-managed containers. Apply now?' : 'This will remove the Docker page patch and restore the original UI. Proceed?',
+                    type: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, proceed'
+                }, function(confirmed) {
+                    if (!confirmed) {
+                        // revert UI to previous state
+                        _ignorePatchUIChange = true;
+                        $cb.prop('checked', !checked);
+                        // reload to ensure switch UI reflects actual state
+                        window.location.reload();
+                        return;
+                    }
+                    // Call existing ajax helpers which execute patch.sh on the server and reload
+                    if (checked) patchWebui();
+                    else unpatchWebui();
+                });
+            });
         } else {
-          showBackupStatus('#restore-status', result.message || 'Upload failed.', 'error');
+            // If Unraid >=6.12 then patch UI option is not applicable — keep checkbox disabled and show inline message
+            $('.compose-toggle[name="PATCH_UI"]').prop('disabled', true);
         }
-      } catch(e) {
-        showBackupStatus('#restore-status', 'Error parsing upload response.', 'error');
-      }
-    },
-    error: function() {
-      showBackupStatus('#restore-status', 'Upload request failed.', 'error');
-    },
-    complete: function() {
-      input.value = '';
-    }
-  });
-}
 
+        // Handle header menu toggle -> disable/enable compose-on-top and hide-from-docker
+        // Saves and restores the original checked state of dependent settings so toggling
+        // the header menu on then off preserves the user's previous selections.
+        function toggleComposeOnTop() {
+            var headerMenuEnabled = $('#SHOW_COMPOSE_IN_HEADER_MENU').is(':checked');
+            var $onTop = $('#SHOW_COMPOSE_ON_TOP');
+            var $wrapper = $onTop.closest('dl');
+            if (headerMenuEnabled) {
+                // Save current state before disabling
+                if (typeof $onTop.data('saved-state') === 'undefined') {
+                    $onTop.data('saved-state', $onTop.is(':checked'));
+                }
+                if ($onTop.is(':checked')) {
+                    $onTop.prop('checked', false).change();
+                }
+                $wrapper.css({
+                    opacity: 0.4,
+                    pointerEvents: 'none'
+                });
+            } else {
+                $wrapper.css({
+                    opacity: 1,
+                    pointerEvents: ''
+                });
+                // Restore previously saved state
+                var saved = $onTop.data('saved-state');
+                if (typeof saved !== 'undefined') {
+                    $onTop.prop('checked', saved).change();
+                    $onTop.removeData('saved-state');
+                }
+            }
+            // Also toggle hide-from-docker (only available in non-tabbed mode)
+            toggleHideFromDocker();
+        }
+
+        // Handle header menu toggle -> disable/enable hide compose from docker tab
+        function toggleHideFromDocker() {
+            var headerMenuEnabled = $('#SHOW_COMPOSE_IN_HEADER_MENU').is(':checked');
+            var $hide = $('#HIDE_COMPOSE_FROM_DOCKER');
+            var $wrapper = $hide.closest('dl');
+            if (headerMenuEnabled) {
+                // Save current state before disabling
+                if (typeof $hide.data('saved-state') === 'undefined') {
+                    $hide.data('saved-state', $hide.is(':checked'));
+                }
+                if ($hide.is(':checked')) {
+                    $hide.prop('checked', false).change();
+                }
+                $wrapper.css({
+                    opacity: 0.4,
+                    pointerEvents: 'none'
+                });
+            } else {
+                $wrapper.css({
+                    opacity: 1,
+                    pointerEvents: ''
+                });
+                // Restore previously saved state
+                var saved = $hide.data('saved-state');
+                if (typeof saved !== 'undefined') {
+                    $hide.prop('checked', saved).change();
+                    $hide.removeData('saved-state');
+                }
+            }
+        }
+
+        // Convert checkbox values to true/false strings before form submission
+        $('form[name="compose_manager_settings"]').on('submit', function(e) {
+            var $form = $(this);
+
+            $('.compose-toggle').each(function() {
+                var $checkbox = $(this);
+                var name = $checkbox.attr('name');
+                // Remove any existing hidden field for this setting
+                $('input[type="hidden"][name="' + name + '"]').remove();
+                // Determine the value based on the setting type
+                var value;
+                if (name === 'OUTPUTSTYLE') {
+                    value = $checkbox.is(':checked') ? 'ttyd' : 'basic';
+                } else {
+                    value = $checkbox.is(':checked') ? 'true' : 'false';
+                }
+                // Add hidden field with the appropriate value
+                $checkbox.before('<input type="hidden" name="' + name + '" value="' + value + '">');
+                // Remove name from checkbox so it doesn't submit
+                $checkbox.removeAttr('name');
+            });
+
+        });
+
+        // Tab switching
+        $('.compose-tab').on('click', function() {
+            var tabId = $(this).data('tab');
+            // Show content
+            $('.compose-tab-content').removeClass('active');
+            var $activeTab = $('#compose-tab-' + tabId).addClass('active');
+            // Update tab state
+            $('.compose-tab').removeClass('active');
+            $(this).addClass('active');
+            // Save tab preference
+            localStorage.setItem('compose-settings-tab', tabId);
+            // Start/stop log refresh based on tab
+            if (tabId === 'log') {
+                loadLogs();
+                startLogRefresh();
+            } else {
+                stopLogRefresh();
+            }
+            // Always load backup archives when switching to backup tab
+            if (tabId === 'backup') {
+                loadBackupArchives();
+            }
+        });
+
+        // On page load, initialize toggles for all tabs only once
+        initSwitchToggles($('.compose-tab-content'));
+
+        // Apply hide containers on load and on change
+        toggleHideContainers();
+        // Use delegated binding to survive switch-button DOM wrapping/replacement
+        $(document).on('change', '#SHOW_DASHBOARD_TILE', toggleHideContainers);
+
+        // Apply compose on top on load and on change
+        toggleComposeOnTop();
+        $('#SHOW_COMPOSE_IN_HEADER_MENU').change(toggleComposeOnTop);
+
+        // Handle auto-check toggle state change
+        $('#AUTO_CHECK_UPDATES').change(function() {
+            toggleAutoCheckInterval();
+        });
+
+        // allow patch UI change handler to run now that switches are initialized
+        _ignorePatchUIChange = false;
+        var savedTab = localStorage.getItem('compose-settings-tab') || 'settings';
+        // Remove all active classes first
+        $('.compose-tab, .compose-tab-content').removeClass('active');
+        // Set only the correct tab and content as active
+        $('.compose-tab[data-tab="' + savedTab + '"]').addClass('active');
+        $('#compose-tab-' + savedTab).addClass('active');
+        // If the default tab is backup, load the backup list immediately
+        if (savedTab === 'backup') {
+            loadBackupArchives();
+        }
+    });
+
+    function loadLogs() {
+        var lines = $('#log-lines').val() || 100;
+        var filter = $('#log-filter').val() || '';
+
+        $.post(caURL, {
+            action: 'getLogs',
+            lines: lines,
+            filter: filter
+        }, function(data) {
+            try {
+                var result = JSON.parse(data);
+                if (result.result === 'success') {
+                    $('#compose-log-container').html(formatLogEntries(result.logs));
+                    $('#log-line-count').text(result.count + ' lines');
+                    if (autoScroll) {
+                        var container = document.getElementById('compose-log-container');
+                        container.scrollTop = container.scrollHeight;
+                    }
+                } else {
+                    $('#compose-log-container').html('<span style="color: #f44;">Error loading logs: ' + (result.message || 'Unknown error') + '</span>');
+                }
+            } catch (e) {
+                $('#compose-log-container').html('<span style="color: #f44;">Error parsing response</span>');
+            }
+        });
+    }
+
+    function formatLogEntries(logs) {
+        if (!logs || logs.length === 0) {
+            return '<span style="color: #888;">No log entries found. Enable Debug Logging in Settings to capture compose commands.</span>';
+        }
+
+        var html = '';
+        logs.forEach(function(entry) {
+            html += '<div class="log-entry">';
+            html += '<span class="log-timestamp">' + escapeHtml(entry.timestamp) + '</span> ';
+            html += '<span class="log-source">' + escapeHtml(entry.source) + '</span>: ';
+            html += '<span class="log-message">' + escapeHtml(entry.message) + '</span>';
+            html += '</div>';
+        });
+        return html;
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function startLogRefresh() {
+        stopLogRefresh();
+        var interval = parseInt($('#log-refresh').val()) || 0;
+        if (interval > 0) {
+            logRefreshInterval = setInterval(loadLogs, interval * 1000);
+        }
+    }
+
+    function stopLogRefresh() {
+        if (logRefreshInterval) {
+            clearInterval(logRefreshInterval);
+            logRefreshInterval = null;
+        }
+    }
+
+    function clearLogs() {
+        swal({
+            title: 'Clear Logs',
+            text: 'This will clear compose-related entries from the syslog. Are you sure?',
+            type: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Clear'
+        }, function(confirmed) {
+            if (!confirmed) return;
+            // Note: We can't actually clear syslog entries, so just refresh
+            loadLogs();
+        });
+    }
+
+    function downloadLogs() {
+        var lines = $('#log-lines').val() || 100;
+        var filter = $('#log-filter').val() || '';
+
+        $.post(caURL, {
+            action: 'getLogs',
+            lines: lines,
+            filter: filter
+        }, function(data) {
+            try {
+                var result = JSON.parse(data);
+                if (result.result === 'success' && result.logs) {
+                    var text = result.logs.map(function(entry) {
+                        return entry.timestamp + ' ' + entry.source + ': ' + entry.message;
+                    }).join('\n');
+
+                    var blob = new Blob([text], {
+                        type: 'text/plain'
+                    });
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'compose-manager-logs.txt';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }
+            } catch (e) {
+                swal('Error', 'Failed to download logs', 'error');
+            }
+        });
+    }
+
+    function toggleAutoScroll() {
+        autoScroll = $('#log-autoscroll').is(':checked');
+    }
+
+    // =========================================================
+    // Backup / Restore Functions
+    // =========================================================
+
+    var selectedArchive = null;
+    var selectedManifest = null;
+
+    function showBackupStatus(elementId, message, type) {
+        var $el = $(elementId);
+        $el.removeClass('success error info').addClass(type).text(message).show();
+        if (type === 'success') {
+            setTimeout(function() {
+                $el.fadeOut();
+            }, 8000);
+        }
+    }
+
+    function hideBackupStatus(elementId) {
+        $(elementId).hide();
+    }
+
+    function setBackupSpinner(buttonSelector, spinning) {
+        var $btn = $(buttonSelector);
+        var $spinner = $btn.siblings('.spinner');
+        if (spinning) {
+            $btn.prop('disabled', true);
+            $spinner.show();
+        } else {
+            $btn.prop('disabled', false);
+            $spinner.hide();
+        }
+    }
+
+    function createBackupNow() {
+        hideBackupStatus('#backup-create-status');
+        setBackupSpinner('#btn-create-backup', true);
+
+        $.post(caURL, {
+            action: 'createBackup'
+        }, function(data) {
+            setBackupSpinner('#btn-create-backup', false);
+            try {
+                var result = JSON.parse(data);
+                if (result.result === 'success') {
+                    showBackupStatus('#backup-create-status',
+                        'Backup created: ' + result.archive + ' (' + result.size + ', ' + result.stacks + ' stacks)', 'success');
+                    loadBackupArchives();
+                } else {
+                    showBackupStatus('#backup-create-status', result.message || 'Backup failed.', 'error');
+                }
+            } catch (e) {
+                showBackupStatus('#backup-create-status', 'Error parsing response.', 'error');
+            }
+        }).fail(function() {
+            setBackupSpinner('#btn-create-backup', false);
+            showBackupStatus('#backup-create-status', 'Request failed.', 'error');
+        });
+    }
+
+    function loadBackupArchives() {
+        var dir = $('#BACKUP_DESTINATION').val() || '';
+        var $list = $('#backup-archive-list');
+        $list.html('<tr><td colspan="4" style="text-align:center;padding:15px;color:#888;font-style:italic;">Loading...</td></tr>');
+
+        $.post(caURL, {
+            action: 'listBackups',
+            directory: dir
+        }, function(data) {
+            try {
+                var result = JSON.parse(data);
+                if (result.result === 'success') {
+                    renderArchiveList(result.archives);
+                } else {
+                    $list.html('<tr><td colspan="4" style="text-align:center;color:#f44;">Error loading archives</td></tr>');
+                }
+            } catch (e) {
+                $list.html('<tr><td colspan="4" style="text-align:center;color:#f44;">Error parsing response</td></tr>');
+            }
+        });
+    }
+
+    function renderArchiveList(archives) {
+        var $list = $('#backup-archive-list');
+
+        if (!archives || archives.length === 0) {
+            $list.html('<tr><td colspan="4" style="text-align:center;padding:15px;color:#888;">No backups found. Create one using the button above.</td></tr>');
+            return;
+        }
+
+        var html = '';
+        archives.forEach(function(a) {
+            var date = a.modified ? new Date(a.modified).toLocaleString() : a.filename;
+            html += '<tr data-archive="' + escapeHtml(a.filename) + '" onclick="selectArchive(this)">';
+            html += '<td><input type="radio" name="backup_archive_select" style="pointer-events:none;"></td>';
+            html += '<td>' + escapeHtml(a.filename) + '</td>';
+            html += '<td>' + escapeHtml(a.size) + '</td>';
+            html += '<td>' + escapeHtml(date) + '</td>';
+            html += '</tr>';
+        });
+
+        $list.html(html);
+    }
+
+    function selectArchive(row) {
+        var $row = $(row);
+        var archive = $row.data('archive');
+
+        // Update selection UI
+        $('#backup-archive-list tr').removeClass('selected').find('input[type="radio"]').prop('checked', false);
+        $row.addClass('selected').find('input[type="radio"]').prop('checked', true);
+
+        selectedArchive = archive;
+        selectedManifest = null;
+
+        // Load stack list from archive
+        $('#restore-stack-checklist').html('<span style="color:#888;font-style:italic;">Reading archive contents...</span>');
+        $('#btn-restore-stacks').prop('disabled', true);
+        hideBackupStatus('#restore-status');
+
+        var dir = $('#BACKUP_DESTINATION').val() || '';
+        $.post(caURL, {
+            action: 'readManifest',
+            archive: archive,
+            directory: dir
+        }, function(data) {
+            try {
+                var result = JSON.parse(data);
+                if (result.result === 'success' && result.stacks) {
+                    selectedManifest = result;
+                    renderStackChecklist(result.stacks);
+                } else {
+                    $('#restore-stack-checklist').html('<span style="color:#f44;">' + escapeHtml(result.message || 'Failed to read archive.') + '</span>');
+                }
+            } catch (e) {
+                $('#restore-stack-checklist').html('<span style="color:#f44;">Error parsing response.</span>');
+            }
+        }).fail(function() {
+            $('#restore-stack-checklist').html('<span style="color:#f44;">Request failed. Check server logs.</span>');
+        });
+    }
+
+    function renderStackChecklist(stacks) {
+        var $checklist = $('#restore-stack-checklist');
+
+        if (!stacks || stacks.length === 0) {
+            $checklist.html('<span style="color:#888;">No stacks found in this archive.</span>');
+            return;
+        }
+
+        var html = '<label style="font-weight:bold;border-bottom:1px solid rgba(128,128,128,0.2);padding-bottom:6px;margin-bottom:4px;">' +
+            '<input type="checkbox" id="restore-select-all" onchange="toggleRestoreSelectAll(this)"> Select All (' + stacks.length + ' stacks)</label>';
+
+        stacks.forEach(function(stack) {
+            html += '<label><input type="checkbox" class="restore-stack-cb" value="' + escapeHtml(stack) + '" onchange="updateRestoreButton()"> ' + escapeHtml(stack) + '</label>';
+        });
+
+        $checklist.html(html);
+        updateRestoreButton();
+    }
+
+    function toggleRestoreSelectAll(cb) {
+        var checked = $(cb).is(':checked');
+        $('.restore-stack-cb').prop('checked', checked);
+        updateRestoreButton();
+    }
+
+    function updateRestoreButton() {
+        var $stackCbs = $('.restore-stack-cb');
+        var count = $stackCbs.filter(':checked').length;
+        $('#btn-restore-stacks').prop('disabled', count === 0);
+        $('#restore-selected-count').text(count > 0 ? count + ' selected' : '');
+        // Update Select All checkbox state
+        var $selectAll = $('#restore-select-all');
+        if ($selectAll.length) {
+            if (count === $stackCbs.length && $stackCbs.length > 0) {
+                $selectAll.prop('checked', true);
+            } else {
+                $selectAll.prop('checked', false);
+            }
+        }
+    }
+
+    function restoreSelectedStacks() {
+        var stacks = [];
+        $('.restore-stack-cb:checked').each(function() {
+            stacks.push($(this).val());
+        });
+
+        if (stacks.length === 0 || !selectedArchive) return;
+
+        // Show confirmation modal
+        var stackNames = stacks.join(', ');
+        swal({
+            title: 'Confirm Restore',
+            text: 'This action will permanently replace existing configurations for the selected stacks (' + stackNames + '). Confirm to proceed.',
+            type: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Restore',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#f97316'
+        }, function() {
+            doRestore(stacks);
+        });
+    }
+
+    function doRestore(stacks) {
+        hideBackupStatus('#restore-status');
+        setBackupSpinner('#btn-restore-stacks', true);
+
+        $.post(caURL, {
+            action: 'restoreBackup',
+            archive: selectedArchive,
+            stacks: JSON.stringify(stacks)
+        }, function(data) {
+            setBackupSpinner('#btn-restore-stacks', false);
+            try {
+                var result = JSON.parse(data);
+                if (result.result === 'success') {
+                    showBackupStatus('#restore-status', result.message, 'success');
+                } else if (result.result === 'warning') {
+                    showBackupStatus('#restore-status', result.message, 'info');
+                } else {
+                    showBackupStatus('#restore-status', result.message || 'Restore failed.', 'error');
+                }
+            } catch (e) {
+                showBackupStatus('#restore-status', 'Error parsing response.', 'error');
+            }
+        }).fail(function() {
+            setBackupSpinner('#btn-restore-stacks', false);
+            showBackupStatus('#restore-status', 'Request failed.', 'error');
+        });
+    }
+
+    function deleteSelectedBackup() {
+        if (!selectedArchive) return;
+
+        swal({
+            title: 'Delete Backup',
+            text: 'Delete "' + selectedArchive + '"? This cannot be undone.',
+            type: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Delete',
+            confirmButtonColor: '#d33'
+        }, function() {
+            $.post(caURL, {
+                action: 'deleteBackup',
+                archive: selectedArchive
+            }, function(data) {
+                try {
+                    var result = JSON.parse(data);
+                    if (result.result === 'success') {
+                        selectedArchive = null;
+                        selectedManifest = null;
+                        $('#restore-stack-checklist').html('<span style="text-align:center;display:block;padding:15px;color:#888;font-size:0.85em;">Select a backup archive above to see its contents.</span>');
+                        $('#btn-restore-stacks').prop('disabled', true);
+                        loadBackupArchives();
+                    } else {
+                        swal('Error', result.message || 'Failed to delete backup.', 'error');
+                    }
+                } catch (e) {
+                    swal('Error', 'Error parsing response.', 'error');
+                }
+            });
+        });
+    }
+
+    function toggleBackupSchedule() {
+        var enabled = $('#BACKUP_SCHEDULE_ENABLED').is(':checked');
+        $('#backup-schedule-options input, #backup-schedule-options select').prop('disabled', !enabled);
+        toggleScheduleDay();
+    }
+
+    function toggleScheduleDay() {
+        var freq = $('#BACKUP_SCHEDULE_FREQUENCY').val();
+        var scheduleEnabled = $('#BACKUP_SCHEDULE_ENABLED').is(':checked');
+        $('#BACKUP_SCHEDULE_DAY').prop('disabled', freq !== 'weekly' || !scheduleEnabled);
+    }
+
+    function saveBackupSettings() {
+        // Collect all backup settings and save via Ajax
+        var settings = {
+            'BACKUP_DESTINATION': $('#BACKUP_DESTINATION').val() || '/boot/config/plugins/compose.manager/backups',
+            'BACKUP_RETENTION': $('#BACKUP_RETENTION').val() || '5',
+            'BACKUP_SCHEDULE_ENABLED': $('#BACKUP_SCHEDULE_ENABLED').is(':checked') ? 'true' : 'false',
+            'BACKUP_SCHEDULE_FREQUENCY': $('#BACKUP_SCHEDULE_FREQUENCY').val() || 'daily',
+            'BACKUP_SCHEDULE_TIME': $('#BACKUP_SCHEDULE_TIME').val() || '03:00',
+            'BACKUP_SCHEDULE_DAY': $('#BACKUP_SCHEDULE_DAY').val() || '1'
+        };
+
+        // Save via Ajax with the new saveBackupSettings action
+        var $btn = $('#btn-save-backup-settings');
+        $btn.prop('disabled', true).val('Saving...');
+
+        $.post(caURL, {
+            action: 'saveBackupSettings',
+            settings: JSON.stringify(settings)
+        }, function(response) {
+            var result = JSON.parse(response);
+            $btn.prop('disabled', false).val('Save Settings');
+
+            if (result.result === 'success') {
+                showBackupStatus('#backup-create-status', 'Backup settings saved.', 'success');
+            } else {
+                showBackupStatus('#backup-create-status', result.message || 'Failed to save settings', 'error');
+            }
+        }).fail(function() {
+            $btn.prop('disabled', false).val('Save Settings');
+            showBackupStatus('#backup-create-status', 'Failed to communicate with server', 'error');
+        });
+    }
+
+    function uploadBackupArchive(input) {
+        if (!input.files || !input.files[0]) return;
+        var file = input.files[0];
+
+        // Validate extension
+        if (!file.name.match(/\.(tar\.gz|tgz)$/i)) {
+            swal('Invalid File', 'Please select a .tar.gz archive file.', 'error');
+            input.value = '';
+            return;
+        }
+
+        var formData = new FormData();
+        formData.append('action', 'uploadBackup');
+        formData.append('file', file);
+
+        showBackupStatus('#restore-status', 'Uploading ' + file.name + '...', 'info');
+
+        $.ajax({
+            url: caURL,
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(data) {
+                try {
+                    var result = JSON.parse(data);
+                    if (result.result === 'success') {
+                        showBackupStatus('#restore-status', 'Uploaded: ' + file.name, 'success');
+                        loadBackupArchives();
+                    } else {
+                        showBackupStatus('#restore-status', result.message || 'Upload failed.', 'error');
+                    }
+                } catch (e) {
+                    showBackupStatus('#restore-status', 'Error parsing upload response.', 'error');
+                }
+            },
+            error: function() {
+                showBackupStatus('#restore-status', 'Upload request failed.', 'error');
+            },
+            complete: function() {
+                input.value = '';
+            }
+        });
+    }
 </script>
 
 <!-- Tab Navigation -->
 <div class="compose-tabs">
-  <div class="compose-tab active" data-tab="settings"><i class="fa fa-cog fa-fw"></i> _(Settings)_</div>
-  <div class="compose-tab" data-tab="backup"><i class="fa fa-archive fa-fw"></i> _(Backup / Restore)_</div>
-  <div class="compose-tab" data-tab="log"><i class="fa fa-file-text-o fa-fw"></i> _(Log)_</div>
+    <div class="compose-tab active" data-tab="settings"><i class="fa fa-cog fa-fw"></i> _(Settings)_</div>
+    <div class="compose-tab" data-tab="backup"><i class="fa fa-archive fa-fw"></i> _(Backup / Restore)_</div>
+    <div class="compose-tab" data-tab="log"><i class="fa fa-file-text-o fa-fw"></i> _(Log)_</div>
 </div>
 
 <!-- Settings Tab -->
 <div id="compose-tab-settings" class="compose-tab-content active">
-<form name="compose_manager_settings" method="POST" action="/update.php" target="progressFrame">
-<input type="hidden" name="#file" value="<?=$sName?>/<?=$sName?>.cfg">
-<input type="hidden" name="#section" value="">
+    <form name="compose_manager_settings" method="POST" action="/update.php" target="progressFrame">
+        <input type="hidden" name="#file" value="<?= $sName ?>/<?= $sName ?>.cfg">
+        <input type="hidden" name="#section" value="">
 
-<div class="title"><span class="left"><i class="fa fa-cog icon"></i>_(General Settings)_</span></div>
+        <div class="title"><span class="left"><i class="fa fa-cog icon"></i>_(General Settings)_</span></div>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Compose Project Directory)_:</dt>
-  <dd>
-    <input type="text" name="PROJECTS_FOLDER" id="PROJECTS_FOLDER" autocomplete="off" spellcheck="false" value="<?=$cfg['PROJECTS_FOLDER']?>" placeholder="_(e.g.)_ /mnt/user/appdata/compose_projects" data-pickcloseonfile="true" data-pickfilter="img" data-pickroot="/mnt" data-pickfolders="true" required pattern="^\/(mnt\/.+\/.+)||(\/boot\/config\/plugins\/compose\.manager\/projects)$">
-    <a class='info nohand' id="PROJECTS_FOLDER_WARNING" onclick="HelpButton();return false;" style="display: none;">
-      <i class='fa fa-warning orb yellow-orb'></i>
-      <span style='left:18px'><strong>Projects exist that will not be moved to the new project folder.</strong></span>
-    </a>
-    <blockquote class="inline_help">
-    Choose the folder where compose.manager stores your stacks.<br>
-    <strong>Warning:</strong> Changing this path will not automatically move existing project folders.
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Compose Project Directory)_:</dt>
+            <dd>
+                <input type="text" name="PROJECTS_FOLDER" id="PROJECTS_FOLDER" autocomplete="off" spellcheck="false" value="<?= $cfg['PROJECTS_FOLDER'] ?>" placeholder="_(e.g.)_ /mnt/user/appdata/compose_projects" data-pickcloseonfile="true" data-pickfilter="img" data-pickroot="/mnt" data-pickfolders="true" required pattern="^\/(mnt\/.+\/.+)||(\/boot\/config\/plugins\/compose\.manager\/projects)$">
+                <a class='info nohand' id="PROJECTS_FOLDER_WARNING" onclick="HelpButton();return false;" style="display: none;">
+                    <i class='fa fa-warning orb yellow-orb'></i>
+                    <span style='left:18px'><strong>Projects exist that will not be moved to the new project folder.</strong></span>
+                </a>
+                <blockquote class="inline_help">
+                    Choose the folder where compose.manager stores your stacks.<br>
+                    <strong>Warning:</strong> Changing this path will not automatically move existing project folders.
+                </blockquote>
+            </dd>
+        </dl>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Rich Terminal Output)_:</dt>
-  <dd>
-       <input type="checkbox" name="OUTPUTSTYLE" id="OUTPUTSTYLE" class="compose-toggle" <?=$cfg['OUTPUTSTYLE'] == 'ttyd' ? 'checked' : ''?>>
-    <blockquote class="inline_help">
-    Display compose commands in a rich terminal with color output and live progress.<br>
-    When disabled, uses simple text output.
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Rich Terminal Output)_:</dt>
+            <dd>
+                <input type="checkbox" name="OUTPUTSTYLE" id="OUTPUTSTYLE" class="compose-toggle" <?= $cfg['OUTPUTSTYLE'] == 'ttyd' ? 'checked' : '' ?>>
+                <blockquote class="inline_help">
+                    Display compose commands in a rich terminal with color output and live progress.<br>
+                    When disabled, uses simple text output.
+                </blockquote>
+            </dd>
+        </dl>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Recreate During Autostart)_:</dt>
-  <dd>
-       <input type="checkbox" name="AUTOSTART_FORCE_RECREATE" class="compose-toggle" <?=$cfg['AUTOSTART_FORCE_RECREATE'] == 'true' ? 'checked' : ''?>>
-    <blockquote class="inline_help">
-    Use <code>--force-recreate</code> when autostarting stacks.<br>
-    Helps when containers fail to start because their attached network no longer exists.
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Recreate During Autostart)_:</dt>
+            <dd>
+                <input type="checkbox" name="AUTOSTART_FORCE_RECREATE" class="compose-toggle" <?= $cfg['AUTOSTART_FORCE_RECREATE'] == 'true' ? 'checked' : '' ?>>
+                <blockquote class="inline_help">
+                    Use <code>--force-recreate</code> when autostarting stacks.<br>
+                    Helps when containers fail to start because their attached network no longer exists.
+                </blockquote>
+            </dd>
+        </dl>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Wait for Docker Autostart)_:</dt>
-  <dd>
-       <input type="checkbox" name="AUTOSTART_WAIT_FOR_DOCKER" class="compose-toggle" <?=($cfg['AUTOSTART_WAIT_FOR_DOCKER'] ?? 'false') == 'true' ? 'checked' : ''?>>
-    <blockquote class="inline_help">
-    Wait for Docker's autostart containers to finish starting before starting compose stacks.<br>
-    Useful if your compose stacks depend on services from non-compose Docker containers.<br>
-    When disabled, compose stacks start in parallel with Docker autostart containers.
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Wait for Docker Autostart)_:</dt>
+            <dd>
+                <input type="checkbox" name="AUTOSTART_WAIT_FOR_DOCKER" class="compose-toggle" <?= ($cfg['AUTOSTART_WAIT_FOR_DOCKER'] ?? 'false') == 'true' ? 'checked' : '' ?>>
+                <blockquote class="inline_help">
+                    Wait for Docker's autostart containers to finish starting before starting compose stacks.<br>
+                    Useful if your compose stacks depend on services from non-compose Docker containers.<br>
+                    When disabled, compose stacks start in parallel with Docker autostart containers.
+                </blockquote>
+            </dd>
+        </dl>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Docker Wait Timeout)_:</dt>
-  <dd>
-    <input type="number" name="AUTOSTART_DOCKER_WAIT_TIMEOUT" min="30" max="600" step="10" value="<?=$cfg['AUTOSTART_DOCKER_WAIT_TIMEOUT'] ?? '120'?>" style="width:80px;"> _(seconds)_
-    <blockquote class="inline_help">
-    Maximum time to wait for Docker autostart containers to stabilize.<br>
-    Only applies when "Wait for Docker Autostart" is enabled.
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Docker Wait Timeout)_:</dt>
+            <dd>
+                <input type="number" name="AUTOSTART_DOCKER_WAIT_TIMEOUT" min="30" max="600" step="10" value="<?= $cfg['AUTOSTART_DOCKER_WAIT_TIMEOUT'] ?? '120' ?>" style="width:80px;"> _(seconds)_
+                <blockquote class="inline_help">
+                    Maximum time to wait for Docker autostart containers to stabilize.<br>
+                    Only applies when "Wait for Docker Autostart" is enabled.
+                </blockquote>
+            </dd>
+        </dl>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Stack Startup Timeout)_:</dt>
-  <dd>
-    <input type="number" name="AUTOSTART_TIMEOUT" min="60" max="900" step="30" value="<?=$cfg['AUTOSTART_TIMEOUT'] ?? '300'?>" style="width:80px;"> _(seconds)_
-    <blockquote class="inline_help">
-    Maximum time to wait for each stack to start during autostart.<br>
-    If a stack takes longer, it will be logged as a timeout and the next stack will start.
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Stack Startup Timeout)_:</dt>
+            <dd>
+                <input type="number" name="AUTOSTART_TIMEOUT" min="60" max="900" step="30" value="<?= $cfg['AUTOSTART_TIMEOUT'] ?? '300' ?>" style="width:80px;"> _(seconds)_
+                <blockquote class="inline_help">
+                    Maximum time to wait for each stack to start during autostart.<br>
+                    If a stack takes longer, it will be logged as a timeout and the next stack will start.
+                </blockquote>
+            </dd>
+        </dl>
 
-<div class="title"><span class="left"><i class="fa fa-desktop icon"></i>_(Display Options)_</span></div>
+        <div class="title"><span class="left"><i class="fa fa-desktop icon"></i>_(Display Options)_</span></div>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Show Compose in Header Menu)_:</dt>
-  <dd>
-       <input type="checkbox" name="SHOW_COMPOSE_IN_HEADER_MENU" id="SHOW_COMPOSE_IN_HEADER_MENU" class="compose-toggle" <?=$cfg['SHOW_COMPOSE_IN_HEADER_MENU'] == 'true' ? 'checked' : ''?>>
-    <blockquote class="inline_help">
-    Add a Compose tab to the main Unraid header navigation bar for quick access.
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Show Compose in Header Menu)_:</dt>
+            <dd>
+                <input type="checkbox" name="SHOW_COMPOSE_IN_HEADER_MENU" id="SHOW_COMPOSE_IN_HEADER_MENU" class="compose-toggle" <?= $cfg['SHOW_COMPOSE_IN_HEADER_MENU'] == 'true' ? 'checked' : '' ?>>
+                <blockquote class="inline_help">
+                    Add a Compose tab to the main Unraid header navigation bar for quick access.
+                </blockquote>
+            </dd>
+        </dl>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Show Compose Stacks Above Docker)_:</dt>
-  <dd>
-    <input type="checkbox" name="SHOW_COMPOSE_ON_TOP" id="SHOW_COMPOSE_ON_TOP" class="compose-toggle" <?=($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') == 'true' ? 'checked' : ''?>>
-    <blockquote class="inline_help">
-    When the Docker page is displayed without tabs, move the Compose Stacks section above the built-in Docker Containers section.<br>
-    This option is only available when "Show Compose in Header Menu" is set to No (non-tabbed mode).
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Show Compose Stacks Above Docker)_:</dt>
+            <dd>
+                <input type="checkbox" name="SHOW_COMPOSE_ON_TOP" id="SHOW_COMPOSE_ON_TOP" class="compose-toggle" <?= ($cfg['SHOW_COMPOSE_ON_TOP'] ?? 'false') == 'true' ? 'checked' : '' ?>>
+                <blockquote class="inline_help">
+                    When the Docker page is displayed without tabs, move the Compose Stacks section above the built-in Docker Containers section.<br>
+                    This option is only available when "Show Compose in Header Menu" is set to No (non-tabbed mode).
+                </blockquote>
+            </dd>
+        </dl>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Hide Compose Containers from Docker)_:</dt>
-  <dd>
-    <input type="checkbox" name="HIDE_COMPOSE_FROM_DOCKER" id="HIDE_COMPOSE_FROM_DOCKER" class="compose-toggle" <?=($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') == 'true' ? 'checked' : ''?>>
-    <blockquote class="inline_help">
-    When enabled, containers managed by Compose stacks will be hidden from the Docker Containers table on the Docker tab.<br>
-    This avoids duplicate display when Compose stacks are shown on the same page.<br>
-    This option is only available when "Show Compose in Header Menu" is set to No (non-tabbed mode).
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Hide Compose Containers from Docker)_:</dt>
+            <dd>
+                <input type="checkbox" name="HIDE_COMPOSE_FROM_DOCKER" id="HIDE_COMPOSE_FROM_DOCKER" class="compose-toggle" <?= ($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') == 'true' ? 'checked' : '' ?>>
+                <blockquote class="inline_help">
+                    When enabled, containers managed by Compose stacks will be hidden from the Docker Containers table on the Docker tab.<br>
+                    This avoids duplicate display when Compose stacks are shown on the same page.<br>
+                    This option is only available when "Show Compose in Header Menu" is set to No (non-tabbed mode).
+                </blockquote>
+            </dd>
+        </dl>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Show Dashboard Tile)_:</dt>
-  <dd>
-       <input type="checkbox" id="SHOW_DASHBOARD_TILE" name="SHOW_DASHBOARD_TILE" class="compose-toggle" <?=($cfg['SHOW_DASHBOARD_TILE'] ?? 'true') == 'true' ? 'checked' : ''?>>
-    <blockquote class="inline_help">
-    Display a Compose Stacks tile on the Dashboard showing stack status at a glance.
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Show Dashboard Tile)_:</dt>
+            <dd>
+                <input type="checkbox" id="SHOW_DASHBOARD_TILE" name="SHOW_DASHBOARD_TILE" class="compose-toggle" <?= ($cfg['SHOW_DASHBOARD_TILE'] ?? 'true') == 'true' ? 'checked' : '' ?>>
+                <blockquote class="inline_help">
+                    Display a Compose Stacks tile on the Dashboard showing stack status at a glance.
+                </blockquote>
+            </dd>
+        </dl>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Hide Compose Containers from Docker Tile on Dashboard)_:</dt>
-  <dd>
-    <input type="checkbox" name="HIDE_DOCKER_COMPOSE_CONTAINERS" id="HIDE_DOCKER_COMPOSE_CONTAINERS" class="compose-toggle" <?=($cfg['HIDE_DOCKER_COMPOSE_CONTAINERS'] ?? 'false') == 'true' ? 'checked' : ''?>>
-    <blockquote class="inline_help">
-    Hide containers managed by Compose stacks from Unraid's Docker Containers dashboard tile.<br>
-    This avoids duplicate entries when both the Compose Stacks tile and Docker Containers tile are visible on the Dashboard.<br>
-    This option requires "Show Dashboard Tile" to be enabled.
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Hide Compose Containers from Docker Tile on Dashboard)_:</dt>
+            <dd>
+                <input type="checkbox" name="HIDE_DOCKER_COMPOSE_CONTAINERS" id="HIDE_DOCKER_COMPOSE_CONTAINERS" class="compose-toggle" <?= ($cfg['HIDE_DOCKER_COMPOSE_CONTAINERS'] ?? 'false') == 'true' ? 'checked' : '' ?>>
+                <blockquote class="inline_help">
+                    Hide containers managed by Compose stacks from Unraid's Docker Containers dashboard tile.<br>
+                    This avoids duplicate entries when both the Compose Stacks tile and Docker Containers tile are visible on the Dashboard.<br>
+                    This option requires "Show Dashboard Tile" to be enabled.
+                </blockquote>
+            </dd>
+        </dl>
 
-<div class="title"><span class="left"><i class="fa fa-refresh icon"></i>_(Update Checking)_</span></div>
+        <div class="title"><span class="left"><i class="fa fa-refresh icon"></i>_(Update Checking)_</span></div>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Auto Check for Updates)_:</dt>
-  <dd>
-       <input type="checkbox" name="AUTO_CHECK_UPDATES" id="AUTO_CHECK_UPDATES" class="compose-toggle" <?=$cfg['AUTO_CHECK_UPDATES'] == 'true' ? 'checked' : ''?>>
-    <blockquote class="inline_help">
-    Automatically check for container image updates when the Compose page loads.
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Auto Check for Updates)_:</dt>
+            <dd>
+                <input type="checkbox" name="AUTO_CHECK_UPDATES" id="AUTO_CHECK_UPDATES" class="compose-toggle" <?= $cfg['AUTO_CHECK_UPDATES'] == 'true' ? 'checked' : '' ?>>
+                <blockquote class="inline_help">
+                    Automatically check for container image updates when the Compose page loads.
+                </blockquote>
+            </dd>
+        </dl>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Auto Check Interval (days))_:</dt>
-  <dd>
-    <input type="number" name="AUTO_CHECK_UPDATES_DAYS" id="AUTO_CHECK_UPDATES_DAYS" min="0.04" max="30" step="0.01" value="<?=$cfg['AUTO_CHECK_UPDATES_DAYS'] ?? '1'?>" style="width:80px;" <?=$cfg['AUTO_CHECK_UPDATES'] != 'true' ? 'disabled' : ''?>>
-    <blockquote class="inline_help">
-    How often to check for updates.<br>
-    Examples: 0.04 (hourly), 1 (daily), 7 (weekly).
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Auto Check Interval (days))_:</dt>
+            <dd>
+                <input type="number" name="AUTO_CHECK_UPDATES_DAYS" id="AUTO_CHECK_UPDATES_DAYS" min="0.04" max="30" step="0.01" value="<?= $cfg['AUTO_CHECK_UPDATES_DAYS'] ?? '1' ?>" style="width:80px;" <?= $cfg['AUTO_CHECK_UPDATES'] != 'true' ? 'disabled' : '' ?>>
+                <blockquote class="inline_help">
+                    How often to check for updates.<br>
+                    Examples: 0.04 (hourly), 1 (daily), 7 (weekly).
+                </blockquote>
+            </dd>
+        </dl>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Clear Update Cache)_:</dt>
-  <dd>
-    <input type="button" value="_(Clear Cache)_" onclick="clearUpdateCache()" class="orange-button">
-    <blockquote class="inline_help">
-    Clear cached update status. Use if update checks show incorrect results.
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Clear Update Cache)_:</dt>
+            <dd>
+                <input type="button" value="_(Clear Cache)_" onclick="clearUpdateCache()" class="orange-button">
+                <blockquote class="inline_help">
+                    Clear cached update status. Use if update checks show incorrect results.
+                </blockquote>
+            </dd>
+        </dl>
 
-<div class="title"><span class="left"><i class="fa fa-wrench icon"></i>_(Advanced)_</span></div>
+        <div class="title"><span class="left"><i class="fa fa-wrench icon"></i>_(Advanced)_</span></div>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Debug Logging)_:</dt>
-  <dd>
-       <input type="checkbox" name="DEBUG_TO_LOG" id="DEBUG_TO_LOG" class="compose-toggle" <?=$cfg['DEBUG_TO_LOG'] == 'true' ? 'checked' : ''?>>
-    <blockquote class="inline_help">
-    Log detailed compose command information to syslog. View logs in the Log tab.
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Debug Logging)_:</dt>
+            <dd>
+                <input type="checkbox" name="DEBUG_TO_LOG" id="DEBUG_TO_LOG" class="compose-toggle" <?= $cfg['DEBUG_TO_LOG'] == 'true' ? 'checked' : '' ?>>
+                <blockquote class="inline_help">
+                    Log detailed compose command information to syslog. View logs in the Log tab.
+                </blockquote>
+            </dd>
+        </dl>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Patch Docker Page)_:</dt>
-  <dd>
-    <input type="checkbox" name="PATCH_UI" class="compose-toggle" <?=$cfg['PATCH_UI'] == 'true' ? 'checked' : ''?> <?=$option_patch_ui ? 'disabled' : ''?>>
-    <?php if ($option_patch_ui) { ?>
-      <span style="display:inline-block;margin-left:10px;color:#888;">Not needed on Unraid 6.12+ (compose integration is built-in)</span>
-    <?php } ?>
-    <input type=<?=$ui_patch_button_type?> value="_(Patch Now)_" onclick="patchWebui()" class="slim-button" style="margin-left:15px;">
-    <input type=<?=$ui_unpatch_button_type?> value="_(Unpatch)_" onclick="unpatchWebui()" class="slim-button" style="margin-left:15px;">
-    <blockquote class=<?=$ui_patch_help_class?>>
-    <strong>(Unraid 6.11 and earlier only)</strong> Patch the Docker page to better display compose-managed containers.<br>
-    Not needed on Unraid 6.12+ where compose integration is built-in.
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Patch Docker Page)_:</dt>
+            <dd>
+                <input type="checkbox" name="PATCH_UI" class="compose-toggle" <?= $cfg['PATCH_UI'] == 'true' ? 'checked' : '' ?> <?= $option_patch_ui ? 'disabled' : '' ?>>
+                <?php if ($option_patch_ui) { ?>
+                    <span style="display:inline-block;margin-left:10px;color:#888;">Not needed on Unraid 6.12+ (compose integration is built-in)</span>
+                <?php } ?>
+                <input type=<?= $ui_patch_button_type ?> value="_(Patch Now)_" onclick="patchWebui()" class="slim-button" style="margin-left:15px;">
+                <input type=<?= $ui_unpatch_button_type ?> value="_(Unpatch)_" onclick="unpatchWebui()" class="slim-button" style="margin-left:15px;">
+                <blockquote class=<?= $ui_patch_help_class ?>>
+                    <strong>(Unraid 6.11 and earlier only)</strong> Patch the Docker page to better display compose-managed containers.<br>
+                    Not needed on Unraid 6.12+ where compose integration is built-in.
+                </blockquote>
+            </dd>
+        </dl>
 
-<dl>
-  <dt>&nbsp;</dt>
-  <dd><input type="submit" name="#default" value="_(Default)_"><input type="submit" name="#apply" value="_(Apply)_" disabled><input type="button" value="_(Done)_" onclick="done()"></dd>
-</dl>
-</form>
+        <dl>
+            <dt>&nbsp;</dt>
+            <dd><input type="submit" name="#default" value="_(Default)_"><input type="submit" name="#apply" value="_(Apply)_" disabled><input type="button" value="_(Done)_" onclick="done()"></dd>
+        </dl>
+    </form>
 </div>
 
 <!-- Backup / Restore Tab -->
 <div id="compose-tab-backup" class="compose-tab-content">
 
-<!-- Backup Settings Section -->
-<div class="backup-section">
-<div class="title"><span class="left"><i class="fa fa-download icon"></i>_(Backup Settings)_</span></div>
+    <!-- Backup Settings Section -->
+    <div class="backup-section">
+        <div class="title"><span class="left"><i class="fa fa-download icon"></i>_(Backup Settings)_</span></div>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Backup Destination)_:</dt>
-  <dd>
-    <input type="text" id="BACKUP_DESTINATION" autocomplete="off" spellcheck="false" 
-           value="<?=$cfg['BACKUP_DESTINATION'] ?? ''?>" 
-           placeholder="/boot/config/plugins/compose.manager/backups" 
-           class="backup-dest-input"
-           data-pickroot="/mnt" data-pickfolders="true" data-pickcloseonfile="true">
-    <blockquote class="inline_help">
-    Path where backup archives will be stored.<br>
-    Leave blank to use the default: <code>/boot/config/plugins/compose.manager/backups</code>
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Backup Destination)_:</dt>
+            <dd>
+                <input type="text" id="BACKUP_DESTINATION" autocomplete="off" spellcheck="false"
+                    value="<?= $cfg['BACKUP_DESTINATION'] ?? '' ?>"
+                    placeholder="/boot/config/plugins/compose.manager/backups"
+                    class="backup-dest-input"
+                    data-pickroot="/mnt" data-pickfolders="true" data-pickcloseonfile="true">
+                <blockquote class="inline_help">
+                    Path where backup archives will be stored.<br>
+                    Leave blank to use the default: <code>/boot/config/plugins/compose.manager/backups</code>
+                </blockquote>
+            </dd>
+        </dl>
 
-<dl>
-  <dt style="cursor: help;" onclick="toggleHelp(this)">_(Backups to Keep)_:</dt>
-  <dd>
-    <input type="number" id="BACKUP_RETENTION" min="0" max="100" step="1" 
-           value="<?=$cfg['BACKUP_RETENTION'] ?? '5'?>" style="width:80px;">
-    <blockquote class="inline_help">
-    Number of backup archives to retain. After a successful backup, the oldest archives<br>
-    exceeding this count will be automatically deleted. Set to 0 for unlimited retention.
-    </blockquote>
-  </dd>
-</dl>
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Backups to Keep)_:</dt>
+            <dd>
+                <input type="number" id="BACKUP_RETENTION" min="0" max="100" step="1"
+                    value="<?= $cfg['BACKUP_RETENTION'] ?? '5' ?>" style="width:80px;">
+                <blockquote class="inline_help">
+                    Number of backup archives to retain. After a successful backup, the oldest archives<br>
+                    exceeding this count will be automatically deleted. Set to 0 for unlimited retention.
+                </blockquote>
+            </dd>
+        </dl>
 
-<dl>
-  <dt>_(Scheduled Backup)_:</dt>
-  <dd>
-      <input type="checkbox" id="BACKUP_SCHEDULE_ENABLED" class="compose-toggle" 
-           <?=($cfg['BACKUP_SCHEDULE_ENABLED'] ?? 'false') == 'true' ? 'checked' : ''?>
-           onchange="toggleBackupSchedule()">
-    <div id="backup-schedule-options" class="schedule-options" style="margin-top:8px;">
-      <label>_(Frequency)_:
-        <select id="BACKUP_SCHEDULE_FREQUENCY" onchange="toggleScheduleDay()" 
-                <?=($cfg['BACKUP_SCHEDULE_ENABLED'] ?? 'false') != 'true' ? 'disabled' : ''?>>
-          <option value="daily" <?=($cfg['BACKUP_SCHEDULE_FREQUENCY'] ?? 'daily') == 'daily' ? 'selected' : ''?>>_(Daily)_</option>
-          <option value="weekly" <?=($cfg['BACKUP_SCHEDULE_FREQUENCY'] ?? 'daily') == 'weekly' ? 'selected' : ''?>>_(Weekly)_</option>
-        </select>
-      </label>
-      <label>_(Day)_:
-        <select id="BACKUP_SCHEDULE_DAY"
-                <?php $schedEnabled = ($cfg['BACKUP_SCHEDULE_ENABLED'] ?? 'false') == 'true';
-                      $schedFreq = $cfg['BACKUP_SCHEDULE_FREQUENCY'] ?? 'daily';
-                      echo (!$schedEnabled || $schedFreq != 'weekly') ? 'disabled' : ''; ?>>
-          <option value="0" <?=($cfg['BACKUP_SCHEDULE_DAY'] ?? '1') == '0' ? 'selected' : ''?>>_(Sunday)_</option>
-          <option value="1" <?=($cfg['BACKUP_SCHEDULE_DAY'] ?? '1') == '1' ? 'selected' : ''?>>_(Monday)_</option>
-          <option value="2" <?=($cfg['BACKUP_SCHEDULE_DAY'] ?? '1') == '2' ? 'selected' : ''?>>_(Tuesday)_</option>
-          <option value="3" <?=($cfg['BACKUP_SCHEDULE_DAY'] ?? '1') == '3' ? 'selected' : ''?>>_(Wednesday)_</option>
-          <option value="4" <?=($cfg['BACKUP_SCHEDULE_DAY'] ?? '1') == '4' ? 'selected' : ''?>>_(Thursday)_</option>
-          <option value="5" <?=($cfg['BACKUP_SCHEDULE_DAY'] ?? '1') == '5' ? 'selected' : ''?>>_(Friday)_</option>
-          <option value="6" <?=($cfg['BACKUP_SCHEDULE_DAY'] ?? '1') == '6' ? 'selected' : ''?>>_(Saturday)_</option>
-        </select>
-      </label>
-      <label>_(Time)_:
-        <input type="time" id="BACKUP_SCHEDULE_TIME" 
-               value="<?=$cfg['BACKUP_SCHEDULE_TIME'] ?? '03:00'?>" 
-               <?=($cfg['BACKUP_SCHEDULE_ENABLED'] ?? 'false') != 'true' ? 'disabled' : ''?>>
-      </label>
+        <dl>
+            <dt>_(Scheduled Backup)_:</dt>
+            <dd>
+                <input type="checkbox" id="BACKUP_SCHEDULE_ENABLED" class="compose-toggle"
+                    <?= ($cfg['BACKUP_SCHEDULE_ENABLED'] ?? 'false') == 'true' ? 'checked' : '' ?>
+                    onchange="toggleBackupSchedule()">
+                <div id="backup-schedule-options" class="schedule-options" style="margin-top:8px;">
+                    <label>_(Frequency)_:
+                        <select id="BACKUP_SCHEDULE_FREQUENCY" onchange="toggleScheduleDay()"
+                            <?= ($cfg['BACKUP_SCHEDULE_ENABLED'] ?? 'false') != 'true' ? 'disabled' : '' ?>>
+                            <option value="daily" <?= ($cfg['BACKUP_SCHEDULE_FREQUENCY'] ?? 'daily') == 'daily' ? 'selected' : '' ?>>_(Daily)_</option>
+                            <option value="weekly" <?= ($cfg['BACKUP_SCHEDULE_FREQUENCY'] ?? 'daily') == 'weekly' ? 'selected' : '' ?>>_(Weekly)_</option>
+                        </select>
+                    </label>
+                    <label>_(Day)_:
+                        <select id="BACKUP_SCHEDULE_DAY"
+                            <?php $schedEnabled = ($cfg['BACKUP_SCHEDULE_ENABLED'] ?? 'false') == 'true';
+                            $schedFreq = $cfg['BACKUP_SCHEDULE_FREQUENCY'] ?? 'daily';
+                            echo (!$schedEnabled || $schedFreq != 'weekly') ? 'disabled' : ''; ?>>
+                            <option value="0" <?= ($cfg['BACKUP_SCHEDULE_DAY'] ?? '1') == '0' ? 'selected' : '' ?>>_(Sunday)_</option>
+                            <option value="1" <?= ($cfg['BACKUP_SCHEDULE_DAY'] ?? '1') == '1' ? 'selected' : '' ?>>_(Monday)_</option>
+                            <option value="2" <?= ($cfg['BACKUP_SCHEDULE_DAY'] ?? '1') == '2' ? 'selected' : '' ?>>_(Tuesday)_</option>
+                            <option value="3" <?= ($cfg['BACKUP_SCHEDULE_DAY'] ?? '1') == '3' ? 'selected' : '' ?>>_(Wednesday)_</option>
+                            <option value="4" <?= ($cfg['BACKUP_SCHEDULE_DAY'] ?? '1') == '4' ? 'selected' : '' ?>>_(Thursday)_</option>
+                            <option value="5" <?= ($cfg['BACKUP_SCHEDULE_DAY'] ?? '1') == '5' ? 'selected' : '' ?>>_(Friday)_</option>
+                            <option value="6" <?= ($cfg['BACKUP_SCHEDULE_DAY'] ?? '1') == '6' ? 'selected' : '' ?>>_(Saturday)_</option>
+                        </select>
+                    </label>
+                    <label>_(Time)_:
+                        <input type="time" id="BACKUP_SCHEDULE_TIME"
+                            value="<?= $cfg['BACKUP_SCHEDULE_TIME'] ?? '03:00' ?>"
+                            <?= ($cfg['BACKUP_SCHEDULE_ENABLED'] ?? 'false') != 'true' ? 'disabled' : '' ?>>
+                    </label>
+                </div>
+            </dd>
+        </dl>
+
+        <dl>
+            <dt>&nbsp;</dt>
+            <dd>
+                <div class="backup-actions">
+                    <input type="button" id="btn-save-backup-settings" value="_(Save Settings)_" onclick="saveBackupSettings()" class="orange-button">
+                    <input type="button" id="btn-create-backup" value="_(Backup Now)_" onclick="createBackupNow()">
+                    <div class="spinner"></div>
+                </div>
+                <div id="backup-create-status" class="backup-status"></div>
+            </dd>
+        </dl>
     </div>
-  </dd>
-</dl>
 
-<dl>
-  <dt>&nbsp;</dt>
-  <dd>
-    <div class="backup-actions">
-      <input type="button" id="btn-save-backup-settings" value="_(Save Settings)_" onclick="saveBackupSettings()" class="orange-button">
-      <input type="button" id="btn-create-backup" value="_(Backup Now)_" onclick="createBackupNow()">
-      <div class="spinner"></div>
-    </div>
-    <div id="backup-create-status" class="backup-status"></div>
-  </dd>
-</dl>
-</div>
+    <!-- Restore Operations Section -->
+    <div class="backup-section">
+        <div class="title"><span class="left"><i class="fa fa-upload icon"></i>_(Restore Operations)_</span></div>
 
-<!-- Restore Operations Section -->
-<div class="backup-section">
-<div class="title"><span class="left"><i class="fa fa-upload icon"></i>_(Restore Operations)_</span></div>
+        <dl>
+            <dt>_(Available Backups)_:</dt>
+            <dd>
+                <div class="backup-archive-list">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:30px;"></th>
+                                <th style="width:auto;">_(Filename)_</th>
+                                <th style="width:100px;">_(Size)_</th>
+                                <th style="width:200px;">_(Date)_</th>
+                            </tr>
+                        </thead>
+                        <tbody id="backup-archive-list">
+                            <tr>
+                                <td colspan="4" style="text-align:center;padding:15px;color:#888;">_(Switch to this tab to load backup list.)_</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top:5px; display:flex; gap:8px;">
+                    <input type="button" value="_(Refresh)_" onclick="loadBackupArchives()">
+                    <input type="button" value="_(Upload Archive...)_" onclick="$('#backup-upload-input').click()">
+                    <input type="file" id="backup-upload-input" accept=".tar.gz,.tgz" style="display:none;" onchange="uploadBackupArchive(this)">
+                    <input type="button" value="_(Delete Selected)_" onclick="deleteSelectedBackup()">
+                </div>
+            </dd>
+        </dl>
 
-<dl>
-  <dt>_(Available Backups)_:</dt>
-  <dd>
-    <div class="backup-archive-list">
-      <table>
-        <thead>
-          <tr>
-            <th style="width:30px;"></th>
-            <th style="width:auto;">_(Filename)_</th>
-            <th style="width:100px;">_(Size)_</th>
-            <th style="width:200px;">_(Date)_</th>
-          </tr>
-        </thead>
-        <tbody id="backup-archive-list">
-          <tr><td colspan="4" style="text-align:center;padding:15px;color:#888;">_(Switch to this tab to load backup list.)_</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div style="margin-top:5px; display:flex; gap:8px;">
-      <input type="button" value="_(Refresh)_" onclick="loadBackupArchives()">
-      <input type="button" value="_(Upload Archive...)_" onclick="$('#backup-upload-input').click()">
-      <input type="file" id="backup-upload-input" accept=".tar.gz,.tgz" style="display:none;" onchange="uploadBackupArchive(this)">
-      <input type="button" value="_(Delete Selected)_" onclick="deleteSelectedBackup()">
-    </div>
-  </dd>
-</dl>
+        <dl>
+            <dt>_(Stacks in Archive)_:</dt>
+            <dd>
+                <div class="backup-stack-checklist" id="restore-stack-checklist">
+                    <span style="text-align:center;display:block;padding:15px;color:#888;font-size:0.85em;">_(Select a backup archive above to see its contents.)_</span>
+                </div>
+            </dd>
+        </dl>
 
-<dl>
-  <dt>_(Stacks in Archive)_:</dt>
-  <dd>
-    <div class="backup-stack-checklist" id="restore-stack-checklist">
-      <span style="text-align:center;display:block;padding:15px;color:#888;font-size:0.85em;">_(Select a backup archive above to see its contents.)_</span>
+        <dl>
+            <dt>&nbsp;</dt>
+            <dd>
+                <div class="backup-actions">
+                    <input type="button" id="btn-restore-stacks" value="_(Restore Selected)_" onclick="restoreSelectedStacks()" class="orange-button" disabled>
+                    <div class="spinner"></div>
+                    <span id="restore-selected-count" style="color:#888;"></span>
+                </div>
+                <div id="restore-status" class="backup-status"></div>
+            </dd>
+        </dl>
     </div>
-  </dd>
-</dl>
-
-<dl>
-  <dt>&nbsp;</dt>
-  <dd>
-    <div class="backup-actions">
-      <input type="button" id="btn-restore-stacks" value="_(Restore Selected)_" onclick="restoreSelectedStacks()" class="orange-button" disabled>
-      <div class="spinner"></div>
-      <span id="restore-selected-count" style="color:#888;"></span>
-    </div>
-    <div id="restore-status" class="backup-status"></div>
-  </dd>
-</dl>
-</div>
 
 </div>
 
 <!-- Log Tab -->
 <div id="compose-tab-log" class="compose-tab-content">
-<div class="log-controls">
-  <label>_(Lines)_:
-    <select id="log-lines" onchange="loadLogs()">
-      <option value="50">50</option>
-      <option value="100" selected>100</option>
-      <option value="250">250</option>
-      <option value="500">500</option>
-      <option value="1000">1000</option>
-    </select>
-  </label>
-  <label>_(Refresh)_:
-    <select id="log-refresh" onchange="startLogRefresh()">
-      <option value="0">_(Manual)_</option>
-      <option value="5">5s</option>
-      <option value="10">10s</option>
-      <option value="30">30s</option>
-      <option value="60">60s</option>
-    </select>
-  </label>
-  <label>_(Filter)_:
-    <input type="text" id="log-filter" placeholder="_(Search logs...)_" onkeyup="if(event.keyCode==13)loadLogs()">
-  </label>
-  <input type="button" value="_(Refresh)_" onclick="loadLogs()">
-  <input type="button" value="_(Download)_" onclick="downloadLogs()">
-  <label style="display: flex; align-items: center; gap: 5px;">
-    <input type="checkbox" id="log-autoscroll" checked onchange="toggleAutoScroll()"> _(Auto-scroll)_
-  </label>
-  <span id="log-line-count"></span>
-</div>
-<div id="compose-log-container">
-  <span style="color: #888;">_(Loading logs...)_</span>
-</div>
-<blockquote class="inline_help">
-  <p>This log shows compose-related entries from the system log.</p>
-  <p>Enable <strong>Debug Logging</strong> in Settings to capture detailed compose command information.</p>
-  <p>Log entries are generated by the <code>logger</code> command when compose operations are performed.</p>
-</blockquote>
+    <div class="log-controls">
+        <label>_(Lines)_:
+            <select id="log-lines" onchange="loadLogs()">
+                <option value="50">50</option>
+                <option value="100" selected>100</option>
+                <option value="250">250</option>
+                <option value="500">500</option>
+                <option value="1000">1000</option>
+            </select>
+        </label>
+        <label>_(Refresh)_:
+            <select id="log-refresh" onchange="startLogRefresh()">
+                <option value="0">_(Manual)_</option>
+                <option value="5">5s</option>
+                <option value="10">10s</option>
+                <option value="30">30s</option>
+                <option value="60">60s</option>
+            </select>
+        </label>
+        <label>_(Filter)_:
+            <input type="text" id="log-filter" placeholder="_(Search logs...)_" onkeyup="if(event.keyCode==13)loadLogs()">
+        </label>
+        <input type="button" value="_(Refresh)_" onclick="loadLogs()">
+        <input type="button" value="_(Download)_" onclick="downloadLogs()">
+        <label style="display: flex; align-items: center; gap: 5px;">
+            <input type="checkbox" id="log-autoscroll" checked onchange="toggleAutoScroll()"> _(Auto-scroll)_
+        </label>
+        <span id="log-line-count"></span>
+    </div>
+    <div id="compose-log-container">
+        <span style="color: #888;">_(Loading logs...)_</span>
+    </div>
+    <blockquote class="inline_help">
+        <p>This log shows compose-related entries from the system log.</p>
+        <p>Enable <strong>Debug Logging</strong> in Settings to capture detailed compose command information.</p>
+        <p>Log entries are generated by the <code>logger</code> command when compose operations are performed.</p>
+    </blockquote>
 </div>

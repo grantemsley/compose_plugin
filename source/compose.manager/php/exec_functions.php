@@ -58,3 +58,42 @@ function sanitizeFolderName($stackName) {
     $folderName = preg_replace("/\s/", "_", $folderName);
     return $folderName;
 }
+
+/**
+ * Build the common compose CLI arguments for a stack.
+ *
+ * Resolves the project name, compose/override files, and env-file flag
+ * from the stack directory.  Used by getStackContainers, checkStackUpdates,
+ * and checkAllStacksUpdates to avoid duplicating this logic.
+ *
+ * @param string $stack  Stack directory name (basename under $compose_root)
+ * @return array{projectName: string, files: string, envFile: string}
+ */
+function buildComposeArgs(string $stack): array {
+    global $compose_root;
+
+    $projectName = $stack;
+    if (is_file("$compose_root/$stack/name")) {
+        $projectName = trim(file_get_contents("$compose_root/$stack/name"));
+    }
+    $projectName = sanitizeStr($projectName);
+
+    $basePath = getPath("$compose_root/$stack");
+    $composeFile = "$basePath/docker-compose.yml";
+    $overrideFile = "$compose_root/$stack/docker-compose.override.yml";
+
+    $files = "-f " . escapeshellarg($composeFile);
+    if (is_file($overrideFile)) {
+        $files .= " -f " . escapeshellarg($overrideFile);
+    }
+
+    $envFile = "";
+    if (is_file("$compose_root/$stack/envpath")) {
+        $envPath = trim(file_get_contents("$compose_root/$stack/envpath"));
+        if (is_file($envPath)) {
+            $envFile = "--env-file " . escapeshellarg($envPath);
+        }
+    }
+
+    return ['projectName' => $projectName, 'files' => $files, 'envFile' => $envFile];
+}

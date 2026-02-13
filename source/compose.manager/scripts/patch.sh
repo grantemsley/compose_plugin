@@ -144,7 +144,7 @@ fi
 candidates=()
 host_ver_int=$(ver_to_int "${UNRAID_VER:-0.0.0}")
 if [ -d "$PATCH_ROOT" ]; then
-  tmpfile=$(mktemp /tmp/patchdirs.XXXX)
+  tmpfile=$(mktemp /tmp/patchdirs.XXXXXXXX)
   for d in "$PATCH_ROOT"/*; do
     [ -d "$d" ] || continue
     read minI maxI <<< $(parse_folder_range "$d")

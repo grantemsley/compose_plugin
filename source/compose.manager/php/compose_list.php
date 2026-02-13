@@ -136,6 +136,8 @@ foreach ($composeProjects as $project) {
     if (is_file("$compose_root/$project/description")) {
         $description = @file_get_contents("$compose_root/$project/description");
         $description = str_replace("\r", "", $description);
+        // Escape HTML first to prevent XSS, then convert newlines to <br>
+        $description = htmlspecialchars($description, ENT_QUOTES, 'UTF-8');
         $description = str_replace("\n", "<br>", $description);
     } else {
         $description = "";
@@ -172,7 +174,7 @@ foreach ($composeProjects as $project) {
         $profilestext = @file_get_contents("$compose_root/$project/profiles");
         $profiles = json_decode($profilestext, false);
     }
-    $profilesJson = json_encode($profiles ? $profiles : []);
+    $profilesJson = htmlspecialchars(json_encode($profiles ? $profiles : []), ENT_QUOTES, 'UTF-8');
 
     // Determine status text and class for badge
     $statusText = "Stopped";

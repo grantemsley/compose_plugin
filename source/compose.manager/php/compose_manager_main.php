@@ -1239,7 +1239,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 var disabled = $("#" + myID).attr('data-isup') == "1" ? "disabled" : "";
                 var notdisabled = $("#" + myID).attr('data-isup') == "1" ? "" : "disabled";
                 var stackName = $("#" + myID).attr("data-scriptname");
-                instance.content(stackName + "<br> \
+                instance.content(escapeHtml(stackName) + "<br> \
                                     <center> \
                                     <input type='button' onclick='editName(&quot;" + myID + "&quot;);' value='Edit Name' " + disabled + "> \
                                     <input type='button' onclick='editDesc(&quot;" + myID + "&quot;);' value='Edit Description' > \
@@ -1571,7 +1571,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
     function deleteStack(myID) {
         var stackName = $("#" + myID).attr("data-scriptname");
         var project = $("#" + myID).attr("data-namename");
-        var msgHtml = "Are you sure you want to delete <font color='red'><b>" + project + "</b></font> (<font color='green'>" + compose_root + "/" + stackName + "</font>)?";
+        var msgHtml = "Are you sure you want to delete <font color='red'><b>" + escapeHtml(project) + "</b></font> (<font color='green'>" + escapeHtml(compose_root) + "/" + escapeHtml(stackName) + "</font>)?";
         swal({
             title: "Delete Stack?",
             text: msgHtml,
@@ -1612,28 +1612,37 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
     }
 
     function editName(myID) {
-        // console.log(myID);
         var currentName = $("#" + myID).attr("data-namename");
         $("#" + myID).attr("data-originalName", currentName);
-        $("#" + myID).html("<input type='text' id='newName" + myID + "' value='" + currentName + "'><br><font color='red' size='4'><i class='fa fa-times' aria-hidden='true' style='cursor:pointer' onclick='cancelName(&quot;" + myID + "&quot;);'></i>&nbsp;&nbsp;<font color='green' size='4'><i style='cursor:pointer' onclick='applyName(&quot;" + myID + "&quot;);' class='fa fa-check' aria-hidden='true'></i></font>");
-        $("#" + myID).tooltipster("close");
-        $("#" + myID).tooltipster("disable");
+        var $el = $("#" + myID);
+        $el.empty();
+        var $input = $("<input type='text'>").attr('id', 'newName' + myID).val(currentName);
+        var $cancel = $("<i class='fa fa-times' aria-hidden='true' style='cursor:pointer;color:red;font-size:1.2em'></i>").on('click', function() { cancelName(myID); });
+        var $apply = $("<i class='fa fa-check' aria-hidden='true' style='cursor:pointer;color:green;font-size:1.2em'></i>").on('click', function() { applyName(myID); });
+        $el.append($input).append($("<br>")).append($cancel).append("&nbsp;&nbsp;").append($apply);
+        $el.tooltipster("close");
+        $el.tooltipster("disable");
     }
 
     function editDesc(myID) {
         var origID = myID;
         $("#" + myID).tooltipster("close");
         myID = myID.replace("name", "desc");
-        var currentDesc = $("#" + myID).html();
+        var currentDesc = $("#" + myID).text();
         $("#" + myID).attr("data-originaldescription", currentDesc);
-        $("#" + myID).html("<textarea id='newDesc" + myID + "' cols='40' rows='5'>" + currentDesc + "</textarea><br><font color='red' size='4'><i class='fa fa-times' aria-hidden='true' style='cursor:pointer' onclick='cancelDesc(&quot;" + myID + "&quot;);'></i>&nbsp;&nbsp;<font color='green' size='4'><i style='cursor:pointer' onclick='applyDesc(&quot;" + myID + "&quot;); ' class='fa fa-check' aria-hidden='true'></i></font>");
+        var $el = $("#" + myID);
+        $el.empty();
+        var $textarea = $("<textarea cols='40' rows='5'></textarea>").attr('id', 'newDesc' + myID).val(currentDesc);
+        var $cancel = $("<i class='fa fa-times' aria-hidden='true' style='cursor:pointer;color:red;font-size:1.2em'></i>").on('click', function() { cancelDesc(myID); });
+        var $apply = $("<i class='fa fa-check' aria-hidden='true' style='cursor:pointer;color:green;font-size:1.2em'></i>").on('click', function() { applyDesc(myID); });
+        $el.append($textarea).append($("<br>")).append($cancel).append("&nbsp;&nbsp;").append($apply);
         $("#" + origID).tooltipster("enable");
     }
 
     function applyName(myID) {
         var newName = $("#newName" + myID).val();
         var project = $("#" + myID).attr("data-scriptname");
-        $("#" + myID).html(newName);
+        $("#" + myID).text(newName);
         $("#" + myID).tooltipster("enable");
         $("#" + myID).tooltipster("close");
         $.post(caURL, {
@@ -1647,7 +1656,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
 
     function cancelName(myID) {
         var oldName = $("#" + myID).attr("data-originalName");
-        $("#" + myID).html(oldName);
+        $("#" + myID).text(oldName);
         $("#" + myID).tooltipster("enable");
         $("#" + myID).tooltipster("close");
         window.location.reload();
@@ -1655,16 +1664,16 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
 
     function cancelDesc(myID) {
         var oldName = $("#" + myID).attr("data-originaldescription");
-        $("#" + myID).html(oldName);
+        $("#" + myID).text(oldName);
         $("#" + myID).tooltipster("enable");
         $("#" + myID).tooltipster("close");
     }
 
     function applyDesc(myID) {
         var newDesc = $("#newDesc" + myID).val();
-        newDesc = newDesc.replace(/\n/g, "<br>");
         var project = $("#" + myID).attr("data-scriptname");
-        $("#" + myID).html(newDesc);
+        // Use .text() with CSS white-space to avoid .html() XSS risk
+        $("#" + myID).text(newDesc).css('white-space', 'pre-line');
         $.post(caURL, {
             action: 'changeDesc',
             script: project,
@@ -1748,7 +1757,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
 
                 $('#editorFileName').data("stackname", project);
                 $('#editorFileName').data("stackfilename", "docker-compose.yml")
-                $('#editorFileName').html(response.fileName)
+                $('#editorFileName').text(response.fileName)
                 $(".editing").show();
                 window.scrollTo(0, 0);
             }
@@ -1771,7 +1780,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
 
                 $('#editorFileName').data("stackname", project);
                 $('#editorFileName').data("stackfilename", ".env")
-                $('#editorFileName').html(response.fileName)
+                $('#editorFileName').text(response.fileName)
                 $(".editing").show();
                 window.scrollTo(0, 0);
             }
@@ -3575,7 +3584,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 var filename = response.fileName;
                 $(".tipsterallowed").hide();
                 $(".editing").show();
-                $("#editorFileName").html(filename);
+                $("#editorFileName").text(filename);
                 $("#editorFileName").attr("data-stackname", project);
                 $("#editorFileName").attr("data-stackfilename", "docker-compose.yml");
                 var editor = ace.edit("itemEditor");
@@ -3595,7 +3604,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 var filename = response.fileName;
                 $(".tipsterallowed").hide();
                 $(".editing").show();
-                $("#editorFileName").html(filename);
+                $("#editorFileName").text(filename);
                 $("#editorFileName").attr("data-stackname", project);
                 $("#editorFileName").attr("data-stackfilename", ".env");
                 var editor = ace.edit("itemEditor");
@@ -3615,7 +3624,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 var filename = response.fileName;
                 $(".tipsterallowed").hide();
                 $(".editing").show();
-                $("#editorFileName").html(filename);
+                $("#editorFileName").text(filename);
                 $("#editorFileName").attr("data-stackname", project);
                 $("#editorFileName").attr("data-stackfilename", "docker-compose.override.yml");
                 var editor = ace.edit("itemEditor");
@@ -3677,13 +3686,17 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
             $expandIcon.removeClass('expanded');
             expandedStacks[stackId] = false;
         } else {
-            // Expand
-            $detailsRow.slideDown(200);
             $expandIcon.addClass('expanded');
             expandedStacks[stackId] = true;
 
-            // Load container details if not cached or cache is stale
-            loadStackContainerDetails(stackId, project);
+            if (stackContainersCache[stackId]) {
+                // Cached — content is already rendered in the DOM from last load.
+                // Just slide down without re-fetching to avoid flash/layout shift.
+                $detailsRow.slideDown(200);
+            } else {
+                // First load: fetch data, row stays hidden until render completes
+                loadStackContainerDetails(stackId, project);
+            }
         }
     }
 
@@ -3755,10 +3768,13 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                         });
                     } catch (e) {}
                     renderContainerDetails(stackId, containers, project);
+                    // Slide down details row now that content is rendered
+                    $('#details-row-' + stackId).slideDown(200);
                 } else {
                     // Escape error message to prevent XSS
                     var errorMsg = escapeHtml(response.message || 'Failed to load container details');
                     $container.html('<div class="stack-details-error"><i class="fa fa-exclamation-triangle"></i> ' + errorMsg + '</div>');
+                    $('#details-row-' + stackId).slideDown(200);
                     stackDetailsLoading[stackId] = false;
                     try {
                         composeClientDebug('loadStackContainerDetails:error', {
@@ -3770,6 +3786,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 }
             } else {
                 $container.html('<div class="stack-details-error"><i class="fa fa-exclamation-triangle"></i> Failed to load container details</div>');
+                $('#details-row-' + stackId).slideDown(200);
                 stackDetailsLoading[stackId] = false;
                 try {
                     composeClientDebug('loadStackContainerDetails:empty-response', {
@@ -3780,6 +3797,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
             }
         }).fail(function() {
             $container.html('<div class="stack-details-error"><i class="fa fa-exclamation-triangle"></i> Failed to load container details</div>');
+            $('#details-row-' + stackId).slideDown(200);
             stackDetailsLoading[stackId] = false;
             try {
                 composeClientDebug('loadStackContainerDetails:failed', {

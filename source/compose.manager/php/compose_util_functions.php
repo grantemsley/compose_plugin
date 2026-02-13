@@ -33,13 +33,12 @@ if (!function_exists('logger')) {
 function execComposeCommandInTTY($cmd, $debug)
 {
     global $socket_name;
-    $pid = exec("pgrep -a ttyd|awk '/\\/$socket_name\\.sock/{print \$1}'");
-    if ($debug) {
-        logger($pid);
-    }
-    if ($pid) exec("kill $pid");
+    // Use pkill -f for more robust process matching instead of pgrep|awk pipeline
+    exec("pkill -f " . escapeshellarg("$socket_name.sock") . " 2>/dev/null");
+    usleep(300000); // 300ms for process to exit
     @unlink("/var/tmp/$socket_name.sock");
-    $command = "ttyd -R -o -i '/var/tmp/$socket_name.sock' $cmd" . " > /dev/null &";
+    $socketPath = escapeshellarg("/var/tmp/$socket_name.sock");
+    $command = "ttyd -R -o -i $socketPath $cmd > /dev/null &";
     exec($command);
     if ($debug) {
         logger($command);
@@ -58,8 +57,8 @@ function echoComposeCommand($action, $recreate = false)
     global $sName;
     $cfg = parse_plugin_cfg($sName);
     $debug = $cfg['DEBUG_TO_LOG'] == "true";
-    $path = isset($_POST['path']) ? urldecode($_POST['path']) : "";
-    $profile = isset($_POST['profile']) ? urldecode($_POST['profile']) : "";
+    $path = isset($_POST['path']) ? trim($_POST['path']) : "";
+    $profile = isset($_POST['profile']) ? trim($_POST['profile']) : "";
     $unRaidVars = parse_ini_file("/var/local/emhttp/var.ini");
     $originalAction = $action;
     if ($unRaidVars['mdState'] != "STARTED") {

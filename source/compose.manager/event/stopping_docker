@@ -37,29 +37,34 @@ stop_stack() {
     log "Stopping stack: $stack_name"
     
     # Build command arguments
-    local files=""
+    local -a file_args=()
     if [ -f "$dir/indirect" ]; then
-        local indirect=$(< "$dir/indirect")
-        for file in $(find "$indirect" -maxdepth 1 -type f -name '*compose*.yml' 2>/dev/null); do
-            files="$files -f $file"
-        done
+        local indirect
+        indirect=$(< "$dir/indirect")
+        while IFS= read -r -d '' file; do
+            file_args+=("-f" "$file")
+        done < <(find "$indirect" -maxdepth 1 -type f -name '*compose*.yml' -print0 2>/dev/null)
     else
-        files="-f $dir/docker-compose.yml"
+        file_args=("-f" "$dir/docker-compose.yml")
     fi
     
-    local override=""
+    local -a override_args=()
     if [ -f "$dir/docker-compose.override.yml" ]; then
-        override="-f $dir/docker-compose.override.yml"
+        override_args=("-f" "$dir/docker-compose.override.yml")
     fi
     
-    local envpath=""
+    local -a env_args=()
     if [ -f "$dir/envpath" ]; then
-        envpath="--env-file $(< "$dir/envpath")"
+        local envpath
+        envpath=$(< "$dir/envpath")
+        if [ -f "$envpath" ]; then
+            env_args=("--env-file" "$envpath")
+        fi
     fi
     
     # Try graceful stop first with timeout
     local exit_code
-    timeout $SHUTDOWN_TIMEOUT docker compose $files $override $envpath -p "$sanitized_name" stop 2>&1
+    timeout $SHUTDOWN_TIMEOUT docker compose "${file_args[@]}" "${override_args[@]}" "${env_args[@]}" -p "$sanitized_name" stop 2>&1
     exit_code=$?
     
     local duration=$(($(date +%s) - start_time))
@@ -70,7 +75,7 @@ stop_stack() {
     elif [ $exit_code -eq 124 ]; then
         log "WARNING: Stack $stack_name stop timed out after ${SHUTDOWN_TIMEOUT}s, forcing..."
         # Force kill containers if graceful stop times out
-        docker compose $files $override $envpath -p "$sanitized_name" kill 2>&1
+        docker compose "${file_args[@]}" "${override_args[@]}" "${env_args[@]}" -p "$sanitized_name" kill 2>&1
         log "Stack $stack_name force killed"
         return 124
     else
@@ -85,7 +90,7 @@ log "=== Compose Manager Shutdown Begin ==="
 # Collect all stacks (not just autostart ones - we need to stop everything)
 declare -a stacks_to_stop
 
-for dir in $COMPOSE_ROOT/*; do
+for dir in "$COMPOSE_ROOT"/*; do
     if [ -d "$dir" ]; then
         if [ -f "$dir/docker-compose.yml" ] || [ -f "$dir/indirect" ]; then
             # Get stack name

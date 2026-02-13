@@ -18,11 +18,11 @@ OPTS=$(getopt -a -n compose --options $SHORT --longoptions $LONG -- "$@")
 eval set -- "$OPTS"
 
 envFile=""
-files=""
-project_dir=""
+env_args=()
+file_args=()
+profile_args=()
+cmd_args=()
 stack_path=""
-options=""
-command_options=""
 debug=false
 lock_fd=""
 
@@ -95,24 +95,27 @@ save_result() {
 }
 
 # Run command with retry logic for transient failures
-# Usage: run_with_retry "command" "description" [retry_on_pattern]
+# Usage: run_with_retry "description" command [args...]
 run_with_retry() {
-    local cmd="$1"
-    local desc="$2"
-    local retry_pattern="${3:-error|timeout|connection refused|no such host|temporary failure}"
+    local desc="$1"
+    shift
+    local retry_pattern="error|timeout|connection refused|no such host|temporary failure"
     local attempt=1
     local exit_code=0
     local output=""
     local temp_file=$(mktemp)
+    
+    # Build a properly quoted command string for script -c
+    local cmd_string
+    cmd_string=$(printf '%q ' "$@")
     
     while [ $attempt -le $MAX_RETRIES ]; do
         if [ "$debug" = true ]; then
             log_msg "DEBUG" "Attempt $attempt/$MAX_RETRIES: $desc"
         fi
         
-        # Run command directly (preserves terminal escape sequences for progress bars)
-        # Use script to capture output while preserving TTY behavior
-        script -q -c "eval $cmd" "$temp_file" 2>&1
+        # Run command via script to preserve TTY escape sequences for progress bars
+        script -q -c "$cmd_string" "$temp_file" 2>&1
         exit_code=$?
         output=$(cat "$temp_file" | tr -d '\r')
         
@@ -152,21 +155,21 @@ do
       envFile="$2"
       shift 2
       
-      if [ -f $envFile ]; then
+      if [ -f "$envFile" ]; then
         echo "using .env: $envFile"
       else
         echo ".env doesn't exist: $envFile"
         exit
       fi
 
-      envFile="--env-file ${envFile@Q}"
+      env_args=("--env-file" "$envFile")
       ;;
     -c | --command )
       command="$2"
       shift 2
       ;;
     -f | --file )
-      files="${files} -f ${2@Q}"
+      file_args+=("-f" "$2")
       shift 2
       ;;
     -p | --project_name )
@@ -175,18 +178,18 @@ do
       ;;
     -d | --project_dir )
       if [ -d "$2" ]; then
-        for file in $( find $2 -maxdepth 1 -type f -name '*compose*.yml' ); do
-          files="$files -f ${file@Q}"
+        for file in $( find "$2" -maxdepth 1 -type f -name '*compose*.yml' ); do
+          file_args+=("-f" "$file")
         done
       fi
       shift 2
       ;;
     -g | --profile )
-      options="${options} --profile $2"
+      profile_args+=("--profile" "$2")
       shift 2
       ;;
     --recreate )
-      command_options="${command_options} --force-recreate"
+      cmd_args+=("--force-recreate")
       shift;
       ;;
     -s | --stack-path )
@@ -203,9 +206,13 @@ do
       ;;
     *)
       echo "Unexpected option: $1"
+      shift
       ;;
   esac
 done
+
+# Build the compose base command as an array (no eval needed)
+compose_base=(docker compose "${env_args[@]}" "${file_args[@]}" "${profile_args[@]}")
 
 # Acquire lock for operations that modify state (not for read-only commands)
 case $command in
@@ -222,10 +229,10 @@ case $command in
 
   up)
     if [ "$debug" = true ]; then
-      log_msg "DEBUG" "docker compose $envFile $files $options -p $name up $command_options -d"
+      log_msg "DEBUG" "${compose_base[*]} -p $name up ${cmd_args[*]} -d"
     fi
     
-    run_with_retry "docker compose $envFile $files $options -p \"$name\" up $command_options -d" "start stack $name"
+    run_with_retry "start stack $name" "${compose_base[@]}" -p "$name" up "${cmd_args[@]}" -d
     exit_code=$?
     
     if [ $exit_code -eq 0 ]; then
@@ -246,10 +253,10 @@ case $command in
 
   down)
     if [ "$debug" = true ]; then
-      log_msg "DEBUG" "docker compose $envFile $files $options -p $name down"
+      log_msg "DEBUG" "${compose_base[*]} -p $name down"
     fi
     
-    eval docker compose $envFile $files $options -p "$name" down 2>&1
+    "${compose_base[@]}" -p "$name" down 2>&1
     exit_code=$?
     
     if [ $exit_code -eq 0 ]; then
@@ -266,10 +273,10 @@ case $command in
 
   pull)
     if [ "$debug" = true ]; then
-      log_msg "DEBUG" "docker compose $envFile $files $options -p $name pull"
+      log_msg "DEBUG" "${compose_base[*]} -p $name pull"
     fi
     
-    run_with_retry "docker compose $envFile $files $options -p \"$name\" pull" "pull images for $name"
+    run_with_retry "pull images for $name" "${compose_base[@]}" -p "$name" pull
     exit_code=$?
     
     if [ $exit_code -eq 0 ]; then
@@ -286,24 +293,27 @@ case $command in
     
   update)
     if [ "$debug" = true ]; then
-      log_msg "DEBUG" "docker compose $envFile $files $options -p $name images -q"
-      log_msg "DEBUG" "docker compose $envFile $files $options -p $name pull"
-      log_msg "DEBUG" "docker compose $envFile $files $options -p $name up -d --build"
+      log_msg "DEBUG" "${compose_base[*]} -p $name images -q"
+      log_msg "DEBUG" "${compose_base[*]} -p $name pull"
+      log_msg "DEBUG" "${compose_base[*]} -p $name up -d --build"
     fi
 
     # Capture current images for cleanup later
     images=()
-    images+=( $(docker compose $envFile $files $options -p "$name" images -q 2>/dev/null) )
+    images+=( $("${compose_base[@]}" -p "$name" images -q 2>/dev/null) )
 
-    if [ ${#images[@]} -eq 0 ]; then   
-      delete="-f"
-      files_arr=( $files ) 
-      files_arr=( ${files_arr[@]/$delete} )
-      if (( ${#files_arr[@]} )); then
-        services=( $(cat ${files_arr[*]//\'/} | sed -n 's/image:\(.*\)/\1/p') )
-
+    if [ ${#images[@]} -eq 0 ]; then
+      # Fallback: extract image names from compose files directly
+      local_files=()
+      for (( i=0; i<${#file_args[@]}; i++ )); do
+        if [ "${file_args[$i]}" = "-f" ] && [ -f "${file_args[$((i+1))]}" ]; then
+          local_files+=("${file_args[$((i+1))]}")
+        fi
+      done
+      if (( ${#local_files[@]} )); then
+        services=( $(cat "${local_files[@]}" | sed -n 's/image:\(.*\)/\1/p') )
         for image in "${services[@]}"; do
-          images+=( $(docker images -q --no-trunc ${image} 2>/dev/null) )
+          images+=( $(docker images -q --no-trunc "${image}" 2>/dev/null) )
         done
       fi
 
@@ -312,7 +322,7 @@ case $command in
     
     # Pull with retry logic (most likely to have transient network failures)
     echo "Pulling latest images..."
-    run_with_retry "docker compose $envFile $files $options -p \"$name\" pull" "pull images for $name"
+    run_with_retry "pull images for $name" "${compose_base[@]}" -p "$name" pull
     pull_exit=$?
     
     if [ $pull_exit -ne 0 ]; then
@@ -326,12 +336,12 @@ case $command in
     # Recreate containers with new images
     echo ""
     echo "Recreating containers..."
-    run_with_retry "docker compose $envFile $files $options -p \"$name\" up -d --build" "recreate containers for $name"
+    run_with_retry "recreate containers for $name" "${compose_base[@]}" -p "$name" up -d --build
     up_exit=$?
 
     if [ $up_exit -eq 0 ]; then
       # Clean up old images
-      new_images=( $(docker compose $envFile $files $options -p "$name" images -q 2>/dev/null) )
+      new_images=( $("${compose_base[@]}" -p "$name" images -q 2>/dev/null) )
       for target in "${new_images[@]}"; do
         for i in "${!images[@]}"; do
           if [[ ${images[i]} = $target ]]; then
@@ -346,7 +356,7 @@ case $command in
         fi
         echo ""
         echo "Cleaning up old images..."
-        eval docker rmi ${images[*]} 2>/dev/null || true
+        docker rmi "${images[@]}" 2>/dev/null || true
       fi
       
       # Save stack started timestamp after update
@@ -366,10 +376,10 @@ case $command in
 
   stop)
     if [ "$debug" = true ]; then
-      log_msg "DEBUG" "docker compose $envFile $files $options -p $name stop"
+      log_msg "DEBUG" "${compose_base[*]} -p $name stop"
     fi
     
-    eval docker compose $envFile $files $options -p "$name" stop 2>&1
+    "${compose_base[@]}" -p "$name" stop 2>&1
     exit_code=$?
     
     if [ $exit_code -eq 0 ]; then
@@ -388,7 +398,7 @@ case $command in
     if [ "$debug" = true ]; then
       log_msg "DEBUG" "docker compose ls -a --format json"
     fi
-    eval docker compose ls -a --format json 2>&1
+    docker compose ls -a --format json 2>&1
     ;;
 
   ps)
@@ -396,19 +406,23 @@ case $command in
     if [ "$debug" = true ]; then
       log_msg "DEBUG" "docker ps -a --filter label=com.docker.compose.project --format json"
     fi
-    eval docker ps -a --filter 'label=com.docker.compose.project' --format json 2>&1
+    docker ps -a --filter 'label=com.docker.compose.project' --format json 2>&1
     ;;
 
   logs)
     if [ "$debug" = true ]; then
-      log_msg "DEBUG" "docker compose $envFile $files $options logs -f"
+      log_msg "DEBUG" "${compose_base[*]} logs -f"
     fi
-    eval docker compose $envFile $files $options logs -f 2>&1
+    "${compose_base[@]}" logs -f 2>&1
+    exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+      log_msg "ERROR" "Failed to stream logs (exit code: $exit_code)"
+    fi
     ;;
 
   *)
     echo "Unknown command: $command"
-    log_msg "ERROR" "Unknown command: $command (name: $name, files: $files)"
+    log_msg "ERROR" "Unknown command: $command (name: $name, files: ${file_args[*]})"
     exit 1
     ;;
 esac

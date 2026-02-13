@@ -5,7 +5,6 @@
  */
 
 $plugin_root = "/usr/local/emhttp/plugins/compose.manager";
-$compose_root = "/boot/config/plugins/compose.manager/projects";
 
 require_once("$plugin_root/php/defines.php");
 require_once("$plugin_root/php/util.php");
@@ -26,7 +25,7 @@ if (!is_dir($compose_root)) {
 }
 
 // Load saved update status from central JSON file
-$composeUpdateStatusFile = "/boot/config/plugins/compose.manager/update-status.json";
+$composeUpdateStatusFile = COMPOSE_UPDATE_STATUS_FILE;
 $savedUpdateStatus = [];
 if (is_file($composeUpdateStatusFile)) {
     $savedUpdateStatus = json_decode(file_get_contents($composeUpdateStatusFile), true) ?: [];

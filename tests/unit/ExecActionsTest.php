@@ -121,8 +121,8 @@ class ExecActionsTest extends TestCase
         $stackPath = $this->createTestStack('test-stack');
         
         $output = $this->executeAction('changeName', [
-            'script' => urlencode('test-stack'),
-            'newName' => urlencode('My Custom Name'),
+            'script' => 'test-stack',
+            'newName' => 'My Custom Name',
         ]);
         
         $this->assertFileExists($stackPath . '/name');
@@ -140,8 +140,8 @@ class ExecActionsTest extends TestCase
         $stackPath = $this->createTestStack('test-stack');
         
         $this->executeAction('changeName', [
-            'script' => urlencode('test-stack'),
-            'newName' => urlencode('  Trimmed Name  '),
+            'script' => 'test-stack',
+            'newName' => '  Trimmed Name  ',
         ]);
         
         $this->assertEquals('Trimmed Name', file_get_contents($stackPath . '/name'));
@@ -159,8 +159,8 @@ class ExecActionsTest extends TestCase
         $stackPath = $this->createTestStack('test-stack');
         
         $output = $this->executeAction('changeDesc', [
-            'script' => urlencode('test-stack'),
-            'newDesc' => urlencode('This is a test description'),
+            'script' => 'test-stack',
+            'newDesc' => 'This is a test description',
         ]);
         
         $this->assertFileExists($stackPath . '/description');
@@ -183,7 +183,7 @@ class ExecActionsTest extends TestCase
         file_put_contents($stackPath . '/description', 'Test description content');
         
         $output = $this->executeAction('getDescription', [
-            'script' => urlencode('test-stack'),
+            'script' => 'test-stack',
         ]);
         
         $result = json_decode($output, true);
@@ -199,7 +199,7 @@ class ExecActionsTest extends TestCase
         $this->createTestStack('test-stack');
         
         $output = $this->executeAction('getDescription', [
-            'script' => urlencode('test-stack'),
+            'script' => 'test-stack',
         ]);
         
         $result = json_decode($output, true);
@@ -233,8 +233,8 @@ class ExecActionsTest extends TestCase
         $stackPath = $this->createTestStack('test-stack');
         
         $output = $this->executeAction('updateAutostart', [
-            'script' => urlencode('test-stack'),
-            'autostart' => urlencode('true'),
+            'script' => 'test-stack',
+            'autostart' => 'true',
         ]);
         
         $this->assertFileExists($stackPath . '/autostart');
@@ -253,8 +253,8 @@ class ExecActionsTest extends TestCase
         file_put_contents($stackPath . '/autostart', 'true');
         
         $this->executeAction('updateAutostart', [
-            'script' => urlencode('test-stack'),
-            'autostart' => urlencode('false'),
+            'script' => 'test-stack',
+            'autostart' => 'false',
         ]);
         
         $this->assertEquals('false', file_get_contents($stackPath . '/autostart'));
@@ -275,7 +275,7 @@ class ExecActionsTest extends TestCase
         ]);
         
         $output = $this->executeAction('getYml', [
-            'script' => urlencode('test-stack'),
+            'script' => 'test-stack',
         ]);
         
         $result = json_decode($output, true);
@@ -296,7 +296,7 @@ class ExecActionsTest extends TestCase
         
         $newContent = "services:\n  app:\n    image: alpine";
         $output = $this->executeAction('saveYml', [
-            'script' => urlencode('test-stack'),
+            'script' => 'test-stack',
             'scriptContents' => $newContent,
         ]);
         
@@ -318,7 +318,7 @@ class ExecActionsTest extends TestCase
         file_put_contents($stackPath . '/.env', $envContent);
         
         $output = $this->executeAction('getEnv', [
-            'script' => urlencode('test-stack'),
+            'script' => 'test-stack',
         ]);
         
         $result = json_decode($output, true);
@@ -337,7 +337,7 @@ class ExecActionsTest extends TestCase
         file_put_contents($stackPath . '/envpath', $customEnvPath);
         
         $output = $this->executeAction('getEnv', [
-            'script' => urlencode('test-stack'),
+            'script' => 'test-stack',
         ]);
         
         $result = json_decode($output, true);
@@ -358,7 +358,7 @@ class ExecActionsTest extends TestCase
         
         $envContent = "NEW_VAR=new_value";
         $output = $this->executeAction('saveEnv', [
-            'script' => urlencode('test-stack'),
+            'script' => 'test-stack',
             'scriptContents' => $envContent,
         ]);
         
@@ -380,7 +380,7 @@ class ExecActionsTest extends TestCase
         file_put_contents($stackPath . '/docker-compose.override.yml', $overrideContent);
         
         $output = $this->executeAction('getOverride', [
-            'script' => urlencode('test-stack'),
+            'script' => 'test-stack',
         ]);
         
         $result = json_decode($output, true);
@@ -396,7 +396,7 @@ class ExecActionsTest extends TestCase
         $this->createTestStack('test-stack');
         
         $output = $this->executeAction('getOverride', [
-            'script' => urlencode('test-stack'),
+            'script' => 'test-stack',
         ]);
         
         $result = json_decode($output, true);
@@ -417,7 +417,7 @@ class ExecActionsTest extends TestCase
         
         $overrideContent = "services:\n  web:\n    volumes:\n      - ./data:/data";
         $this->executeAction('saveOverride', [
-            'script' => urlencode('test-stack'),
+            'script' => 'test-stack',
             'scriptContents' => $overrideContent,
         ]);
         
@@ -430,15 +430,20 @@ class ExecActionsTest extends TestCase
 
     /**
      * Test setEnvPath creates envpath file
+     * Uses a path under compose_root which is always writable and allowed.
      */
     public function testSetEnvPathCreatesFile(): void
     {
         $stackPath = $this->createTestStack('test-stack');
-        
-        $customPath = '/mnt/user/appdata/custom.env';
+
+        // Use a path under compose_root — always writable and passes validation
+        $envDir = $this->testComposeRoot . '/envfiles';
+        mkdir($envDir, 0755, true);
+        $customPath = $envDir . '/custom.env';
+
         $output = $this->executeAction('setEnvPath', [
-            'script' => urlencode('test-stack'),
-            'envPath' => urlencode($customPath),
+            'script' => 'test-stack',
+            'envPath' => $customPath,
         ]);
         
         $this->assertFileExists($stackPath . '/envpath');
@@ -458,7 +463,7 @@ class ExecActionsTest extends TestCase
         file_put_contents($stackPath . '/envpath', '/some/path.env');
         
         $output = $this->executeAction('setEnvPath', [
-            'script' => urlencode('test-stack'),
+            'script' => 'test-stack',
             'envPath' => '',
         ]);
         
@@ -480,7 +485,7 @@ class ExecActionsTest extends TestCase
         file_put_contents($stackPath . '/envpath', $customPath);
         
         $output = $this->executeAction('getEnvPath', [
-            'script' => urlencode('test-stack'),
+            'script' => 'test-stack',
         ]);
         
         $result = json_decode($output, true);
@@ -501,7 +506,7 @@ class ExecActionsTest extends TestCase
         $this->createTestStack('test-stack');
         
         $output = $this->executeAction('deleteStack', [
-            'stackName' => urlencode('test-stack'),
+            'stackName' => 'test-stack',
         ]);
         
         $result = json_decode($output, true);
@@ -519,7 +524,7 @@ class ExecActionsTest extends TestCase
         ]);
         
         $output = $this->executeAction('deleteStack', [
-            'stackName' => urlencode('test-stack'),
+            'stackName' => 'test-stack',
         ]);
         
         $result = json_decode($output, true);
@@ -555,7 +560,7 @@ class ExecActionsTest extends TestCase
         file_put_contents($stackPath . '/default_profile', 'production');
         
         $output = $this->executeAction('getStackSettings', [
-            'script' => urlencode('test-stack'),
+            'script' => 'test-stack',
         ]);
         
         $result = json_decode($output, true);
@@ -591,9 +596,9 @@ class ExecActionsTest extends TestCase
         $stackPath = $this->createTestStack('test-stack');
         
         $output = $this->executeAction('setStackSettings', [
-            'script' => urlencode('test-stack'),
-            'envPath' => urlencode('/new/env/path.env'),
-            'defaultProfile' => urlencode('staging'),
+            'script' => 'test-stack',
+            'envPath' => '/new/env/path.env',
+            'defaultProfile' => 'staging',
         ]);
         
         $result = json_decode($output, true);
@@ -612,7 +617,7 @@ class ExecActionsTest extends TestCase
         $this->createTestStack('test-stack');
         
         $output = $this->executeAction('checkStackLock', [
-            'script' => urlencode('test-stack'),
+            'script' => 'test-stack',
         ]);
         
         $result = json_decode($output, true);

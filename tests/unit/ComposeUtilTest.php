@@ -70,7 +70,7 @@ class ComposeUtilTest extends TestCase
         \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
         
         // Set POST data
-        $_POST['path'] = urlencode($tempDir . '/test-stack');
+        $_POST['path'] = $tempDir . '/test-stack';
         
         // Capture output
         ob_start();
@@ -108,7 +108,7 @@ class ComposeUtilTest extends TestCase
         \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
         
         // Set POST data
-        $_POST['path'] = urlencode($stackDir);
+        $_POST['path'] = $stackDir;
         $_POST['profile'] = '';
         
         // Capture output
@@ -148,8 +148,8 @@ class ComposeUtilTest extends TestCase
         \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
         
         // Set POST data with profile
-        $_POST['path'] = urlencode($stackDir);
-        $_POST['profile'] = urlencode('dev');
+        $_POST['path'] = $stackDir;
+        $_POST['profile'] = 'dev';
         
         // Capture output
         ob_start();
@@ -187,8 +187,8 @@ class ComposeUtilTest extends TestCase
         \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
         
         // Set POST data with multiple profiles
-        $_POST['path'] = urlencode($stackDir);
-        $_POST['profile'] = urlencode('dev,prod');
+        $_POST['path'] = $stackDir;
+        $_POST['profile'] = 'dev,prod';
         
         // Capture output
         ob_start();
@@ -231,7 +231,7 @@ class ComposeUtilTest extends TestCase
         \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
         
         // Set POST data
-        $_POST['path'] = urlencode($stackDir);
+        $_POST['path'] = $stackDir;
         $_POST['profile'] = '';
         
         // Capture output
@@ -272,7 +272,7 @@ class ComposeUtilTest extends TestCase
         \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
         
         // Set POST data
-        $_POST['path'] = urlencode($stackDir);
+        $_POST['path'] = $stackDir;
         $_POST['profile'] = '';
         
         // Capture output
@@ -312,7 +312,7 @@ class ComposeUtilTest extends TestCase
         \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
         
         // Set POST data
-        $_POST['path'] = urlencode($stackDir);
+        $_POST['path'] = $stackDir;
         $_POST['profile'] = '';
         
         // Capture output
@@ -352,7 +352,7 @@ class ComposeUtilTest extends TestCase
         \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', "$varIniDir/var.ini");
         
         // Set POST data
-        $_POST['path'] = urlencode($stackDir);
+        $_POST['path'] = $stackDir;
         $_POST['profile'] = '';
         
         // Capture output

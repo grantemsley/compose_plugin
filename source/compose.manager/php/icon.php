@@ -15,7 +15,7 @@ if (empty($project)) {
 
 // Sanitize project name
 $project = basename($project);
-$compose_root = getComposeRoot();
+$compose_root = locate_compose_root('compose.manager');
 $projectPath = "$compose_root/$project";
 
 if (!is_dir($projectPath)) {

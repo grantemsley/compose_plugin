@@ -400,6 +400,9 @@
 .compose-ct-table td:nth-child(3) {
   white-space: normal;
   word-break: break-all;
-  color: #606060;
   text-align: left !important;
+}
+/* Source data cells only — muted color (header inherits theme default) */
+.compose-ct-table td:nth-child(3) {
+  color: #606060;
 }

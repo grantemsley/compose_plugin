@@ -4,11 +4,31 @@ require_once("/usr/local/emhttp/plugins/compose.manager/php/defines.php");
 require_once("/usr/local/emhttp/plugins/compose.manager/php/util.php");
 require_once("/usr/local/emhttp/plugins/compose.manager/php/exec_functions.php");
 
+/**
+ * Safely retrieve the 'script' POST parameter (stack directory name).
+ * Applies basename() to prevent path traversal attacks.
+ * Does NOT apply urldecode() because PHP already decodes POST data.
+ *
+ * @return string The sanitized script/stack directory name
+ */
+if (!function_exists('getPostScript')) {
+    function getPostScript(): string {
+        $script = $_POST['script'] ?? '';
+        return basename(trim($script));
+    }
+}
+
 switch ($_POST['action']) {
     case 'addStack':
         #Create indirect
-        $indirect = isset($_POST['stackPath']) ? urldecode(($_POST['stackPath'])) : "";
+        $indirect = isset($_POST['stackPath']) ? trim($_POST['stackPath']) : "";
         if (!empty($indirect)) {
+            // Validate stackPath is under an allowed root (/mnt/ or /boot/config/)
+            $realIndirect = realpath(dirname($indirect)) ?: $indirect;
+            if (strpos($realIndirect, '/mnt/') !== 0 && strpos($realIndirect, '/boot/config/') !== 0) {
+                echo json_encode(['result' => 'error', 'message' => 'Stack path must be under /mnt/ or /boot/config/.']);
+                break;
+            }
             if (!is_dir($indirect)) {
                 exec("mkdir -p " . escapeshellarg($indirect));
                 if (!is_dir($indirect)) {
@@ -21,14 +41,8 @@ switch ($_POST['action']) {
         #Pull stack files
 
         #Create stack folder
-        $stackName = isset($_POST['stackName']) ? urldecode(($_POST['stackName'])) : "";
-        $folderName = str_replace('"', "", $stackName);
-        $folderName = str_replace("'", "", $folderName);
-        $folderName = str_replace("&", "", $folderName);
-        $folderName = str_replace("(", "", $folderName);
-        $folderName = str_replace(")", "", $folderName);
-        $folderName = preg_replace("/ {2,}/", " ", $folderName);
-        $folderName = preg_replace("/\s/", "_", $folderName);
+        $stackName = isset($_POST['stackName']) ? trim($_POST['stackName']) : "";
+        $folderName = sanitizeFolderName($stackName);
         $folder = "$compose_root/$folderName";
         while (true) {
             if (is_dir($folder)) {
@@ -65,7 +79,7 @@ switch ($_POST['action']) {
         file_put_contents("$folder/name", $stackName);
 
         // Save description if provided
-        $stackDesc = isset($_POST['stackDesc']) ? urldecode(($_POST['stackDesc'])) : "";
+        $stackDesc = isset($_POST['stackDesc']) ? trim($_POST['stackDesc']) : "";
         if (!empty($stackDesc)) {
             file_put_contents("$folder/description", trim($stackDesc));
         }
@@ -75,7 +89,7 @@ switch ($_POST['action']) {
         echo json_encode(['result' => 'success', 'message' => '', 'project' => $projectDir, 'projectName' => $stackName]);
         break;
     case 'deleteStack':
-        $stackName = isset($_POST['stackName']) ? urldecode(($_POST['stackName'])) : "";
+        $stackName = isset($_POST['stackName']) ? basename(trim($_POST['stackName'])) : "";
         if (! $stackName) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
@@ -90,19 +104,22 @@ switch ($_POST['action']) {
         }
         break;
     case 'changeName':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
-        $newName = isset($_POST['newName']) ? urldecode(($_POST['newName'])) : "";
-        file_put_contents("$compose_root/$script/name", trim($newName));
+        $script = getPostScript();
+        $newName = isset($_POST['newName']) ? trim($_POST['newName']) : "";
+        // Strip characters that could cause shell injection when name is
+        // used in bash scripts (e.g. event/started autostart)
+        $newName = preg_replace('/[^a-zA-Z0-9 _.\-()\[\]]/', '', $newName);
+        file_put_contents("$compose_root/$script/name", $newName);
         echo json_encode(['result' => 'success', 'message' => '']);
         break;
     case 'changeDesc':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
-        $newDesc = isset($_POST['newDesc']) ? urldecode(($_POST['newDesc'])) : "";
+        $script = getPostScript();
+        $newDesc = isset($_POST['newDesc']) ? trim($_POST['newDesc']) : "";
         file_put_contents("$compose_root/$script/description", trim($newDesc));
         echo json_encode(['result' => 'success', 'message' => '']);
         break;
     case 'getDescription':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         if (! $script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
@@ -113,7 +130,7 @@ switch ($_POST['action']) {
         echo json_encode(['result' => 'success', 'content' => $fileContents]);
         break;
     case 'getYml':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         $basePath = getPath("$compose_root/$script");
         $fileName = "docker-compose.yml";
 
@@ -125,7 +142,7 @@ switch ($_POST['action']) {
         echo json_encode(['result' => 'success', 'fileName' => "$basePath/$fileName", 'content' => $scriptContents]);
         break;
     case 'getEnv':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         $basePath = getPath("$compose_root/$script");
         $fileName = "$basePath/.env";
         if (is_file("$basePath/envpath")) {
@@ -141,7 +158,7 @@ switch ($_POST['action']) {
         echo json_encode(['result' => 'success', 'fileName' => "$fileName", 'content' => $scriptContents]);
         break;
     case 'getOverride':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         $basePath = "$compose_root/$script";
         $fileName = "docker-compose.override.yml";
 
@@ -153,7 +170,7 @@ switch ($_POST['action']) {
         echo json_encode(['result' => 'success', 'fileName' => "$basePath/$fileName", 'content' => $scriptContents]);
         break;
     case 'saveYml':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         $scriptContents = isset($_POST['scriptContents']) ? $_POST['scriptContents'] : "";
         $basePath = getPath("$compose_root/$script");
         $fileName = "docker-compose.yml";
@@ -162,7 +179,7 @@ switch ($_POST['action']) {
         echo "$basePath/$fileName saved";
         break;
     case 'saveEnv':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         $scriptContents = isset($_POST['scriptContents']) ? $_POST['scriptContents'] : "";
         $basePath = getPath("$compose_root/$script");
         $fileName = "$basePath/.env";
@@ -175,7 +192,7 @@ switch ($_POST['action']) {
         echo "$fileName saved";
         break;
     case 'saveOverride':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         $scriptContents = isset($_POST['scriptContents']) ? $_POST['scriptContents'] : "";
         $basePath = "$compose_root/$script";
         $fileName = "docker-compose.override.yml";
@@ -184,15 +201,15 @@ switch ($_POST['action']) {
         echo "$basePath/$fileName saved";
         break;
     case 'updateAutostart':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         if (! $script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
         }
-        $autostart = isset($_POST['autostart']) ? urldecode(($_POST['autostart'])) : "false";
+        $autostart = isset($_POST['autostart']) ? trim($_POST['autostart']) : "false";
         $fileName = "$compose_root/$script/autostart";
         if (is_file($fileName)) {
-            exec("rm " . escapeshellarg($fileName));
+            @unlink($fileName);
         }
         file_put_contents($fileName, $autostart);
         echo json_encode(['result' => 'success', 'message' => '']);
@@ -227,13 +244,13 @@ switch ($_POST['action']) {
 
     case 'clearUpdateCache':
         // Clear the compose manager update status cache
-        $composeUpdateStatusFile = "/boot/config/plugins/compose.manager/update-status.json";
+        $composeUpdateStatusFile = COMPOSE_UPDATE_STATUS_FILE;
         if (is_file($composeUpdateStatusFile)) {
             unlink($composeUpdateStatusFile);
         }
         // Also clear entries from Unraid's update status that were created by compose manager
         // by removing entries that don't correspond to running Docker containers
-        $unraidUpdateStatusFile = "/var/lib/docker/unraid-update-status.json";
+        $unraidUpdateStatusFile = UNRAID_UPDATE_STATUS_FILE;
         if (is_file($unraidUpdateStatusFile)) {
             require_once("/usr/local/emhttp/plugins/dynamix.docker.manager/include/DockerClient.php");
             $DockerClient = new DockerClient();
@@ -256,23 +273,37 @@ switch ($_POST['action']) {
         echo json_encode(['result' => 'success', 'message' => 'Update cache cleared']);
         break;
     case 'setEnvPath':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         if (! $script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
         }
-        $fileContent = isset($_POST['envPath']) ? urldecode(($_POST['envPath'])) : "";
+        $fileContent = isset($_POST['envPath']) ? trim($_POST['envPath']) : "";
         $fileName = "$compose_root/$script/envpath";
-        if (is_file($fileName)) {
-            exec("rm " . escapeshellarg($fileName));
+        // Validate env path is under an allowed root
+        if (!empty($fileContent)) {
+            $realEnvDir = realpath(dirname($fileContent));
+            $realComposeRoot = realpath($compose_root);
+            $allowed = $realEnvDir !== false && (
+                strpos($realEnvDir, '/mnt/') === 0 ||
+                strpos($realEnvDir, '/boot/config/') === 0 ||
+                ($realComposeRoot !== false && strpos($realEnvDir, $realComposeRoot) === 0)
+            );
+            if (!$allowed) {
+                echo json_encode(['result' => 'error', 'message' => 'Env file path must be under /mnt/, /boot/config/, or the compose root.']);
+                break;
+            }
         }
-        if (isset($fileContent) && !empty($fileContent)) {
+        if (is_file($fileName)) {
+            @unlink($fileName);
+        }
+        if (!empty($fileContent)) {
             file_put_contents($fileName, $fileContent);
         }
         echo json_encode(['result' => 'success', 'message' => '']);
         break;
     case 'getEnvPath':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         if (! $script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
@@ -286,7 +317,7 @@ switch ($_POST['action']) {
         echo json_encode(['result' => 'success', 'fileName' => "$fileName", 'content' => $fileContents]);
         break;
     case 'getStackSettings':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         if (! $script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
@@ -327,7 +358,7 @@ switch ($_POST['action']) {
         ]);
         break;
     case 'setStackSettings':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         if (! $script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
@@ -382,17 +413,15 @@ switch ($_POST['action']) {
         echo json_encode(['result' => 'success', 'message' => 'Settings saved']);
         break;
     case 'saveProfiles':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         $scriptContents = isset($_POST['scriptContents']) ? $_POST['scriptContents'] : "";
         $basePath = "$compose_root/$script";
         $fileName = "$basePath/profiles";
 
         if ($scriptContents == "[]") {
             if (is_file($fileName)) {
-                exec("rm " . escapeshellarg($fileName));
-                echo json_encode(['result' => 'success', 'message' => "$fileName deleted"]);
+                @unlink($fileName);
             }
-
             echo json_encode(['result' => 'success', 'message' => '']);
             break;
         }
@@ -401,40 +430,19 @@ switch ($_POST['action']) {
         echo json_encode(['result' => 'success', 'message' => "$fileName saved"]);
         break;
     case 'getStackContainers':
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         if (! $script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
         }
 
-        // Get the project name (sanitized)
-        $projectName = $script;
-        if (is_file("$compose_root/$script/name")) {
-            $projectName = trim(file_get_contents("$compose_root/$script/name"));
-        }
-        $projectName = sanitizeStr($projectName);
-
-        // Get containers for this compose project using docker compose ps
-        $basePath = getPath("$compose_root/$script");
-        $composeFile = "$basePath/docker-compose.yml";
-        $overrideFile = "$compose_root/$script/docker-compose.override.yml";
-
-        $files = "-f " . escapeshellarg($composeFile);
-        if (is_file($overrideFile)) {
-            $files .= " -f " . escapeshellarg($overrideFile);
-        }
-
-        $envFile = "";
-        if (is_file("$compose_root/$script/envpath")) {
-            $envPath = trim(file_get_contents("$compose_root/$script/envpath"));
-            if (is_file($envPath)) {
-                $envFile = "--env-file " . escapeshellarg($envPath);
-            }
-        }
+        // Build compose CLI arguments (project name, file flags, env-file flag)
+        $args = buildComposeArgs($script);
+        $projectName = $args['projectName'];
 
         // Get container details in JSON format
         // Include --all so exited/stopped containers are returned as well
-        $cmd = "docker compose $files $envFile -p " . escapeshellarg($projectName) . " ps --all --format json 2>/dev/null";
+        $cmd = "docker compose {$args['files']} {$args['envFile']} -p " . escapeshellarg($projectName) . " ps --all --format json 2>/dev/null";
         $output = shell_exec($cmd);
 
         // Cache network drivers for resolving network types (bridge vs macvlan/ipvlan)
@@ -457,6 +465,13 @@ switch ($_POST['action']) {
         }
 
         $containers = [];
+        // Load update status once before the loop (static data, doesn't change per-container)
+        $updateStatusFile = UNRAID_UPDATE_STATUS_FILE;
+        $updateStatus = [];
+        if (is_file($updateStatusFile)) {
+            $updateStatus = json_decode(file_get_contents($updateStatusFile), true) ?: [];
+        }
+
         if ($output) {
             // docker compose ps --format json outputs one JSON object per line
             $lines = explode("\n", trim($output));
@@ -580,12 +595,7 @@ switch ($_POST['action']) {
                                         $container['WebUI'] = $resolvedURL;
                                     }
 
-                                    // Get update status from saved status file
-                                    $updateStatusFile = "/var/lib/docker/unraid-update-status.json";
-                                    $updateStatus = [];
-                                    if (is_file($updateStatusFile)) {
-                                        $updateStatus = json_decode(file_get_contents($updateStatusFile), true) ?: [];
-                                    }
+                                    // Get update status from saved status file (read once before loop)
                                     $imageName = $container['Image'];
                                     // Ensure image has a tag for lookup
                                     if (strpos($imageName, ':') === false) {
@@ -627,8 +637,8 @@ switch ($_POST['action']) {
         echo json_encode(['result' => 'success', 'containers' => $containers, 'projectName' => $projectName]);
         break;
     case 'containerAction':
-        $containerName = isset($_POST['container']) ? urldecode(($_POST['container'])) : "";
-        $containerAction = isset($_POST['containerAction']) ? urldecode(($_POST['containerAction'])) : "";
+        $containerName = isset($_POST['container']) ? trim($_POST['container']) : "";
+        $containerAction = isset($_POST['containerAction']) ? trim($_POST['containerAction']) : "";
 
         if (! $containerName || ! $containerAction) {
             echo json_encode(['result' => 'error', 'message' => 'Container or action not specified.']);
@@ -648,7 +658,7 @@ switch ($_POST['action']) {
         break;
     case 'checkStackUpdates':
         // Check for updates for all containers in a compose stack
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         if (! $script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
@@ -657,34 +667,13 @@ switch ($_POST['action']) {
         // Include Docker manager classes for update checking
         require_once("/usr/local/emhttp/plugins/dynamix.docker.manager/include/DockerClient.php");
 
-        // Get the project name (sanitized)
-        $projectName = $script;
-        if (is_file("$compose_root/$script/name")) {
-            $projectName = trim(file_get_contents("$compose_root/$script/name"));
-        }
-        $projectName = sanitizeStr($projectName);
-
-        // Get containers for this compose project
-        $basePath = getPath("$compose_root/$script");
-        $composeFile = "$basePath/docker-compose.yml";
-        $overrideFile = "$compose_root/$script/docker-compose.override.yml";
-
-        $files = "-f " . escapeshellarg($composeFile);
-        if (is_file($overrideFile)) {
-            $files .= " -f " . escapeshellarg($overrideFile);
-        }
-
-        $envFile = "";
-        if (is_file("$compose_root/$script/envpath")) {
-            $envPath = trim(file_get_contents("$compose_root/$script/envpath"));
-            if (is_file($envPath)) {
-                $envFile = "--env-file " . escapeshellarg($envPath);
-            }
-        }
+        // Build compose CLI arguments (project name, file flags, env-file flag)
+        $args = buildComposeArgs($script);
+        $projectName = $args['projectName'];
 
         // Get container images
         // Include --all to ensure non-running containers are considered for update checks
-        $cmd = "docker compose $files $envFile -p " . escapeshellarg($projectName) . " ps --all --format json 2>/dev/null";
+        $cmd = "docker compose {$args['files']} {$args['envFile']} -p " . escapeshellarg($projectName) . " ps --all --format json 2>/dev/null";
         $output = shell_exec($cmd);
 
         $updateResults = [];
@@ -692,11 +681,39 @@ switch ($_POST['action']) {
 
         // Load the update status file to get SHA values
         $dockerManPaths = [
-            'update-status' => "/var/lib/docker/unraid-update-status.json"
+            'update-status' => UNRAID_UPDATE_STATUS_FILE
         ];
 
         if ($output) {
             $lines = explode("\n", trim($output));
+
+            // Load the update status data ONCE before the loop instead of per-container
+            $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
+            $statusDirty = false;
+
+            // First pass: clear cached local SHAs for all images that need checking
+            foreach ($lines as $line) {
+                if (!empty($line)) {
+                    $container = json_decode($line, true);
+                    if ($container) {
+                        $image = $container['Image'] ?? '';
+                        if ($image) {
+                            $image = normalizeImageForUpdateCheck($image);
+                            if (isset($updateStatusData[$image])) {
+                                $updateStatusData[$image]['local'] = null;
+                                $statusDirty = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Save once after clearing all cached SHAs
+            if ($statusDirty) {
+                DockerUtil::saveJSON($dockerManPaths['update-status'], $updateStatusData);
+            }
+
+            // Second pass: check updates and collect results
             foreach ($lines as $line) {
                 if (!empty($line)) {
                     $container = json_decode($line, true);
@@ -708,21 +725,11 @@ switch ($_POST['action']) {
                             // Normalize image name (strip docker.io/ prefix, @sha256: digest, add library/ for official images)
                             $image = normalizeImageForUpdateCheck($image);
 
-                            // Clear cached local SHA to force re-inspection of the actual image
-                            // This is needed because Unraid's reloadUpdateStatus uses cached values
-                            // which can be stale after docker compose pull
-                            $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
-                            if (isset($updateStatusData[$image])) {
-                                // Clear the local SHA to force fresh inspection
-                                $updateStatusData[$image]['local'] = null;
-                                DockerUtil::saveJSON($dockerManPaths['update-status'], $updateStatusData);
-                            }
-
                             // Check update status using Unraid's DockerUpdate class
                             $DockerUpdate->reloadUpdateStatus($image);
                             $updateStatus = $DockerUpdate->getUpdateStatus($image);
 
-                            // Get SHA values from the status file
+                            // Re-read status data (may have been updated by reloadUpdateStatus)
                             $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
                             $localSha = '';
                             $remoteSha = '';
@@ -760,7 +767,7 @@ switch ($_POST['action']) {
         echo json_encode(['result' => 'success', 'updates' => $updateResults, 'projectName' => $projectName]);
 
         // Save the update status for this stack
-        $composeUpdateStatusFile = "/boot/config/plugins/compose.manager/update-status.json";
+        $composeUpdateStatusFile = COMPOSE_UPDATE_STATUS_FILE;
         $savedStatus = [];
         if (is_file($composeUpdateStatusFile)) {
             $savedStatus = json_decode(file_get_contents($composeUpdateStatusFile), true) ?: [];
@@ -784,7 +791,7 @@ switch ($_POST['action']) {
 
         // Path to update status file
         $dockerManPaths = [
-            'update-status' => "/var/lib/docker/unraid-update-status.json"
+            'update-status' => UNRAID_UPDATE_STATUS_FILE
         ];
 
         // Iterate through all stacks
@@ -810,22 +817,12 @@ switch ($_POST['action']) {
                 }
             }
 
-            // Get project name
-            $projectName = $stackName;
-            if (is_file("$compose_root/$stackName/name")) {
-                $projectName = trim(file_get_contents("$compose_root/$stackName/name"));
-            }
-            $projectName = sanitizeStr($projectName);
-
-            // Get containers
-            $files = "-f " . escapeshellarg($composeFile);
-            $overrideFile = "$compose_root/$stackName/docker-compose.override.yml";
-            if (is_file($overrideFile)) {
-                $files .= " -f " . escapeshellarg($overrideFile);
-            }
+            // Build compose CLI arguments (includes env-file, override, etc.)
+            $args = buildComposeArgs($stackName);
+            $projectName = $args['projectName'];
 
             // Include --all so we can detect stacks that have stopped containers
-            $cmd = "docker compose $files -p " . escapeshellarg($projectName) . " ps --all --format json 2>/dev/null";
+            $cmd = "docker compose {$args['files']} {$args['envFile']} -p " . escapeshellarg($projectName) . " ps --all --format json 2>/dev/null";
             $output = shell_exec($cmd);
 
             $stackUpdates = [];
@@ -834,6 +831,40 @@ switch ($_POST['action']) {
 
             if ($output) {
                 $lines = explode("\n", trim($output));
+
+                // Load once, batch-clear local SHAs, save once (avoid per-container I/O)
+                $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
+                $statusDirty = false;
+
+                // First pass: collect running images and clear cached local SHAs
+                $runningImages = [];
+                foreach ($lines as $line) {
+                    if (!empty($line)) {
+                        $container = json_decode($line, true);
+                        if ($container) {
+                            $state = $container['State'] ?? '';
+                            if ($state === 'running') {
+                                $isRunning = true;
+                                $image = $container['Image'] ?? '';
+                                if ($image) {
+                                    $image = normalizeImageForUpdateCheck($image);
+                                    $runningImages[] = $image;
+                                    if (isset($updateStatusData[$image])) {
+                                        $updateStatusData[$image]['local'] = null;
+                                        $statusDirty = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Save once after clearing all cached SHAs
+                if ($statusDirty) {
+                    DockerUtil::saveJSON($dockerManPaths['update-status'], $updateStatusData);
+                }
+
+                // Second pass: check updates for running containers
                 foreach ($lines as $line) {
                     if (!empty($line)) {
                         $container = json_decode($line, true);
@@ -842,30 +873,14 @@ switch ($_POST['action']) {
                             $image = $container['Image'] ?? '';
                             $state = $container['State'] ?? '';
 
-                            // Check if any container is running
-                            if ($state === 'running') {
-                                $isRunning = true;
-                            }
-
                             // Only check updates for running containers
                             if ($containerName && $image && $state === 'running') {
-                                // Normalize image name (strip docker.io/ prefix, @sha256: digest, add library/ for official images)
                                 $image = normalizeImageForUpdateCheck($image);
-
-                                // Clear cached local SHA to force re-inspection of the actual image
-                                // This is needed because Unraid's reloadUpdateStatus uses cached values
-                                // which can be stale after docker compose pull
-                                $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
-                                if (isset($updateStatusData[$image])) {
-                                    // Clear the local SHA to force fresh inspection
-                                    $updateStatusData[$image]['local'] = null;
-                                    DockerUtil::saveJSON($dockerManPaths['update-status'], $updateStatusData);
-                                }
 
                                 $DockerUpdate->reloadUpdateStatus($image);
                                 $updateStatus = $DockerUpdate->getUpdateStatus($image);
 
-                                // Get SHA values from the status file
+                                // Re-read status data (may have been updated by reloadUpdateStatus)
                                 $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
                                 $localSha = '';
                                 $remoteSha = '';
@@ -908,7 +923,7 @@ switch ($_POST['action']) {
         }
 
         // Save the update status for all stacks
-        $composeUpdateStatusFile = "/boot/config/plugins/compose.manager/update-status.json";
+        $composeUpdateStatusFile = COMPOSE_UPDATE_STATUS_FILE;
         $savedStatus = $allUpdates;
         foreach ($savedStatus as $stackKey => &$stackData) {
             $stackData['lastChecked'] = time();
@@ -919,7 +934,7 @@ switch ($_POST['action']) {
         break;
     case 'getSavedUpdateStatus':
         // Load saved update status from file
-        $composeUpdateStatusFile = "/boot/config/plugins/compose.manager/update-status.json";
+        $composeUpdateStatusFile = COMPOSE_UPDATE_STATUS_FILE;
         if (is_file($composeUpdateStatusFile)) {
             $savedStatus = json_decode(file_get_contents($composeUpdateStatusFile), true);
             if ($savedStatus) {
@@ -999,7 +1014,7 @@ switch ($_POST['action']) {
 
     case 'checkStackLock':
         // Check if a stack is currently locked (operation in progress)
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         if (! $script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
@@ -1022,7 +1037,7 @@ switch ($_POST['action']) {
 
     case 'getStackResult':
         // Get the last operation result for a stack
-        $script = isset($_POST['script']) ? urldecode(($_POST['script'])) : "";
+        $script = getPostScript();
         if (! $script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
@@ -1049,7 +1064,7 @@ switch ($_POST['action']) {
             break;
         }
 
-        $pendingRecheckFile = "/boot/config/plugins/compose.manager/pending-recheck.json";
+        $pendingRecheckFile = PENDING_RECHECK_FILE;
         $pending = [];
         if (is_file($pendingRecheckFile)) {
             $pending = json_decode(file_get_contents($pendingRecheckFile), true) ?: [];
@@ -1066,7 +1081,7 @@ switch ($_POST['action']) {
 
     case 'getPendingRecheckStacks':
         // Get list of stacks that need recheck
-        $pendingRecheckFile = "/boot/config/plugins/compose.manager/pending-recheck.json";
+        $pendingRecheckFile = PENDING_RECHECK_FILE;
         $pending = [];
         if (is_file($pendingRecheckFile)) {
             $pending = json_decode(file_get_contents($pendingRecheckFile), true) ?: [];
@@ -1085,7 +1100,7 @@ switch ($_POST['action']) {
             break;
         }
 
-        $pendingRecheckFile = "/boot/config/plugins/compose.manager/pending-recheck.json";
+        $pendingRecheckFile = PENDING_RECHECK_FILE;
         $pending = [];
         if (is_file($pendingRecheckFile)) {
             $pending = json_decode(file_get_contents($pendingRecheckFile), true) ?: [];
@@ -1114,7 +1129,7 @@ switch ($_POST['action']) {
 
     case 'listBackups':
         require_once("/usr/local/emhttp/plugins/compose.manager/php/backup_functions.php");
-        $directory = isset($_POST['directory']) && $_POST['directory'] !== '' ? urldecode($_POST['directory']) : null;
+        $directory = isset($_POST['directory']) && $_POST['directory'] !== '' ? trim($_POST['directory']) : null;
         $archives = listBackupArchives($directory);
         echo json_encode(['result' => 'success', 'archives' => $archives]);
         break;
@@ -1168,8 +1183,8 @@ switch ($_POST['action']) {
 
     case 'readManifest':
         require_once("/usr/local/emhttp/plugins/compose.manager/php/backup_functions.php");
-        $archive = isset($_POST['archive']) ? urldecode($_POST['archive']) : '';
-        $directory = isset($_POST['directory']) && $_POST['directory'] !== '' ? urldecode($_POST['directory']) : null;
+        $archive = isset($_POST['archive']) ? trim($_POST['archive']) : '';
+        $directory = isset($_POST['directory']) && $_POST['directory'] !== '' ? trim($_POST['directory']) : null;
         if (empty($archive)) {
             echo json_encode(['result' => 'error', 'message' => 'No archive specified.']);
             break;
@@ -1181,7 +1196,7 @@ switch ($_POST['action']) {
 
     case 'restoreBackup':
         require_once("/usr/local/emhttp/plugins/compose.manager/php/backup_functions.php");
-        $archive = isset($_POST['archive']) ? urldecode($_POST['archive']) : '';
+        $archive = isset($_POST['archive']) ? basename(trim($_POST['archive'])) : '';
         $stacks = isset($_POST['stacks']) ? $_POST['stacks'] : '';
         if (is_string($stacks)) {
             $stacks = json_decode($stacks, true);
@@ -1194,7 +1209,7 @@ switch ($_POST['action']) {
             echo json_encode(['result' => 'error', 'message' => 'No stacks selected for restore.']);
             break;
         }
-        exec("logger -t 'compose.manager' " . escapeshellarg("[restore] Restore started from " . basename($archive) . " (" . count($stacks) . " stacks)"));
+        exec("logger -t 'compose.manager' " . escapeshellarg("[restore] Restore started from " . $archive . " (" . count($stacks) . " stacks)"));
         $archivePath = resolveArchivePath($archive);
         $result = restoreStacks($archivePath, $stacks);
         if ($result['result'] === 'error') {
@@ -1211,7 +1226,7 @@ switch ($_POST['action']) {
 
     case 'deleteBackup':
         require_once("/usr/local/emhttp/plugins/compose.manager/php/backup_functions.php");
-        $archive = isset($_POST['archive']) ? urldecode($_POST['archive']) : '';
+        $archive = isset($_POST['archive']) ? trim($_POST['archive']) : '';
         if (empty($archive)) {
             echo json_encode(['result' => 'error', 'message' => 'No archive specified.']);
             break;
@@ -1243,6 +1258,31 @@ switch ($_POST['action']) {
             break;
         }
 
+        // Whitelist allowed setting keys to prevent arbitrary config injection
+        $allowedKeys = [
+            'BACKUP_DESTINATION', 'BACKUP_RETENTION',
+            'BACKUP_SCHEDULE_ENABLED', 'BACKUP_SCHEDULE_FREQUENCY',
+            'BACKUP_SCHEDULE_TIME', 'BACKUP_SCHEDULE_DAY'
+        ];
+        $settings = array_intersect_key($settings, array_flip($allowedKeys));
+
+        // Validate numeric/enum fields
+        if (isset($settings['BACKUP_RETENTION'])) {
+            $settings['BACKUP_RETENTION'] = max(0, intval($settings['BACKUP_RETENTION']));
+        }
+        if (isset($settings['BACKUP_SCHEDULE_DAY'])) {
+            $settings['BACKUP_SCHEDULE_DAY'] = max(0, min(6, intval($settings['BACKUP_SCHEDULE_DAY'])));
+        }
+        if (isset($settings['BACKUP_SCHEDULE_FREQUENCY']) && !in_array($settings['BACKUP_SCHEDULE_FREQUENCY'], ['daily', 'weekly'], true)) {
+            $settings['BACKUP_SCHEDULE_FREQUENCY'] = 'daily';
+        }
+        if (isset($settings['BACKUP_SCHEDULE_ENABLED']) && !in_array($settings['BACKUP_SCHEDULE_ENABLED'], ['true', 'false'], true)) {
+            $settings['BACKUP_SCHEDULE_ENABLED'] = 'false';
+        }
+        if (isset($settings['BACKUP_SCHEDULE_TIME']) && !preg_match('/^\d{1,2}:\d{2}$/', $settings['BACKUP_SCHEDULE_TIME'])) {
+            $settings['BACKUP_SCHEDULE_TIME'] = '03:00';
+        }
+
         // Write settings to config file
         $cfgFile = '/boot/config/plugins/compose.manager/compose.manager.cfg';
         $existingCfg = is_file($cfgFile) ? parse_ini_file($cfgFile) : [];
@@ -1250,6 +1290,8 @@ switch ($_POST['action']) {
 
         $lines = [];
         foreach ($updatedCfg as $key => $value) {
+            // Sanitize value: strip newlines and quotes to prevent INI injection
+            $value = str_replace(['"', "\n", "\r"], '', $value);
             $lines[] = "$key=\"$value\"";
         }
         file_put_contents($cfgFile, implode("\n", $lines) . "\n");
