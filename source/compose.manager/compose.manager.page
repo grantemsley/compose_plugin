@@ -4,6 +4,16 @@ Type="php"
 Menu="Docker:2"
 Cond="$var['fsState'] == 'Started' && exec('/etc/rc.d/rc.docker status | grep -v \"not\"') && (!file_exists('/boot/config/plugins/compose.manager/compose.manager.cfg') ? true : exec(\"grep '^SHOW_COMPOSE_IN_HEADER_MENU=' /boot/config/plugins/compose.manager/compose.manager.cfg 2>/dev/null | grep -v 'true'\"))"
 ---
+<?php
+// Redirect to settings page if accessed via /Settings/compose.manager
+if (isset($_SERVER['REQUEST_URI'])) {
+	$requestPath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+	if ($requestPath === '/Settings/compose.manager' || $requestPath === '/Settings/compose.manager/') {
+		header('Location: /Settings/compose.manager.settings');
+		exit;
+	}
+}
+?>
 <link type="text/css" rel="stylesheet" href="<?autov('/plugins/compose.manager/styles/comboButton.css')?>">
 <link type="text/css" rel="stylesheet" href="<?autov('/plugins/compose.manager/styles/editorModal.css')?>">
 <?php include '/usr/local/emhttp/plugins/compose.manager/php/compose_manager_main.php';?>
