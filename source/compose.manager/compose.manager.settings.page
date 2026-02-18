@@ -665,6 +665,12 @@ $projects_exist = intval(shell_exec("ls -l " . $compose_root . " | grep ^d | wc 
         if (savedTab === 'backup') {
             loadBackupArchives();
         }
+
+        // If the default tab is log, load logs and start refresh immediately
+        if (savedTab === 'log') {
+            loadLogs();
+            startLogRefresh();
+        }
     });
 
     function loadLogs() {
