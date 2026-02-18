@@ -21,6 +21,45 @@ function getPath($basePath) {
 }
 
 /**
+ * Compose file names in priority order per the Docker Compose spec.
+ * @see https://docs.docker.com/compose/intro/compose-application-model/#the-compose-file
+ */
+define('COMPOSE_FILE_NAMES', [
+    'compose.yaml',
+    'compose.yml',
+    'docker-compose.yaml',
+    'docker-compose.yml',
+]);
+
+/**
+ * Find the compose file in a directory using Docker Compose spec priority.
+ *
+ * Checks for compose.yaml, compose.yml, docker-compose.yaml, docker-compose.yml
+ * in that order and returns the first one found.
+ *
+ * @param string $dir The directory to search in
+ * @return string|false The full path to the compose file, or false if none found
+ */
+function findComposeFile($dir) {
+    foreach (COMPOSE_FILE_NAMES as $name) {
+        if (is_file("$dir/$name")) {
+            return "$dir/$name";
+        }
+    }
+    return false;
+}
+
+/**
+ * Check whether a stack directory has a compose file (any of the supported names).
+ *
+ * @param string $dir The directory to check
+ * @return bool
+ */
+function hasComposeFile($dir) {
+    return findComposeFile($dir) !== false;
+}
+
+/**
  * Stack operation locking functions
  * Prevents concurrent operations on the same stack
  */

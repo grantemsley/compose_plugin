@@ -79,7 +79,7 @@ function buildComposeArgs(string $stack): array {
     $projectName = sanitizeStr($projectName);
 
     $basePath = getPath("$compose_root/$stack");
-    $composeFile = "$basePath/docker-compose.yml";
+    $composeFile = findComposeFile($basePath) ?: "$basePath/docker-compose.yml";
     $overrideFile = "$compose_root/$stack/docker-compose.override.yml";
 
     $files = "-f " . escapeshellarg($composeFile);

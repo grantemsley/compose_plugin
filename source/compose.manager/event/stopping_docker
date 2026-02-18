@@ -19,13 +19,7 @@ log() {
     logger -t "compose.manager" "$1"
 }
 
-sanitize() {
-   local s="${1?need a string}"
-   s="${s// /_}"
-   s="${s/./_}"
-   s="${s/-/_}"
-   echo "${s,,}" # convert to lowercase
-}
+source /usr/local/emhttp/plugins/compose.manager/scripts/common.sh
 
 # Stop a single stack with timeout
 stop_stack() {
@@ -41,11 +35,17 @@ stop_stack() {
     if [ -f "$dir/indirect" ]; then
         local indirect
         indirect=$(< "$dir/indirect")
-        while IFS= read -r -d '' file; do
-            file_args+=("-f" "$file")
-        done < <(find "$indirect" -maxdepth 1 -type f -name '*compose*.yml' -print0 2>/dev/null)
+        local compose_file
+        if ! compose_file=$(find_compose_file "$indirect"); then
+            compose_file="$indirect/docker-compose.yml"
+        fi
+        file_args=("-f" "$compose_file")
     else
-        file_args=("-f" "$dir/docker-compose.yml")
+        local compose_file
+        if ! compose_file=$(find_compose_file "$dir"); then
+            compose_file="$dir/docker-compose.yml"
+        fi
+        file_args=("-f" "$compose_file")
     fi
     
     local -a override_args=()
@@ -92,7 +92,7 @@ declare -a stacks_to_stop
 
 for dir in "$COMPOSE_ROOT"/*; do
     if [ -d "$dir" ]; then
-        if [ -f "$dir/docker-compose.yml" ] || [ -f "$dir/indirect" ]; then
+        if has_compose_file "$dir" || [ -f "$dir/indirect" ]; then
             # Get stack name
             local_name=""
             if [ -f "$dir/name" ]; then

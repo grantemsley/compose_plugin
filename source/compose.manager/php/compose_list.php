@@ -44,7 +44,7 @@ $o = "";
 $stackCount = 0;
 
 foreach ($composeProjects as $project) {
-    if ((! is_file("$compose_root/$project/docker-compose.yml")) &&
+    if (!hasComposeFile("$compose_root/$project") &&
         (! is_file("$compose_root/$project/indirect"))
     ) {
         continue;
@@ -63,7 +63,7 @@ foreach ($composeProjects as $project) {
     $basePath = is_file("$compose_root/$project/indirect")
         ? trim(file_get_contents("$compose_root/$project/indirect"))
         : "$compose_root/$project";
-    $composeFile = "$basePath/docker-compose.yml";
+    $composeFile = findComposeFile($basePath) ?: "$basePath/docker-compose.yml";
     $overrideFile = "$compose_root/$project/docker-compose.override.yml";
 
     // Use docker compose config --services to get accurate service count

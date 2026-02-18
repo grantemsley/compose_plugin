@@ -61,7 +61,7 @@ if ($containersOutput) {
 }
 
 foreach ($projects as $project) {
-    if (!is_file("$compose_root/$project/docker-compose.yml") && 
+    if (!hasComposeFile("$compose_root/$project") && 
         !is_file("$compose_root/$project/indirect")) {
         continue;
     }

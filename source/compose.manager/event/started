@@ -22,13 +22,7 @@ log() {
     logger -t "compose.manager" "$1"
 }
 
-sanitize() {
-   local s="${1?need a string}"
-   s="${s// /_}"
-   s="${s/./_}"
-   s="${s/-/_}"
-   echo "${s,,}" # convert to lowercase
-}
+source /usr/local/emhttp/plugins/compose.manager/scripts/common.sh
 
 # Wait for Docker autostart containers to finish starting
 wait_for_docker_autostart() {
@@ -89,7 +83,11 @@ start_stack() {
         indirect=$(< "$dir/indirect")
         cmd_args+=(-d "$indirect")
     else
-        cmd_args+=(-f "$dir/docker-compose.yml")
+        local compose_file
+        if ! compose_file=$(find_compose_file "$dir"); then
+            compose_file="$dir/docker-compose.yml"
+        fi
+        cmd_args+=(-f "$compose_file")
     fi
 
     cmd_args+=(-p "$sanitized_name" -s "$dir")
@@ -163,7 +161,7 @@ declare -A stack_priorities
 
 for dir in "$COMPOSE_ROOT"/*; do
     if [ -d "$dir" ]; then
-        if [ -f "$dir/docker-compose.yml" ] || [ -f "$dir/indirect" ]; then
+        if has_compose_file "$dir" || [ -f "$dir/indirect" ]; then
             if [ -f "$dir/autostart" ] && [ "true" == "$(< "$dir/autostart")" ]; then
                 # Get stack name
                 local_name=""

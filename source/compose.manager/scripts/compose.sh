@@ -178,7 +178,7 @@ do
       ;;
     -d | --project_dir )
       if [ -d "$2" ]; then
-        for file in $( find "$2" -maxdepth 1 -type f -name '*compose*.yml' ); do
+        for file in $( find "$2" -maxdepth 1 -type f \( -name '*compose*.yml' -o -name '*compose*.yaml' \) ); do
           file_args+=("-f" "$file")
         done
       fi

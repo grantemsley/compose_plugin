@@ -1142,12 +1142,6 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
         return url;
     }
 
-    $(function() {
-        var editor = ace.edit("itemEditor");
-        editor.setTheme(aceTheme);
-        editor.setShowPrintMargin(false);
-    })
-
     // Apply advanced/basic view based on cookie (used after async load)
     // Scoped to compose_stacks to avoid affecting Docker tab when tabs are joined.
     // When animate=true (user clicked toggle), run a phased transition.
@@ -1745,96 +1739,6 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 }
             }
         });
-    }
-
-    function editComposeFile(myID) {
-        var origID = myID;
-        $("#" + myID).tooltipster("close");
-        var project = $("#" + myID).attr("data-scriptname");
-        $.post(caURL, {
-            action: 'getYml',
-            script: project
-        }, function(data) {
-            if (data) {
-                var response = JSON.parse(data);
-                var editor = ace.edit("itemEditor");
-                editor.getSession().setValue(response.content);
-                editor.getSession().setMode("ace/mode/yaml");
-                editor.getSession().setOptions({
-                    tabSize: 2,
-                    useSoftTabs: true
-                });
-
-                $('#editorFileName').data("stackname", project);
-                $('#editorFileName').data("stackfilename", "docker-compose.yml")
-                $('#editorFileName').text(response.fileName)
-                $(".editing").show();
-                window.scrollTo(0, 0);
-            }
-        });
-    }
-
-    function editEnv(myID) {
-        var origID = myID;
-        $("#" + myID).tooltipster("close");
-        var project = $("#" + myID).attr("data-scriptname");
-        $.post(caURL, {
-            action: 'getEnv',
-            script: project
-        }, function(data) {
-            if (data) {
-                var response = JSON.parse(data);
-                var editor = ace.edit("itemEditor");
-                editor.getSession().setValue(response.content);
-                editor.getSession().setMode("ace/mode/sh");
-
-                $('#editorFileName').data("stackname", project);
-                $('#editorFileName').data("stackfilename", ".env")
-                $('#editorFileName').text(response.fileName)
-                $(".editing").show();
-                window.scrollTo(0, 0);
-            }
-        });
-    }
-
-    function cancelEdit() {
-        $(".editing").hide();
-    }
-
-    function saveEdit() {
-        var project = $("#editorFileName").data("stackname");
-        var fileName = $("#editorFileName").data("stackfilename");
-        var editor = ace.edit("itemEditor");
-        var scriptContents = editor.getValue();
-        var actionStr = null
-
-        switch (fileName) {
-            case 'docker-compose.yml':
-                actionStr = 'saveYml'
-                break;
-
-            case '.env':
-                actionStr = 'saveEnv'
-                break;
-
-            default:
-                $(".editing").hide();
-                return;
-        }
-
-        $.post(caURL, {
-            action: actionStr,
-            script: project,
-            scriptContents: scriptContents
-        }, function(data) {
-            if (data) {
-                $(".editing").hide();
-                if (actionStr == 'saveYml') {
-                    generateProfiles(null, project);
-                }
-            }
-        });
-
     }
 
     function editStackSettings(myID) {
@@ -3112,7 +3016,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
         }
 
         if (!hasServices) {
-            html = '<div class="labels-empty-state"><i class="fa fa-cubes"></i> No services defined in docker-compose.yml</div>';
+            html = '<div class="labels-empty-state"><i class="fa fa-cubes"></i> No services defined in compose file</div>';
         }
 
         if (hasDeletedServices) {
@@ -3610,66 +3514,6 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
 
         // Reset tab states
         $('.editor-tab').removeClass('modified');
-    }
-
-    function editComposeFileByProject(project) {
-        $.post(caURL, {
-            action: 'getYml',
-            script: project
-        }, function(data) {
-            if (data) {
-                var response = JSON.parse(data);
-                var filename = response.fileName;
-                $(".tipsterallowed").hide();
-                $(".editing").show();
-                $("#editorFileName").text(filename);
-                $("#editorFileName").attr("data-stackname", project);
-                $("#editorFileName").attr("data-stackfilename", "docker-compose.yml");
-                var editor = ace.edit("itemEditor");
-                editor.getSession().setMode('ace/mode/yaml');
-                editor.setValue(response.content, -1);
-            }
-        });
-    }
-
-    function editEnvByProject(project) {
-        $.post(caURL, {
-            action: 'getEnv',
-            script: project
-        }, function(data) {
-            if (data) {
-                var response = JSON.parse(data);
-                var filename = response.fileName;
-                $(".tipsterallowed").hide();
-                $(".editing").show();
-                $("#editorFileName").text(filename);
-                $("#editorFileName").attr("data-stackname", project);
-                $("#editorFileName").attr("data-stackfilename", ".env");
-                var editor = ace.edit("itemEditor");
-                editor.getSession().setMode('ace/mode/sh');
-                editor.setValue(response.content, -1);
-            }
-        });
-    }
-
-    function editOverrideByProject(project) {
-        $.post(caURL, {
-            action: 'getOverride',
-            script: project
-        }, function(data) {
-            if (data) {
-                var response = JSON.parse(data);
-                var filename = response.fileName;
-                $(".tipsterallowed").hide();
-                $(".editing").show();
-                $("#editorFileName").text(filename);
-                $("#editorFileName").attr("data-stackname", project);
-                $("#editorFileName").attr("data-stackfilename", "docker-compose.override.yml");
-                var editor = ace.edit("itemEditor");
-                editor.getSession().setMode('ace/mode/yaml');
-                editor.setValue(response.content || "# Override file\n", -1);
-            }
-        });
     }
 
     function deleteStackByProject(project, projectName) {
@@ -4807,15 +4651,6 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
 
 <BODY>
 
-    <div class='editing' style="margin-bottom:34px;" hidden>
-        <!-- <center><b>Editing <?= $compose_root ?>/<span id='editStackName'></span>/<span id='editStackFileName'></span></b><br> -->
-        <center><b>Editing <span id='editorFileName' data-stackname="" data-stackfilename=""></span></b><br>
-            <input type='button' value='Cancel' onclick='cancelEdit();'><input type='button' onclick='saveEdit();' value='Save Changes'><br>
-            <!-- <textarea class='editing' id='editStack' style='width:90%; height:500px; border-color:red; font-family:monospace;' ></textarea> -->
-            <div id='itemEditor' style='width:90%; height:500px; position: relative;'></div>
-        </center>
-    </div>
-
     <span class='tipsterallowed' hidden></span>
     <div class="TableContainer">
         <table id="compose_stacks" class="tablesorter shift" style="table-layout:fixed;width:100%">
@@ -4911,7 +4746,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
             <div class="editor-tabs" role="tablist">
                 <button class="editor-tab active" id="editor-tab-compose" onclick="switchTab('compose')" role="tab" aria-selected="true" aria-controls="editor-panel-compose">
                     <i class="fa fa-file-code-o" aria-hidden="true"></i>
-                    docker-compose.yml
+                    Compose
                     <span class="editor-tab-modified" aria-hidden="true"></span>
                 </button>
                 <button class="editor-tab" id="editor-tab-env" onclick="switchTab('env')" role="tab" aria-selected="false" aria-controls="editor-panel-env">

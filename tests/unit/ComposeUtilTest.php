@@ -239,9 +239,9 @@ class ComposeUtilTest extends TestCase
         echoComposeCommand('up');
         $output = ob_get_clean();
         
-        // Should use -d flag for directory path
-        $this->assertStringContainsString('-d', $output);
-        $this->assertStringContainsString($indirectDir, $output);
+        // Should use -f flag with resolved compose file path
+        $this->assertStringContainsString('-f', $output);
+        $this->assertStringContainsString("$indirectDir/docker-compose.yml", $output);
         
         // Cleanup
         unlink("$varIniDir/var.ini");

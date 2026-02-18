@@ -80,15 +80,16 @@ function echoComposeCommand($action, $recreate = false)
         $composeCommand[] = $action;
         $composeCommand[] = $projectName;
 
-        $composeFile = "";
         if (isIndirect($path)) {
-            $composeFile = getPath($path);
-            $composeFile = "-d$composeFile";
+            $indirectPath = getPath($path);
+            $found = findComposeFile($indirectPath);
+            $composeFile = $found ?: "$indirectPath/docker-compose.yml";
+            $composeCommand[] = "-f$composeFile";
         } else {
-            $composeFile .= "$path/docker-compose.yml";
-            $composeFile = "-f$composeFile";
+            $found = findComposeFile($path);
+            $composeFile = $found ?: "$path/docker-compose.yml";
+            $composeCommand[] = "-f$composeFile";
         }
-        $composeCommand[] = $composeFile;
 
         if (is_file("$path/docker-compose.override.yml")) {
             $composeOverride = "-f$path/docker-compose.override.yml";
@@ -192,15 +193,17 @@ function echoComposeCommandMultiple($action, $paths)
         $composeCommand[] = $actionArg;
         $composeCommand[] = $projectName;
 
-        $composeFile = "";
         if (isIndirect($path)) {
-            $composeFile = getPath($path);
-            $composeFile = "-d$composeFile";
+            // For indirect paths, resolve the target path and then locate the compose file
+            $indirectPath = getPath($path);
+            $found = findComposeFile($indirectPath);
+            $composeFile = $found ?: "$indirectPath/docker-compose.yml";
+            $composeCommand[] = "-f$composeFile";
         } else {
-            $composeFile .= "$path/docker-compose.yml";
-            $composeFile = "-f$composeFile";
+            $found = findComposeFile($path);
+            $composeFile = $found ?: "$path/docker-compose.yml";
+            $composeCommand[] = "-f$composeFile";
         }
-        $composeCommand[] = $composeFile;
 
         if (is_file("$path/docker-compose.override.yml")) {
             $composeOverride = "-f$path/docker-compose.override.yml";

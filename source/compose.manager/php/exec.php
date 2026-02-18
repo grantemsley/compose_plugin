@@ -60,11 +60,11 @@ switch ($_POST['action']) {
         #Create stack files
         if (!empty($indirect)) {
             file_put_contents("$folder/indirect", $indirect);
-            if (!is_file("$indirect/docker-compose.yml")) {
-                file_put_contents("$indirect/docker-compose.yml", "services:\n");
+            if (!findComposeFile($indirect)) {
+                file_put_contents("$indirect/compose.yaml", "services:\n");
             }
         } else {
-            file_put_contents("$folder/docker-compose.yml", "services:\n");
+            file_put_contents("$folder/compose.yaml", "services:\n");
         }
 
         // Create initial override file if it doesn't exist (for UI labels)
@@ -132,14 +132,34 @@ switch ($_POST['action']) {
     case 'getYml':
         $script = getPostScript();
         $basePath = getPath("$compose_root/$script");
-        $fileName = "docker-compose.yml";
+        $foundComposeFile = findComposeFile($basePath);
+        $composeFilePath = $foundComposeFile !== false ? $foundComposeFile : "$basePath/docker-compose.yml";
+        $fileName = basename($composeFilePath);
 
-        $scriptContents = file_get_contents("$basePath/$fileName");
+        if ($foundComposeFile !== false) {
+            // findComposeFile() guarantees the file exists; detect unreadable files explicitly.
+            $scriptContents = file_get_contents($composeFilePath);
+            if ($scriptContents === false) {
+                echo json_encode(['result' => 'error', 'message' => "Unable to read compose file: $composeFilePath"]);
+                break;
+            }
+        } else {
+            // Fallback path may not exist yet for new stacks; only check existence here.
+            if (is_file($composeFilePath)) {
+                $scriptContents = file_get_contents($composeFilePath);
+                if ($scriptContents === false) {
+                    echo json_encode(['result' => 'error', 'message' => "Unable to read compose file: $composeFilePath"]);
+                    break;
+                }
+            } else {
+                $scriptContents = "";
+            }
+        }
         $scriptContents = str_replace("\r", "", $scriptContents);
         if (! $scriptContents) {
             $scriptContents = "services:\n";
         }
-        echo json_encode(['result' => 'success', 'fileName' => "$basePath/$fileName", 'content' => $scriptContents]);
+        echo json_encode(['result' => 'success', 'fileName' => $composeFilePath, 'content' => $scriptContents]);
         break;
     case 'getEnv':
         $script = getPostScript();
@@ -174,10 +194,10 @@ switch ($_POST['action']) {
         $script = getPostScript();
         $scriptContents = isset($_POST['scriptContents']) ? $_POST['scriptContents'] : "";
         $basePath = getPath("$compose_root/$script");
-        $fileName = "docker-compose.yml";
+        $composeFilePath = findComposeFile($basePath) ?: "$basePath/docker-compose.yml";
 
-        file_put_contents("$basePath/$fileName", $scriptContents);
-        echo "$basePath/$fileName saved";
+        file_put_contents($composeFilePath, $scriptContents);
+        echo "$composeFilePath saved";
         break;
     case 'saveEnv':
         $script = getPostScript();
@@ -446,16 +466,19 @@ switch ($_POST['action']) {
             // Removing indirect: move compose file back to project folder if it only exists externally
             if (is_file($indirectFile)) {
                 $oldIndirectPath = trim(file_get_contents($indirectFile));
-                if (!is_file("$compose_root/$script/docker-compose.yml") && is_file("$oldIndirectPath/docker-compose.yml")) {
-                    copy("$oldIndirectPath/docker-compose.yml", "$compose_root/$script/docker-compose.yml");
+                $localCompose = findComposeFile("$compose_root/$script");
+                $externalCompose = findComposeFile($oldIndirectPath);
+                if (!$localCompose && $externalCompose) {
+                    copy($externalCompose, "$compose_root/$script/" . basename($externalCompose));
                 }
                 @unlink($indirectFile);
             }
         } else {
             file_put_contents($indirectFile, $externalComposePath);
-            // Remove local docker-compose.yml if it exists since we're now using external
-            if (is_file("$compose_root/$script/docker-compose.yml")) {
-                @unlink("$compose_root/$script/docker-compose.yml");
+            // Remove local compose file if it exists since we're now using external
+            $localCompose = findComposeFile("$compose_root/$script");
+            if ($localCompose) {
+                @unlink($localCompose);
             }
         }
 
@@ -843,14 +866,32 @@ switch ($_POST['action']) {
             'update-status' => UNRAID_UPDATE_STATUS_FILE
         ];
 
-        // Iterate through all stacks
-        $stacks = glob("$compose_root/*/docker-compose.yml", GLOB_NOSORT);
+        // Iterate through all stacks - find compose files with any supported name
+        $stacks = [];
+        $stackDirs = glob("$compose_root/*", GLOB_ONLYDIR | GLOB_NOSORT);
+        foreach ($stackDirs as $stackDir) {
+            $found = findComposeFile($stackDir);
+            if ($found) {
+                $stacks[] = $found;
+            }
+        }
         $indirectStacks = glob("$compose_root/*/indirect", GLOB_NOSORT);
 
         foreach ($indirectStacks as $indirect) {
-            $indirectPath = file_get_contents($indirect);
-            if (is_file("$indirectPath/docker-compose.yml")) {
-                $stacks[] = "$indirectPath/docker-compose.yml";
+            $contents = file_get_contents($indirect);
+            if ($contents === false) {
+                // Skip unreadable indirect files
+                continue;
+            }
+            $indirectPath = trim($contents);
+            if ($indirectPath === '') {
+                // Skip empty indirect paths
+                continue;
+            }
+
+            $found = findComposeFile($indirectPath);
+            if ($found) {
+                $stacks[] = $found;
             }
         }
 
