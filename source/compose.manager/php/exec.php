@@ -143,10 +143,11 @@ switch ($_POST['action']) {
         break;
     case 'getEnv':
         $script = getPostScript();
-        $basePath = getPath("$compose_root/$script");
+        $projectPath = "$compose_root/$script";
+        $basePath = getPath($projectPath);
         $fileName = "$basePath/.env";
-        if (is_file("$basePath/envpath")) {
-            $fileName = file_get_contents("$basePath/envpath");
+        if (is_file("$projectPath/envpath")) {
+            $fileName = file_get_contents("$projectPath/envpath");
             $fileName = str_replace("\r", "", $fileName);
         }
 
@@ -181,10 +182,11 @@ switch ($_POST['action']) {
     case 'saveEnv':
         $script = getPostScript();
         $scriptContents = isset($_POST['scriptContents']) ? $_POST['scriptContents'] : "";
-        $basePath = getPath("$compose_root/$script");
+        $projectPath = "$compose_root/$script";
+        $basePath = getPath($projectPath);
         $fileName = "$basePath/.env";
-        if (is_file("$basePath/envpath")) {
-            $fileName = file_get_contents("$basePath/envpath");
+        if (is_file("$projectPath/envpath")) {
+            $fileName = file_get_contents("$projectPath/envpath");
             $fileName = str_replace("\r", "", $fileName);
         }
 
@@ -338,6 +340,10 @@ switch ($_POST['action']) {
         $defaultProfileFile = "$compose_root/$script/default_profile";
         $defaultProfile = is_file($defaultProfileFile) ? trim(file_get_contents($defaultProfileFile)) : "";
 
+        // Get external compose path (indirect)
+        $indirectFile = "$compose_root/$script/indirect";
+        $externalComposePath = is_file($indirectFile) ? trim(file_get_contents($indirectFile)) : "";
+
         // Get available profiles from the profiles file
         $profilesFile = "$compose_root/$script/profiles";
         $availableProfiles = [];
@@ -354,6 +360,7 @@ switch ($_POST['action']) {
             'iconUrl' => $iconUrl,
             'webuiUrl' => $webuiUrl,
             'defaultProfile' => $defaultProfile,
+            'externalComposePath' => $externalComposePath,
             'availableProfiles' => $availableProfiles
         ]);
         break;
@@ -364,8 +371,44 @@ switch ($_POST['action']) {
             break;
         }
 
-        // Set env path
+        // --- Validate all inputs first, before writing anything ---
+
+        $iconUrl = isset($_POST['iconUrl']) ? trim($_POST['iconUrl']) : "";
+        if (!empty($iconUrl)) {
+            if (!filter_var($iconUrl, FILTER_VALIDATE_URL) || (strpos($iconUrl, 'http://') !== 0 && strpos($iconUrl, 'https://') !== 0)) {
+                echo json_encode(['result' => 'error', 'message' => 'Invalid icon URL. Must be http:// or https://']);
+                break;
+            }
+        }
+
+        $webuiUrl = isset($_POST['webuiUrl']) ? trim($_POST['webuiUrl']) : "";
+        if (!empty($webuiUrl)) {
+            if (!filter_var($webuiUrl, FILTER_VALIDATE_URL) || (strpos($webuiUrl, 'http://') !== 0 && strpos($webuiUrl, 'https://') !== 0)) {
+                echo json_encode(['result' => 'error', 'message' => 'Invalid WebUI URL. Must be http:// or https://']);
+                break;
+            }
+        }
+
         $envPath = isset($_POST['envPath']) ? trim($_POST['envPath']) : "";
+        $defaultProfile = isset($_POST['defaultProfile']) ? trim($_POST['defaultProfile']) : "";
+
+        $externalComposePath = isset($_POST['externalComposePath']) ? trim($_POST['externalComposePath']) : "";
+        $externalComposePath = rtrim($externalComposePath, '/');
+        if (!empty($externalComposePath)) {
+            $realPath = realpath($externalComposePath) ?: $externalComposePath;
+            if (strpos($realPath, '/mnt/') !== 0 && strpos($realPath, '/boot/config/') !== 0) {
+                echo json_encode(['result' => 'error', 'message' => 'External compose path must be under /mnt/ or /boot/config/.']);
+                break;
+            }
+            if (!is_dir($externalComposePath)) {
+                echo json_encode(['result' => 'error', 'message' => 'External compose path directory does not exist: ' . $externalComposePath]);
+                break;
+            }
+        }
+
+        // --- All validation passed, now write everything ---
+
+        // Set env path
         $envPathFile = "$compose_root/$script/envpath";
         if (empty($envPath)) {
             if (is_file($envPathFile)) @unlink($envPathFile);
@@ -374,40 +417,46 @@ switch ($_POST['action']) {
         }
 
         // Set icon URL
-        $iconUrl = isset($_POST['iconUrl']) ? trim($_POST['iconUrl']) : "";
         $iconUrlFile = "$compose_root/$script/icon_url";
         if (empty($iconUrl)) {
             if (is_file($iconUrlFile)) @unlink($iconUrlFile);
         } else {
-            // Validate URL
-            if (!filter_var($iconUrl, FILTER_VALIDATE_URL) || (strpos($iconUrl, 'http://') !== 0 && strpos($iconUrl, 'https://') !== 0)) {
-                echo json_encode(['result' => 'error', 'message' => 'Invalid icon URL. Must be http:// or https://']);
-                break;
-            }
             file_put_contents($iconUrlFile, $iconUrl);
         }
 
-        // Set WebUI URL (stack-level)
-        $webuiUrl = isset($_POST['webuiUrl']) ? trim($_POST['webuiUrl']) : "";
+        // Set WebUI URL
         $webuiUrlFile = "$compose_root/$script/webui_url";
         if (empty($webuiUrl)) {
             if (is_file($webuiUrlFile)) @unlink($webuiUrlFile);
         } else {
-            // Validate URL
-            if (!filter_var($webuiUrl, FILTER_VALIDATE_URL) || (strpos($webuiUrl, 'http://') !== 0 && strpos($webuiUrl, 'https://') !== 0)) {
-                echo json_encode(['result' => 'error', 'message' => 'Invalid WebUI URL. Must be http:// or https://']);
-                break;
-            }
             file_put_contents($webuiUrlFile, $webuiUrl);
         }
 
         // Set default profile
-        $defaultProfile = isset($_POST['defaultProfile']) ? trim($_POST['defaultProfile']) : "";
         $defaultProfileFile = "$compose_root/$script/default_profile";
         if (empty($defaultProfile)) {
             if (is_file($defaultProfileFile)) @unlink($defaultProfileFile);
         } else {
             file_put_contents($defaultProfileFile, $defaultProfile);
+        }
+
+        // Set external compose path (indirect)
+        $indirectFile = "$compose_root/$script/indirect";
+        if (empty($externalComposePath)) {
+            // Removing indirect: move compose file back to project folder if it only exists externally
+            if (is_file($indirectFile)) {
+                $oldIndirectPath = trim(file_get_contents($indirectFile));
+                if (!is_file("$compose_root/$script/docker-compose.yml") && is_file("$oldIndirectPath/docker-compose.yml")) {
+                    copy("$oldIndirectPath/docker-compose.yml", "$compose_root/$script/docker-compose.yml");
+                }
+                @unlink($indirectFile);
+            }
+        } else {
+            file_put_contents($indirectFile, $externalComposePath);
+            // Remove local docker-compose.yml if it exists since we're now using external
+            if (is_file("$compose_root/$script/docker-compose.yml")) {
+                @unlink("$compose_root/$script/docker-compose.yml");
+            }
         }
 
         echo json_encode(['result' => 'success', 'message' => 'Settings saved']);

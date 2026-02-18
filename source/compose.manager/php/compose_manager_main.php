@@ -482,7 +482,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
         });
 
         // Initialize settings field change tracking
-        $('#settings-name, #settings-description, #settings-icon-url, #settings-webui-url, #settings-env-path, #settings-default-profile').on('input', function() {
+        $('#settings-name, #settings-description, #settings-icon-url, #settings-webui-url, #settings-env-path, #settings-default-profile, #settings-external-compose-path').on('input', function() {
             var fieldId = this.id.replace('settings-', '');
             var currentValue = $(this).val();
             var originalValue = editorModal.originalSettings[fieldId] || '';
@@ -511,6 +511,16 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                     $('#settings-icon-preview').hide();
                 }
             }, 300);
+        });
+
+        // External compose path info toggle
+        $('#settings-external-compose-path').on('input', function() {
+            var path = $(this).val().trim();
+            if (path) {
+                $('#settings-external-compose-info').show();
+            } else {
+                $('#settings-external-compose-info').hide();
+            }
         });
 
         // Keyboard shortcuts - use namespaced event to avoid duplicates
@@ -2924,6 +2934,16 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                     $('#settings-env-path').val(envPath);
                     editorModal.originalSettings['env-path'] = envPath;
 
+                    // External compose path
+                    var externalComposePath = response.externalComposePath || '';
+                    $('#settings-external-compose-path').val(externalComposePath);
+                    editorModal.originalSettings['external-compose-path'] = externalComposePath;
+                    if (externalComposePath) {
+                        $('#settings-external-compose-info').show();
+                    } else {
+                        $('#settings-external-compose-info').hide();
+                    }
+
                     // Default profile
                     var defaultProfile = response.defaultProfile || '';
                     $('#settings-default-profile').val(defaultProfile);
@@ -2944,12 +2964,15 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
             $('#settings-webui-url').val('');
             $('#settings-env-path').val('');
             $('#settings-default-profile').val('');
+            $('#settings-external-compose-path').val('');
             editorModal.originalSettings['icon-url'] = '';
             editorModal.originalSettings['webui-url'] = '';
             editorModal.originalSettings['env-path'] = '';
             editorModal.originalSettings['default-profile'] = '';
+            editorModal.originalSettings['external-compose-path'] = '';
             $('#settings-icon-preview').hide();
             $('#settings-available-profiles').hide();
+            $('#settings-external-compose-info').hide();
         });
     }
 
@@ -3223,18 +3246,22 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
         if (currentTab !== 'compose' && currentTab !== 'env') return;
         if (!editorModal.modifiedTabs.has(currentTab)) return;
 
-        saveTab(currentTab).then(function() {
-            // Brief feedback in validation panel
-            $('#editor-validation-' + currentTab).html('<i class="fa fa-check editor-validation-icon"></i> Saved!').removeClass('error warning').addClass('valid');
-            setTimeout(function() {
-                validateYaml(currentTab, editorModal.editors[currentTab].getValue());
-            }, 1500);
+        saveTab(currentTab).then(function(result) {
+            if (result === true) {
+                // Brief feedback in validation panel
+                $('#editor-validation-' + currentTab).html('<i class="fa fa-check editor-validation-icon"></i> Saved!').removeClass('error warning').addClass('valid');
+                setTimeout(function() {
+                    validateYaml(currentTab, editorModal.editors[currentTab].getValue());
+                }, 1500);
+            } else {
+                $('#editor-validation-' + currentTab).html('<i class="fa fa-exclamation-triangle editor-validation-icon"></i> Save failed').removeClass('valid warning').addClass('error');
+            }
         }).catch(function() {
-            // Error already handled in saveTab's .fail() handler
+            $('#editor-validation-' + currentTab).html('<i class="fa fa-exclamation-triangle editor-validation-icon"></i> Save failed').removeClass('valid warning').addClass('error');
         });
     }
 
-    function saveTab(tabName) {
+    function saveTab(tabName, saveErrors) {
         var content = editorModal.editors[tabName].getValue();
         var project = editorModal.currentProject;
         var actionStr = null;
@@ -3271,11 +3298,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
             }
             return false;
         }).fail(function() {
-            swal({
-                title: "Save Failed",
-                text: "Failed to save " + tabName + " file. Please try again.",
-                type: "error"
-            });
+            if (saveErrors) saveErrors.push('Failed to save ' + tabName + ' file.');
             return false;
         });
     }
@@ -3283,6 +3306,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
     // Save all modified changes (files, settings, and labels)
     function saveAllChanges() {
         var savePromises = [];
+        var saveErrors = [];
         var totalChanges = editorModal.modifiedTabs.size + editorModal.modifiedSettings.size + editorModal.modifiedLabels.size;
 
         if (totalChanges === 0) {
@@ -3294,12 +3318,12 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
 
         // Save modified file tabs
         editorModal.modifiedTabs.forEach(function(tabName) {
-            savePromises.push(saveTab(tabName));
+            savePromises.push(saveTab(tabName, saveErrors));
         });
 
         // Save settings if modified
         if (editorModal.modifiedSettings.size > 0) {
-            savePromises.push(saveSettings());
+            savePromises.push(saveSettings(saveErrors));
         }
 
         // Save labels if modified
@@ -3332,10 +3356,13 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                     }, 1600);
                 }
             } else {
+                var errorText = saveErrors.length > 0
+                    ? saveErrors.join('\n')
+                    : 'Some items could not be saved. Please try again.';
                 swal({
-                    title: "Partial Save",
-                    text: "Some items could not be saved. Please check the error messages and try again.",
-                    type: "warning"
+                    title: "Save Failed",
+                    text: errorText,
+                    type: "error"
                 });
             }
         }).fail(function() {
@@ -3348,7 +3375,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
     }
 
     // Save settings
-    function saveSettings() {
+    function saveSettings(saveErrors) {
         var project = editorModal.currentProject;
         var savePromises = [];
         var needsReload = false;
@@ -3367,6 +3394,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                     needsReload = true;
                     return true;
                 }).fail(function() {
+                    if (saveErrors) saveErrors.push('Failed to save stack name.');
                     return false;
                 })
             );
@@ -3385,17 +3413,19 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                     editorModal.modifiedSettings.delete('description');
                     return true;
                 }).fail(function() {
+                    if (saveErrors) saveErrors.push('Failed to save description.');
                     return false;
                 })
             );
         }
 
-        // Save icon URL, webui URL, env path, and default profile if any are modified
-        if (editorModal.modifiedSettings.has('icon-url') || editorModal.modifiedSettings.has('webui-url') || editorModal.modifiedSettings.has('env-path') || editorModal.modifiedSettings.has('default-profile')) {
+        // Save icon URL, webui URL, env path, default profile, and external compose path if any are modified
+        if (editorModal.modifiedSettings.has('icon-url') || editorModal.modifiedSettings.has('webui-url') || editorModal.modifiedSettings.has('env-path') || editorModal.modifiedSettings.has('default-profile') || editorModal.modifiedSettings.has('external-compose-path')) {
             var iconUrl = $('#settings-icon-url').val();
             var webuiUrl = $('#settings-webui-url').val();
             var envPath = $('#settings-env-path').val();
             var defaultProfile = $('#settings-default-profile').val();
+            var externalComposePath = $('#settings-external-compose-path').val();
             savePromises.push(
                 $.post(caURL, {
                     action: 'setStackSettings',
@@ -3403,7 +3433,8 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                     iconUrl: iconUrl,
                     webuiUrl: webuiUrl,
                     envPath: envPath,
-                    defaultProfile: defaultProfile
+                    defaultProfile: defaultProfile,
+                    externalComposePath: externalComposePath
                 }).then(function(data) {
                     if (data) {
                         var response = JSON.parse(data);
@@ -3412,31 +3443,36 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                             editorModal.originalSettings['webui-url'] = webuiUrl;
                             editorModal.originalSettings['env-path'] = envPath;
                             editorModal.originalSettings['default-profile'] = defaultProfile;
+                            editorModal.originalSettings['external-compose-path'] = externalComposePath;
                             editorModal.modifiedSettings.delete('icon-url');
                             editorModal.modifiedSettings.delete('webui-url');
                             editorModal.modifiedSettings.delete('env-path');
                             editorModal.modifiedSettings.delete('default-profile');
+                            editorModal.modifiedSettings.delete('external-compose-path');
                             needsReload = true;
                             return true;
+                        } else {
+                            // Collect error message from server
+                            if (saveErrors) saveErrors.push(response.message || 'Failed to save stack settings.');
                         }
                     }
                     return false;
                 }).fail(function() {
+                    if (saveErrors) saveErrors.push('Failed to save stack settings (network error).');
                     return false;
                 })
             );
         }
 
         return $.when.apply($, savePromises).then(function() {
+            var results = Array.prototype.slice.call(arguments);
+            var allSucceeded = savePromises.length === 0 || results.every(function(result) {
+                return result === true;
+            });
+
             updateTabModifiedState();
             updateSaveButtonState();
-            // Schedule a page reload after the swal closes if needed
-            if (needsReload) {
-                setTimeout(function() {
-                    location.reload();
-                }, 1800);
-            }
-            return true;
+            return allSucceeded;
         });
     }
 
@@ -3564,8 +3600,10 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
         $('#settings-webui-url').val('');
         $('#settings-env-path').val('');
         $('#settings-default-profile').val('');
+        $('#settings-external-compose-path').val('');
         $('#settings-icon-preview').hide();
         $('#settings-available-profiles').hide();
+        $('#settings-external-compose-info').hide();
 
         // Clear labels container
         $('#labels-services-container').html('');
@@ -4981,6 +5019,15 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                     <!-- Advanced -->
                     <div class="settings-section">
                         <div class="settings-section-title"><i class="fa fa-sliders"></i> Advanced</div>
+
+                        <div class="settings-field">
+                            <label for="settings-external-compose-path">External Compose Path</label>
+                            <input type="text" id="settings-external-compose-path" placeholder="Default (uses compose file in project folder)">
+                            <div class="settings-field-help">Path to an external folder containing your compose file(s) (e.g., /mnt/user/appdata/myapp/). The folder must contain a file matching *compose*.yml. Leave empty to use the compose file stored in the project folder.</div>
+                            <div id="settings-external-compose-info" style="margin-top:8px;display:none;">
+                                <span style="color:#c80;font-size:0.9em;"><i class="fa fa-info-circle"></i> This stack uses an external compose file. The Compose editor tab will load the file from the external path.</span>
+                            </div>
+                        </div>
 
                         <div class="settings-field">
                             <label for="settings-env-path">External ENV File Path</label>
