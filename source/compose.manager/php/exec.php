@@ -95,12 +95,15 @@ switch ($_POST['action']) {
             break;
         }
         $folderName = "$compose_root/$stackName";
-        $filesRemain = is_file("$folderName/indirect") ? file_get_contents("$folderName/indirect") : "";
+        $isIndirect = is_file("$folderName/indirect");
+        $filesRemain = $isIndirect ? file_get_contents("$folderName/indirect") : "";
         exec("rm -rf " . escapeshellarg($folderName));
-        if (!empty($filesRemain)) {
-            echo json_encode(['result' => 'warning', 'message' => $filesRemain]);
-        } else {
+        if ($filesRemain == "") {
+            exec("logger -t 'compose.manager' " . escapeshellarg("[stack] Deleted stack: $stackName"));
             echo json_encode(['result' => 'success', 'message' => '']);
+        } else {
+            exec("logger -t 'compose.manager' " . escapeshellarg("[stack] Deleted stack: $stackName (indirect, external files remain at $filesRemain)"));
+            echo json_encode(['result' => 'warning', 'message' => $filesRemain]);
         }
         break;
     case 'changeName':
@@ -858,6 +861,12 @@ switch ($_POST['action']) {
         // Check for updates for all compose stacks
         require_once("/usr/local/emhttp/plugins/dynamix.docker.manager/include/DockerClient.php");
 
+        $cfg = $cfg ?? parse_plugin_cfg($sName);
+        $debugLog = ($cfg['DEBUG_TO_LOG'] ?? '') === 'true';
+        if ($debugLog) {
+            exec("logger -t 'compose.manager' " . escapeshellarg("[update-check] Starting update check for all stacks"));
+        }
+
         $allUpdates = [];
         $DockerUpdate = new DockerUpdate();
 
@@ -1019,6 +1028,15 @@ switch ($_POST['action']) {
             $stackData['lastChecked'] = time();
         }
         file_put_contents($composeUpdateStatusFile, json_encode($savedStatus, JSON_PRETTY_PRINT));
+
+        if ($debugLog) {
+            $totalStacks = count($allUpdates);
+            $updatesFound = 0;
+            foreach ($allUpdates as $sn => $si) {
+                if ($si['hasUpdate']) $updatesFound++;
+            }
+            exec("logger -t 'compose.manager' " . escapeshellarg("[update-check] Completed: $totalStacks stacks checked, $updatesFound with updates"));
+        }
 
         echo json_encode(['result' => 'success', 'stacks' => $allUpdates]);
         break;

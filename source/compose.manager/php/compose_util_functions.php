@@ -20,7 +20,7 @@ if (!function_exists('logger')) {
     function logger($string)
     {
         $string = escapeshellarg($string);
-        exec("logger " . $string);
+        exec("logger -t 'compose.manager' " . $string);
     }
 }
 
