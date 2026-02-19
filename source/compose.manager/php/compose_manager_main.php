@@ -1590,22 +1590,26 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                     action: 'deleteStack',
                     stackName: stackName
                 }, function(data) {
-                    if (data) {
-                        var response = JSON.parse(data);
-                        if (response.result == "warning") {
-                            swal({
-                                title: "Files remain on disk.",
-                                text: response.message,
-                                type: "warning"
-                            }, function() {
-                                location.reload();
-                            });
-                        } else {
-                            location.reload();
+                    try {
+                        if (data) {
+                            var response = JSON.parse(data);
+                            if (response.result == "warning") {
+                                swal({
+                                    title: "Files remain on disk.",
+                                    text: response.message,
+                                    type: "warning"
+                                }, function() {
+                                    location.reload();
+                                });
+                                return;
+                            }
                         }
-                    } else {
-                        location.reload();
+                    } catch (e) {
+                        console.error('Delete response parse error:', e, data);
                     }
+                    location.reload();
+                }).fail(function() {
+                    location.reload();
                 });
             }
         });
@@ -3532,22 +3536,26 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                     action: 'deleteStack',
                     stackName: project
                 }, function(data) {
-                    if (data) {
-                        var response = JSON.parse(data);
-                        if (response.result == "warning") {
-                            swal({
-                                title: "Files remain on disk.",
-                                text: response.message,
-                                type: "warning"
-                            }, function() {
-                                location.reload();
-                            });
-                        } else {
-                            location.reload();
+                    try {
+                        if (data) {
+                            var response = JSON.parse(data);
+                            if (response.result == "warning") {
+                                swal({
+                                    title: "Files remain on disk.",
+                                    text: response.message,
+                                    type: "warning"
+                                }, function() {
+                                    location.reload();
+                                });
+                                return;
+                            }
                         }
-                    } else {
-                        location.reload();
+                    } catch (e) {
+                        console.error('Delete response parse error:', e, data);
                     }
+                    location.reload();
+                }).fail(function() {
+                    location.reload();
                 });
             }
         });
