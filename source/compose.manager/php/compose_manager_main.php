@@ -1468,7 +1468,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 <div class="compose-modal" role="dialog" aria-modal="true" aria-labelledby="compose-stack-modal-title" aria-describedby="compose-stack-modal-desc" tabindex="-1">
                     <div class="compose-modal-header">
                         <span id="compose-stack-modal-title">Add New Compose Stack</span>
-                        <button type="button" class="editor-modal-close" onclick="closeComposeStackModal()" aria-label="Close modal"><i class="fa fa-times"></i></button>
+                        <button type="button" class="editor-btn editor-btn-cancel" onclick="closeComposeStackModal()" aria-label="Close modal"><i class="fa fa-times"></i></button>
                     </div>
                     <div class="compose-modal-body">
                         <div style="font-weight:bold;margin-bottom:8px;">Stack Name</div>
@@ -1485,8 +1485,8 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                     
                     </div>
                     <div class="compose-modal-footer">
-                        <button class="cancel swal-btn-cancel" onclick="closeComposeStackModal()">Cancel</button>
-                        <button class="swal-btn-warning" onclick="submitComposeStackModal()">Create</button>
+                        <button class="editor-btn editor-btn-cancel" onclick="closeComposeStackModal()">Cancel</button>
+                        <button class="editor-btn editor-btn-save-all" onclick="submitComposeStackModal()">Create</button>
                     </div>
                 </div>
             </div>

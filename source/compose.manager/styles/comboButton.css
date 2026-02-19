@@ -2,32 +2,33 @@
   .compose-modal-overlay {
     position: fixed;
     z-index: 9999;
-    left: 0; top: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.6);
+    inset: 0;
+    background: var(--modal-overlay-bg, rgba(0, 0, 0, 0.6));
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
   .compose-modal {
-    background: #232323;
-    color: #fff;
+    background: var(--background-color);
+    color: var(--text-color);
     border-radius: 8px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
     min-width: 350px;
     max-width: 400px;
     width: 100%;
     padding: 0;
     overflow: hidden;
     font-family: inherit;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--panel-box-shadow);
   }
 
   .compose-modal-header {
-    background: #181818;
+    background: var(--alt-background-color);
     padding: 16px 24px 8px 24px;
     font-size: 1.2em;
     font-weight: bold;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--border-color);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -38,20 +39,20 @@
   }
 
   .compose-modal-footer {
-    background: #181818;
+    background: var(--alt-background-color);
     padding: 12px 24px;
     text-align: right;
-    border-top: 1px solid #333;
+    border-top: 1px solid var(--border-color);
   }
-
+/* 
   .compose-modal input[type="text"] {
     width: 100%;
     padding: 8px 10px;
     margin-bottom: 16px;
-    border: 1px solid #444;
+    border: 1px solid var(--border-color);
     border-radius: 4px;
-    background: #181818;
-    color: #fff;
+    background: var(--input-background-color);
+    color: var(--text-color);
   }
 
   .compose-modal button {
@@ -61,20 +62,21 @@
     font-weight: bold;
     margin-left: 8px;
     cursor: pointer;
-    background: #ff8c2f;
-    color: #fff;
+    background: var(--brand-orange);
+    color: var(--action-primary-color);
     transition: background 0.2s;
   }
 
   .compose-modal button.cancel {
-    background: #333;
-    color: #ccc;
+    background: var(--alt-background-color);
+    color: var(--alt-text-color);
   }
 
   .compose-modal button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }
+ */
   /* The container <div> - needed to position the dropdown content */
   .dropdown {
     position: absolute;
@@ -85,7 +87,7 @@
   .dropdown-content {
     display: none;
     position: relative;
-    background-color: #f1f1f1;
+    background-color: var(--panel-bg);
     min-width: 100px;
     /* min-width: auto; */
     z-index: 1;
@@ -94,14 +96,16 @@
 
   /* Links inside the dropdown */
   .dropdown-content a {
-    color: black;
+    color: var(--text-color);
     padding: 12px 16px;
     text-decoration: none;
     display: block;
   }
 
   /* Change color of dropdown links on hover */
-  .dropdown-content a:hover {background-color: #ddd}
+  .dropdown-content a:hover {
+    background-color: var(--dropdown-hover-bg)
+  }
 
   /* Show the dropdown menu on hover */
   .dropdown:hover .dropdown-content {
@@ -127,282 +131,333 @@
     display: inline;
   }
 
-/* ============================================
+  /* ============================================
    Minimal Custom Styles for Compose Manager
    Most styling uses Unraid's native CSS classes
    ============================================ */
 
-/* Expand icon rotation animation */
-.expand-icon {
-  transition: transform 0.2s ease;
-}
+  /* Expand icon rotation animation */
+  .expand-icon {
+    transition: transform 0.2s ease;
+  }
 
-.expand-icon.expanded {
-  transform: rotate(90deg);
-}
+  .expand-icon.expanded {
+    transform: rotate(90deg);
+  }
 
-/* Stack Actions Modal (context menu) */
-.stack-actions-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 9998;
-}
+  /* Stack Actions Modal (context menu) */
+  .stack-actions-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9998;
+  }
 
-.stack-actions-modal {
-  position: fixed;
-  z-index: 9999;
-  background-color: #1c1c1c;
-  border: 1px solid #3a3a3a;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  min-width: 200px;
-  max-width: 280px;
-}
+  .stack-actions-modal {
+    position: fixed;
+    z-index: 9999;
+    background-color: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--panel-box-shadow);
+    min-width: 200px;
+    max-width: 280px;
+  }
 
-.stack-actions-modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid #3a3a3a;
-}
+  .stack-actions-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+  }
 
-.stack-actions-modal-title {
-  font-weight: bold;
-  color: #ff8c2f;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  .stack-actions-modal-title {
+    font-weight: bold;
+    color: var(--brand-orange);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-.stack-actions-modal-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #888;
-  padding: 4px;
-  line-height: 1;
-}
+  .stack-actions-modal-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--alt-text-color);
+    padding: 4px;
+    line-height: 1;
+  }
 
-.stack-actions-modal-close:hover {
-  color: #f44336;
-}
+  .stack-actions-modal-close:hover {
+    color: var(--brand-red);
+  }
 
-.stack-actions-modal-body {
-  padding: 8px 0;
-}
+  .stack-actions-modal-body {
+    padding: 8px 0;
+  }
 
-.stack-action-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 10px 16px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #ccc;
-  text-align: left;
-  transition: background-color 0.15s ease;
-}
+  .stack-action-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 16px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--alt-text-color);
+    text-align: left;
+    transition: background-color 0.15s ease;
+  }
 
-.stack-action-item:hover {
-  background-color: rgba(255, 140, 47, 0.1);
-}
+  .stack-action-item:hover {
+    background-color: var(--action-hover-bg);
+  }
 
-.stack-action-item i {
-  width: 16px;
-  text-align: center;
-  color: #888;
-}
+  .stack-action-item i {
+    width: 16px;
+    text-align: center;
+    color: var(--alt-text-color);
+  }
 
-.stack-action-item:hover i {
-  color: #ff8c2f;
-}
+  .stack-action-item:hover i {
+    color: var(--brand-orange);
+  }
 
-.stack-action-item.stack-action-danger {
-  color: #f44336;
-}
+  .stack-action-item.stack-action-danger {
+    color: #f44336;
+  }
 
-.stack-action-item.stack-action-danger i {
-  color: #f44336;
-}
+  .stack-action-item.stack-action-danger i {
+    color: #f44336;
+  }
 
-.stack-action-item.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+  .stack-action-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 
-.stack-actions-divider {
-  height: 1px;
-  background-color: #3a3a3a;
-  margin: 8px 0;
-}
+  .stack-actions-divider {
+    height: 1px;
+    background-color: var(--border-color);
+    margin: 8px 0;
+  }
 
-/* Loading/error/empty states */
-.stack-details-loading,
-.stack-details-error,
-.stack-details-empty {
-  padding: 20px;
-  text-align: center;
-  color: #888;
-}
+  /* Loading/error/empty states */
+  .stack-details-loading,
+  .stack-details-error,
+  .stack-details-empty {
+    padding: 20px;
+    text-align: center;
+    color: var(--alt-text-color);
+  }
 
-.stack-details-error {
-  color: #f44336;
-}
+  .stack-details-error {
+    color: var(--status-error);
+  }
 
-/* SweetAlert2 button customizations */
-.swal-stack-name {
-  color: #ff8c2f;
-}
+  /* SweetAlert2 button customizations */
+  .swal-stack-name {
+    color: var(--brand-orange);
+  }
 
-.swal-btn-danger {
-  background-color: #f44336 !important;
-}
+  .swal-btn-danger {
+    background-color: var(--status-error) !important;
+  }
+  .swal-btn-warning {
+    background-color: var(--brand-orange) !important;
+  }
 
-.swal-btn-warning {
-  background-color: #ff8c2f !important;
-}
+  /* Hover variants that follow the active Unraid theme */
+  .swal-btn-warning:hover {
+    background-color: var(--action-primary-bg-hover) !important;
+  }
 
-.swal-btn-cancel {
-  background-color: #3a3a3a !important;
-  color: #ccc !important;
-}
+  .swal-btn-danger:hover {
+    background-color: var(--status-error-hover) !important;
+  }
 
-/* ── Stack table structural rules ──
+  .swal-btn-cancel {
+    background-color: var(--alt-background-color) !important;
+    color: var(--alt-text-color) !important;
+  }
+
+  .swal-btn-cancel:hover {
+    background-color: var(--border-color) !important;
+    color: var(--text-color) !important;
+  }
+
+  /* ── Stack table structural rules ──
    Critical layout rules (table-layout, column widths, advanced/basic
    visibility) are inlined in compose_manager_main.php for instant
    availability.  The rules below are supplemental / non-critical. */
 
-/* Update column links - ensure pointer cursor */
-.updatecolumn a,
-.updatecolumn a.exec {
-  cursor: pointer !important;
-}
+  /* Update column links - ensure pointer cursor */
+  .updatecolumn a,
+  .updatecolumn a.exec {
+    cursor: pointer !important;
+  }
 
-.updatecolumn a:hover {
-  text-decoration: none;
-}
+  .updatecolumn a:hover {
+    text-decoration: none;
+  }
 
-/* Prevent autostart toggle label from wrapping to a new line in narrow columns.
+  /* Prevent autostart toggle label from wrapping to a new line in narrow columns.
    Switches the switchButton elements from float:left to inline-block so they
    stay on one line inside the narrow <td class="nine"> cell.
    Scoped to #compose_list so it does NOT affect Unraid's native Docker toggles. */
-#compose_list .switch-button-label,
-#compose_list .switch-button-background {
-  float: none !important;
-  display: inline-block;
-  vertical-align: middle;
-}
+  #compose_list .switch-button-label,
+  #compose_list .switch-button-background {
+    float: none !important;
+    display: inline-block;
+    vertical-align: middle;
+  }
 
-/* Namespaced compose classes to avoid global Docker manager handlers */
-.compose-status-icon {
-  /* keep same sizing as standard FA icons but namespaced */
-  width: 1em;
-  text-align: center;
-}
-.compose-spinner {
-  margin-right: 8px;
-}
+  /* Namespaced compose classes to avoid global Docker manager handlers */
+  .compose-status-icon {
+    /* keep same sizing as standard FA icons but namespaced */
+    width: 1em;
+    text-align: center;
+  }
 
-/* Local spinner overlay for Compose list (keeps behaviour separate from global spinner.fixed) */
-.compose-local-spinner {
-  position: absolute;
-  right: 12px;
-  top: 8px;
-  background: rgba(0,0,0,0.55);
-  color: #fff;
-  padding: 6px 10px;
-  border-radius: 6px;
-  z-index: 99999;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.95rem;
-}
-.compose-local-spinner i {
-  font-size: 1.1rem;
-}
-.compose-local-spinner-text { color: #fff; }
+  .compose-spinner {
+    margin-right: 8px;
+  }
 
-/* Spinner that overlays container image icons */
-.compose-container-spinner {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 1.1rem;
-  pointer-events: none;
-  color: inherit;
-  z-index: 2;
-}
+  /* Local spinner overlay for Compose list (keeps behaviour separate from global spinner.fixed) */
+  .compose-local-spinner {
+    position: absolute;
+    right: 12px;
+    top: 8px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 6px;
+    z-index: 99999;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.95rem;
+  }
 
-/* Ensure the container icon wrapper can be used as positioning context */
-.ct-name .hand { position: relative; display: inline-block; }
+  .compose-local-spinner i {
+    font-size: 1.1rem;
+  }
 
-/* ============================================
+  .compose-local-spinner-text {
+    color: #fff;
+  }
+
+  /* Spinner that overlays container image icons */
+  .compose-container-spinner {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1.1rem;
+    pointer-events: none;
+    color: inherit;
+    z-index: 2;
+  }
+
+  /* Ensure the container icon wrapper can be used as positioning context */
+  .ct-name .hand {
+    position: relative;
+    display: inline-block;
+  }
+
+  /* ============================================
    Container Detail Table (expanded stack rows)
    Uses table-layout:fixed with percentage-based
    column widths so every expanded stack shares
    identical proportions.  Column classes make it
    easy to toggle visibility from settings later.
    ============================================ */
-.compose-ct-table {
-  table-layout: fixed;
-  width: 100%;
-  margin: 0;
-  font-size: 0.95em;
-}
-.compose-ct-table th,
-.compose-ct-table td {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* Column width distribution (totals ~100%) */
-.compose-ct-table .ct-col-name   { width: 18%; }
-.compose-ct-table .ct-col-update { width: 13%; }
-.compose-ct-table .ct-col-source { width: 17%; }
-.compose-ct-table .ct-col-tag    { width: 12%; }
-.compose-ct-table .ct-col-net    { width: 10%; }
-.compose-ct-table .ct-col-ip     { width: 10%; }
-.compose-ct-table .ct-col-cport  { width: 10%; }
-.compose-ct-table .ct-col-lport  { width: 10%; }
+  .compose-ct-table {
+    table-layout: fixed;
+    width: 100%;
+    margin: 0;
+    font-size: 0.95em;
+  }
 
-/* Container name cell: allow wrapping for long names */
-.compose-ct-table .ct-name {
-  white-space: normal;
-  word-break: break-word;
-  padding: 8px;
-}
-/* Tag cell: truncated with ellipsis, full value on hover (title) */
-.compose-ct-table .ct-col-tag-cell {
-  max-width: 0;          /* forces text-overflow with fixed layout */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.compose-ct-table .ct-tag {
-  display: inline-block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: bottom;
-  color: #f0a000;
-}
-/* Source column: allow wrapping, left-aligned */
-.compose-ct-table th:nth-child(3),
-.compose-ct-table td:nth-child(3) {
-  white-space: normal;
-  word-break: break-all;
-  text-align: left !important;
-}
-/* Source data cells only — muted color (header inherits theme default) */
-.compose-ct-table td:nth-child(3) {
-  color: #606060;
-}
+  .compose-ct-table th,
+  .compose-ct-table td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Column width distribution (totals ~100%) */
+  .compose-ct-table .ct-col-name {
+    width: 18%;
+  }
+
+  .compose-ct-table .ct-col-update {
+    width: 13%;
+  }
+
+  .compose-ct-table .ct-col-source {
+    width: 17%;
+  }
+
+  .compose-ct-table .ct-col-tag {
+    width: 12%;
+  }
+
+  .compose-ct-table .ct-col-net {
+    width: 10%;
+  }
+
+  .compose-ct-table .ct-col-ip {
+    width: 10%;
+  }
+
+  .compose-ct-table .ct-col-cport {
+    width: 10%;
+  }
+
+  .compose-ct-table .ct-col-lport {
+    width: 10%;
+  }
+
+  /* Container name cell: allow wrapping for long names */
+  .compose-ct-table .ct-name {
+    white-space: normal;
+    word-break: break-word;
+    padding: 8px;
+  }
+
+  /* Tag cell: truncated with ellipsis, full value on hover (title) */
+  .compose-ct-table .ct-col-tag-cell {
+    max-width: 0;
+    /* forces text-overflow with fixed layout */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .compose-ct-table .ct-tag {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+    color: var(--brand-orange);
+  }
+
+  /* Source column: allow wrapping, left-aligned */
+  .compose-ct-table th:nth-child(3),
+  .compose-ct-table td:nth-child(3) {
+    white-space: normal;
+    word-break: break-all;
+    text-align: left !important;
+  }
+
+  /* Source data cells only — muted color (header inherits theme default) */
+  .compose-ct-table td:nth-child(3) {
+    color: #606060;
+  }
