@@ -301,7 +301,7 @@ foreach ($composeProjects as $project) {
     if ($isrunning) {
         $o .= "<span class='grey-text' style='white-space:nowrap;cursor:default;' title='Click Check for Updates to check'><i class='fa fa-question-circle fa-fw'></i> not checked</span>";
     } else {
-        $o .= "<span class='grey-text' style='white-space:nowrap;'><i class='fa fa-docker fa-fw'></i> stopped</span>";
+        $o .= "<span class='grey-text' style='white-space:nowrap;'><i class='fa fa-stop fa-fw'></i> stopped</span>";
     }
     $o .= "</td>";
 
