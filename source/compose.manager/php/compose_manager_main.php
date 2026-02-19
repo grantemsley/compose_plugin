@@ -1476,6 +1476,13 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                         <div id="compose-stack-modal-desc" style="font-weight:bold;margin-bottom:8px;">Description (optional)</div>
                         <input type="text" id="compose-stack-desc" placeholder="Description">
                         <div id="compose-stack-modal-error" style="color:#f44336;margin-bottom:8px;display:none;"></div>
+                    
+                        <details>
+                            <summary>Advanced Options</summary></br>
+                            <div style="font-weight:bold;margin-bottom:8px;">Indirect Path</div>
+                            <input type="text" id="compose-stack-indirect" placeholder="/mnt/user/compose/stackFolder">
+                        </details>
+                    
                     </div>
                     <div class="compose-modal-footer">
                         <button class="cancel swal-btn-cancel" onclick="closeComposeStackModal()">Cancel</button>
@@ -1504,6 +1511,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
         window.submitComposeStackModal = function() {
             var name = document.getElementById('compose-stack-name').value.trim();
             var desc = document.getElementById('compose-stack-desc').value.trim();
+            var indirect = document.getElementById('compose-stack-indirect').value.trim();
             var errorDiv = document.getElementById('compose-stack-modal-error');
             if (!name) {
                 errorDiv.textContent = "Please enter a stack name.";
@@ -1523,7 +1531,8 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 caURL, {
                     action: 'addStack',
                     stackName: name,
-                    stackDesc: desc
+                    stackDesc: desc,
+                    stackPath: indirect
                 },
                 function(data) {
                     window.closeComposeStackModal();

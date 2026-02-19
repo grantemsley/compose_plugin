@@ -22,7 +22,7 @@ switch ($_POST['action']) {
     case 'addStack':
         #Create indirect
         $indirect = isset($_POST['stackPath']) ? trim($_POST['stackPath']) : "";
-        if (!empty($indirect)) {
+        if ($indirect != "") {
             // Validate stackPath is under an allowed root (/mnt/ or /boot/config/)
             $realIndirect = realpath(dirname($indirect)) ?: $indirect;
             if (strpos($realIndirect, '/mnt/') !== 0 && strpos($realIndirect, '/boot/config/') !== 0) {
@@ -30,15 +30,10 @@ switch ($_POST['action']) {
                 break;
             }
             if (!is_dir($indirect)) {
-                exec("mkdir -p " . escapeshellarg($indirect));
-                if (!is_dir($indirect)) {
-                    echo json_encode(['result' => 'error', 'message' => 'Failed to create stack directory.']);
-                    break;
-                }
+                echo json_encode(['result' => 'error', 'message' => 'Indirect stack path does not exist.']);
+                break;
             }
         }
-
-        #Pull stack files
 
         #Create stack folder
         $stackName = isset($_POST['stackName']) ? trim($_POST['stackName']) : "";
@@ -58,13 +53,15 @@ switch ($_POST['action']) {
         }
 
         #Create stack files
-        if (!empty($indirect)) {
+        if ($indirect != "") {
             file_put_contents("$folder/indirect", $indirect);
             if (!findComposeFile($indirect)) {
                 file_put_contents("$indirect/compose.yaml", "services:\n");
+                exec("logger -t 'compose.manager' " . escapeshellarg("[$stackName] Indirect compose file not found at path: $indirect. Created stack with empty compose file."));
             }
         } else {
             file_put_contents("$folder/compose.yaml", "services:\n");
+                exec("logger -t 'compose.manager' " . escapeshellarg("[$stackName] Compose file not found at path: $folder. Created stack with empty compose file."));
         }
 
         // Create initial override file if it doesn't exist (for UI labels)
@@ -86,6 +83,7 @@ switch ($_POST['action']) {
 
         // Return project info for opening the editor
         $projectDir = basename($folder);
+        exec("logger -t 'compose.manager' " . escapeshellarg("[stack] Created stack: $stackName"));
         echo json_encode(['result' => 'success', 'message' => '', 'project' => $projectDir, 'projectName' => $stackName]);
         break;
     case 'deleteStack':
