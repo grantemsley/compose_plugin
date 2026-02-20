@@ -89,12 +89,14 @@ switch ($_POST['action']) {
     case 'deleteStack':
         $stackName = isset($_POST['stackName']) ? basename(trim($_POST['stackName'])) : "";
         if (! $stackName) {
+            exec("logger -t 'compose.manager' " . escapeshellarg("[stack] Stack deletion failed: Stack name not specified."));
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
         }
         $folderName = "$compose_root/$stackName";
         $isIndirect = is_file("$folderName/indirect");
         $filesRemain = $isIndirect ? file_get_contents("$folderName/indirect") : "";
+        exec("logger -t 'compose.manager' " . escapeshellarg("[stack] Deleting stack: $stackName"));
         exec("rm -rf " . escapeshellarg($folderName));
         if ($filesRemain == "") {
             exec("logger -t 'compose.manager' " . escapeshellarg("[stack] Deleted stack: $stackName"));

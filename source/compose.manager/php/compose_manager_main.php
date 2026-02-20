@@ -3541,6 +3541,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
             cancelButtonText: "Cancel"
         }, function(confirmed) {
             if (confirmed) {
+                setStackActionInProgress(project, true, 'Deleting stack...');
                 $.post(caURL, {
                     action: 'deleteStack',
                     stackName: project
@@ -3549,22 +3550,31 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                         if (data) {
                             var response = JSON.parse(data);
                             if (response.result == "warning") {
-                                swal({
-                                    title: "Files remain on disk.",
-                                    text: response.message,
-                                    type: "warning"
-                                }, function() {
-                                    location.reload();
-                                });
+                                setTimeout(function() {
+                                    swal({
+                                        title: "Files remain on disk.",
+                                        text: response.message,
+                                        type: "warning"
+                                    }, function() {
+                                        composeLoadlist();
+                                    });
+                                }, 100);
                                 return;
                             }
                         }
                     } catch (e) {
+                        try {
+                            composeClientDebug('Delete response parse error:', {
+                                project: project,
+                                error: e
+                            });
+                        } catch (e) {}
                         console.error('Delete response parse error:', e, data);
                     }
-                    location.reload();
+                    composeLoadlist();
                 }).fail(function() {
-                    location.reload();
+                    console.error('Delete request failed for project:', project);
+                    composeLoadlist();
                 });
             }
         });
