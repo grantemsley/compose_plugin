@@ -2039,11 +2039,12 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
     }
 
     // Toggle per-stack action-in-progress UI (replace status icon with spinner)
-    function setStackActionInProgress(stackName, inProgress) {
+    function setStackActionInProgress(stackName, inProgress, text) {
         try {
             composeClientDebug('setStackActionInProgress', {
                 stack: stackName,
-                inProgress: inProgress
+                inProgress: inProgress,
+                text: text
             });
         } catch (e) {}
         var $stackRow = $('#compose_stacks tr.compose-sortable[data-project="' + stackName + '"]');
@@ -2058,7 +2059,11 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
             // Use same spinner as containers to keep UI consistent
             $icon.removeClass().addClass('fa fa-refresh fa-spin compose-status-spinner compose-status-icon');
             $state.data('orig-text', $state.text());
-            $state.text('checking...');
+            if (text) {
+                $state.text(text);
+            } else {
+                $state.text('checking...');
+            }
         } else {
             // Restore original icon classes if we saved them
             if ($icon.data('orig-class')) {
