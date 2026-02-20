@@ -3,6 +3,7 @@
 require_once("/usr/local/emhttp/plugins/compose.manager/php/defines.php");
 require_once("/usr/local/emhttp/plugins/compose.manager/php/util.php");
 require_once("/usr/local/emhttp/plugins/compose.manager/php/exec_functions.php");
+require_once("/usr/local/emhttp/plugins/dynamix/include/Wrappers.php");
 
 /**
  * Safely retrieve the 'script' POST parameter (stack directory name).
@@ -12,13 +13,25 @@ require_once("/usr/local/emhttp/plugins/compose.manager/php/exec_functions.php")
  * @return string The sanitized script/stack directory name
  */
 if (!function_exists('getPostScript')) {
-    function getPostScript(): string {
+    function getPostScript(): string
+    {
         $script = $_POST['script'] ?? '';
         return basename(trim($script));
     }
 }
 
 switch ($_POST['action']) {
+    case 'clientDebug':
+        $message = $_POST['msg'] ?? '';
+        $data = $_POST['data'] ?? null;
+        $type = $_POST['type'] ?? 'daemon';
+        $level = $_POST['lvl'] ?? 'info';
+        clientDebug($message, $data, $type, $level);
+        break;
+    case 'getConfig':
+        $cfg = @parse_ini_file("/boot/config/plugins/compose.manager/compose.manager.cfg", true, INI_SCANNER_NORMAL);
+        echo json_encode(['result' => 'success', 'config' => $cfg]);
+        break;
     case 'addStack':
         #Create indirect
         $indirect = isset($_POST['stackPath']) ? trim($_POST['stackPath']) : "";
@@ -26,10 +39,12 @@ switch ($_POST['action']) {
             // Validate stackPath is under an allowed root (/mnt/ or /boot/config/)
             $realIndirect = realpath(dirname($indirect)) ?: $indirect;
             if (strpos($realIndirect, '/mnt/') !== 0 && strpos($realIndirect, '/boot/config/') !== 0) {
+                clientDebug("[stack] Failed to create stack: Invalid indirect path: $indirect", null, 'daemon', 'error');
                 echo json_encode(['result' => 'error', 'message' => 'Stack path must be under /mnt/ or /boot/config/.']);
                 break;
             }
             if (!is_dir($indirect)) {
+                clientDebug("[stack] Failed to create stack: Indirect stack path does not exist: $indirect", null, 'daemon', 'error');
                 echo json_encode(['result' => 'error', 'message' => 'Indirect stack path does not exist.']);
                 break;
             }
@@ -48,6 +63,7 @@ switch ($_POST['action']) {
         }
         exec("mkdir -p " . escapeshellarg($folder));
         if (!is_dir($folder)) {
+            clientDebug("[stack] Failed to create stack: Unable to create directory: $folder", null, 'daemon', 'error');
             echo json_encode(['result' => 'error', 'message' => 'Failed to create stack directory.']);
             break;
         }
@@ -57,11 +73,11 @@ switch ($_POST['action']) {
             file_put_contents("$folder/indirect", $indirect);
             if (!findComposeFile($indirect)) {
                 file_put_contents("$indirect/compose.yaml", "services:\n");
-                exec("logger -t 'compose.manager' " . escapeshellarg("[$stackName] Indirect compose file not found at path: $indirect. Created stack with empty compose file."));
+                clientDebug("[stack] Indirect compose file not found at path: $indirect. Created stack with empty compose file.", null, 'daemon', 'warning');
             }
         } else {
             file_put_contents("$folder/compose.yaml", "services:\n");
-                exec("logger -t 'compose.manager' " . escapeshellarg("[$stackName] Compose file not found at path: $folder. Created stack with empty compose file."));
+            clientDebug("[$stackName] Compose file not found at path: $folder. Created stack with empty compose file.", null, 'daemon', 'warning');
         }
 
         // Create initial override file if it doesn't exist (for UI labels)
@@ -83,26 +99,26 @@ switch ($_POST['action']) {
 
         // Return project info for opening the editor
         $projectDir = basename($folder);
-        exec("logger -t 'compose.manager' " . escapeshellarg("[stack] Created stack: $stackName"));
+        clientDebug("[stack] Created stack: $stackName", null, 'daemon', 'info');
         echo json_encode(['result' => 'success', 'message' => '', 'project' => $projectDir, 'projectName' => $stackName]);
         break;
     case 'deleteStack':
         $stackName = isset($_POST['stackName']) ? basename(trim($_POST['stackName'])) : "";
-        if (! $stackName) {
-            exec("logger -t 'compose.manager' " . escapeshellarg("[stack] Stack deletion failed: Stack name not specified."));
+        if (!$stackName) {
+            clientDebug("[stack] Stack deletion failed: Stack name not specified.", null, 'daemon', 'error');
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
         }
         $folderName = "$compose_root/$stackName";
         $isIndirect = is_file("$folderName/indirect");
         $filesRemain = $isIndirect ? file_get_contents("$folderName/indirect") : "";
-        exec("logger -t 'compose.manager' " . escapeshellarg("[stack] Deleting stack: $stackName"));
+        clientDebug("[stack] Deleting stack: $stackName", null, 'daemon', 'info');
         exec("rm -rf " . escapeshellarg($folderName));
         if ($filesRemain == "") {
-            exec("logger -t 'compose.manager' " . escapeshellarg("[stack] Deleted stack: $stackName"));
+            clientDebug("[stack] Deleted stack: $stackName", null, 'daemon', 'info');
             echo json_encode(['result' => 'success', 'message' => '']);
         } else {
-            exec("logger -t 'compose.manager' " . escapeshellarg("[stack] Deleted stack: $stackName (indirect, external files remain at $filesRemain)"));
+            clientDebug("[stack] Deleted stack: $stackName (indirect, external files remain at $filesRemain)", null, 'daemon', 'warning');
             echo json_encode(['result' => 'warning', 'message' => $filesRemain]);
         }
         break;
@@ -123,7 +139,7 @@ switch ($_POST['action']) {
         break;
     case 'getDescription':
         $script = getPostScript();
-        if (! $script) {
+        if (!$script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
         }
@@ -159,7 +175,7 @@ switch ($_POST['action']) {
             }
         }
         $scriptContents = str_replace("\r", "", $scriptContents);
-        if (! $scriptContents) {
+        if (!$scriptContents) {
             $scriptContents = "services:\n";
         }
         echo json_encode(['result' => 'success', 'fileName' => $composeFilePath, 'content' => $scriptContents]);
@@ -176,7 +192,7 @@ switch ($_POST['action']) {
 
         $scriptContents = is_file("$fileName") ? file_get_contents("$fileName") : "";
         $scriptContents = str_replace("\r", "", $scriptContents);
-        if (! $scriptContents) {
+        if (!$scriptContents) {
             $scriptContents = "\n";
         }
         echo json_encode(['result' => 'success', 'fileName' => "$fileName", 'content' => $scriptContents]);
@@ -188,7 +204,7 @@ switch ($_POST['action']) {
 
         $scriptContents = is_file("$basePath/$fileName") ? file_get_contents("$basePath/$fileName") : "";
         $scriptContents = str_replace("\r", "", $scriptContents);
-        if (! $scriptContents) {
+        if (!$scriptContents) {
             $scriptContents = "";
         }
         echo json_encode(['result' => 'success', 'fileName' => "$basePath/$fileName", 'content' => $scriptContents]);
@@ -227,7 +243,7 @@ switch ($_POST['action']) {
         break;
     case 'updateAutostart':
         $script = getPostScript();
-        if (! $script) {
+        if (!$script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
         }
@@ -255,14 +271,8 @@ switch ($_POST['action']) {
         $ts = date('c');
         $entry = "[{$ts}] runPatch {$cmd} exit={$rc}\n" . implode("\n", $output) . "\n\n";
         @file_put_contents($logfile, $entry, FILE_APPEND);
-        // If debug logging enabled, send to syslog
-        $cfg = parse_plugin_cfg($sName);
-        if ((($cfg['DEBUG_TO_LOG'] ?? 'false') == 'true')) {
-            openlog("compose.manager", LOG_PID, LOG_USER);
-            foreach ($output as $line) {
-                syslog(LOG_DEBUG, "[patch.sh {$cmd}] " . $line);
-            }
-            closelog();
+        foreach ($output as $line) {
+            clientDebug("[patch.sh] " . escapeshellarg($cmd) . " " . $line, null, 'daemon', 'debug');
         }
         echo json_encode(['result' => $rc === 0 ? 'success' : 'error', 'output' => implode("\n", $output), 'rc' => $rc]);
         break;
@@ -299,7 +309,7 @@ switch ($_POST['action']) {
         break;
     case 'setEnvPath':
         $script = getPostScript();
-        if (! $script) {
+        if (!$script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
         }
@@ -329,21 +339,21 @@ switch ($_POST['action']) {
         break;
     case 'getEnvPath':
         $script = getPostScript();
-        if (! $script) {
+        if (!$script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
         }
         $fileName = "$compose_root/$script/envpath";
         $fileContents = is_file("$fileName") ? file_get_contents("$fileName") : "";
         $fileContents = str_replace("\r", "", $fileContents);
-        if (! $fileContents) {
+        if (!$fileContents) {
             $fileContents = "";
         }
         echo json_encode(['result' => 'success', 'fileName' => "$fileName", 'content' => $fileContents]);
         break;
     case 'getStackSettings':
         $script = getPostScript();
-        if (! $script) {
+        if (!$script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
         }
@@ -389,7 +399,7 @@ switch ($_POST['action']) {
         break;
     case 'setStackSettings':
         $script = getPostScript();
-        if (! $script) {
+        if (!$script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
         }
@@ -434,7 +444,8 @@ switch ($_POST['action']) {
         // Set env path
         $envPathFile = "$compose_root/$script/envpath";
         if (empty($envPath)) {
-            if (is_file($envPathFile)) @unlink($envPathFile);
+            if (is_file($envPathFile))
+                @unlink($envPathFile);
         } else {
             file_put_contents($envPathFile, $envPath);
         }
@@ -442,7 +453,8 @@ switch ($_POST['action']) {
         // Set icon URL
         $iconUrlFile = "$compose_root/$script/icon_url";
         if (empty($iconUrl)) {
-            if (is_file($iconUrlFile)) @unlink($iconUrlFile);
+            if (is_file($iconUrlFile))
+                @unlink($iconUrlFile);
         } else {
             file_put_contents($iconUrlFile, $iconUrl);
         }
@@ -450,7 +462,8 @@ switch ($_POST['action']) {
         // Set WebUI URL
         $webuiUrlFile = "$compose_root/$script/webui_url";
         if (empty($webuiUrl)) {
-            if (is_file($webuiUrlFile)) @unlink($webuiUrlFile);
+            if (is_file($webuiUrlFile))
+                @unlink($webuiUrlFile);
         } else {
             file_put_contents($webuiUrlFile, $webuiUrl);
         }
@@ -458,7 +471,8 @@ switch ($_POST['action']) {
         // Set default profile
         $defaultProfileFile = "$compose_root/$script/default_profile";
         if (empty($defaultProfile)) {
-            if (is_file($defaultProfileFile)) @unlink($defaultProfileFile);
+            if (is_file($defaultProfileFile))
+                @unlink($defaultProfileFile);
         } else {
             file_put_contents($defaultProfileFile, $defaultProfile);
         }
@@ -506,7 +520,7 @@ switch ($_POST['action']) {
         break;
     case 'getStackContainers':
         $script = getPostScript();
-        if (! $script) {
+        if (!$script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
         }
@@ -536,7 +550,8 @@ switch ($_POST['action']) {
         $hostIP = '';
         foreach (['br0', 'bond0', 'eth0'] as $iface) {
             $hostIP = trim(shell_exec("ip -br -4 addr show $iface scope global 2>/dev/null | sed -r 's/\/[0-9]+//g' | awk '{print \$3;exit}'"));
-            if ($hostIP) break;
+            if ($hostIP)
+                break;
         }
 
         $containers = [];
@@ -635,7 +650,8 @@ switch ($_POST['action']) {
                                         // Use container's own routable IP
                                         $firstNet = reset($networkSettings);
                                         $containerIP = $firstNet['IPAddress'] ?? '';
-                                        if ($containerIP) $resolvedIP = $containerIP;
+                                        if ($containerIP)
+                                            $resolvedIP = $containerIP;
                                     }
                                     // For bridge/overlay/other → use host IP (default)
 
@@ -715,7 +731,7 @@ switch ($_POST['action']) {
         $containerName = isset($_POST['container']) ? trim($_POST['container']) : "";
         $containerAction = isset($_POST['containerAction']) ? trim($_POST['containerAction']) : "";
 
-        if (! $containerName || ! $containerAction) {
+        if (!$containerName || !$containerAction) {
             echo json_encode(['result' => 'error', 'message' => 'Container or action not specified.']);
             break;
         }
@@ -734,7 +750,7 @@ switch ($_POST['action']) {
     case 'checkStackUpdates':
         // Check for updates for all containers in a compose stack
         $script = getPostScript();
-        if (! $script) {
+        if (!$script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
         }
@@ -861,11 +877,7 @@ switch ($_POST['action']) {
         // Check for updates for all compose stacks
         require_once("/usr/local/emhttp/plugins/dynamix.docker.manager/include/DockerClient.php");
 
-        $cfg = $cfg ?? parse_plugin_cfg($sName);
-        $debugLog = ($cfg['DEBUG_TO_LOG'] ?? '') === 'true';
-        if ($debugLog) {
-            exec("logger -t 'compose.manager' " . escapeshellarg("[update-check] Starting update check for all stacks"));
-        }
+        clientDebug("[update-check] Starting update check for all stacks", null, 'daemon', 'debug');
 
         $allUpdates = [];
         $DockerUpdate = new DockerUpdate();
@@ -997,7 +1009,8 @@ switch ($_POST['action']) {
                                 }
 
                                 $hasUpdate = ($updateStatus === false);
-                                if ($hasUpdate) $hasStackUpdate = true;
+                                if ($hasUpdate)
+                                    $hasStackUpdate = true;
 
                                 $stackUpdates[] = [
                                     'container' => $containerName,
@@ -1033,9 +1046,10 @@ switch ($_POST['action']) {
             $totalStacks = count($allUpdates);
             $updatesFound = 0;
             foreach ($allUpdates as $sn => $si) {
-                if ($si['hasUpdate']) $updatesFound++;
+                if ($si['hasUpdate'])
+                    $updatesFound++;
             }
-            exec("logger -t 'compose.manager' " . escapeshellarg("[update-check] Completed: $totalStacks stacks checked, $updatesFound with updates"));
+            clientDebug("[update-check] Completed: $totalStacks stacks checked, $updatesFound with updates", null, 'daemon', 'info');
         }
 
         echo json_encode(['result' => 'success', 'stacks' => $allUpdates]);
@@ -1123,7 +1137,7 @@ switch ($_POST['action']) {
     case 'checkStackLock':
         // Check if a stack is currently locked (operation in progress)
         $script = getPostScript();
-        if (! $script) {
+        if (!$script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
         }
@@ -1146,7 +1160,7 @@ switch ($_POST['action']) {
     case 'getStackResult':
         // Get the last operation result for a stack
         $script = getPostScript();
-        if (! $script) {
+        if (!$script) {
             echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
             break;
         }
@@ -1225,12 +1239,12 @@ switch ($_POST['action']) {
 
     case 'createBackup':
         require_once("/usr/local/emhttp/plugins/compose.manager/php/backup_functions.php");
-        exec("logger -t 'compose.manager' " . escapeshellarg("[backup] Manual backup starting..."));
+        clientDebug("[backup] Manual backup starting...", null, 'daemon', 'info');
         $result = createBackup();
         if ($result['result'] === 'success') {
-            exec("logger -t 'compose.manager' " . escapeshellarg("[backup] Manual backup completed: " . $result['archive'] . " (" . $result['size'] . ", " . $result['stacks'] . " stacks)"));
+            clientDebug("[backup] Manual backup completed: " . $result['archive'] . " (" . $result['size'] . ", " . $result['stacks'] . " stacks)", null, 'daemon', 'info');
         } else {
-            exec("logger -t 'compose.manager' " . escapeshellarg("[backup] Manual backup FAILED: " . ($result['message'] ?? 'Unknown error')));
+            clientDebug("[backup] Manual backup FAILED: " . ($result['message'] ?? 'Unknown error'), null, 'daemon', 'error');
         }
         echo json_encode($result);
         break;
@@ -1268,16 +1282,19 @@ switch ($_POST['action']) {
         $dest = getBackupDestination();
         if (!is_dir($dest)) {
             if (!@mkdir($dest, 0755, true)) {
+                clientDebug("[backup] Failed to create backup destination directory: " . $dest, null, 'daemon', 'error');
                 echo json_encode(['result' => 'error', 'message' => 'Backup destination does not exist and could not be created: ' . $dest]);
                 break;
             }
         }
         if (!is_writable($dest)) {
+            clientDebug("[backup] Backup destination is not writable: " . $dest, null, 'daemon', 'error');
             echo json_encode(['result' => 'error', 'message' => 'Backup destination is not writable: ' . $dest]);
             break;
         }
         $targetPath = $dest . '/' . $filename;
         if (file_exists($targetPath)) {
+            clientDebug("[backup] Archive already exists in backup destination: " . $filename, null, 'daemon', 'error');
             echo json_encode(['result' => 'error', 'message' => 'Archive "' . $filename . '" already exists in backup destination.']);
             break;
         }
@@ -1285,7 +1302,7 @@ switch ($_POST['action']) {
             echo json_encode(['result' => 'error', 'message' => 'Failed to save uploaded file.']);
             break;
         }
-        exec("logger -t 'compose.manager' " . escapeshellarg("[backup] Uploaded: $filename"));
+        clientDebug("[backup] Uploaded backup archive: " . $filename, null, 'daemon', 'info');
         echo json_encode(['result' => 'success', 'message' => 'Archive uploaded successfully.', 'archive' => $filename]);
         break;
 
@@ -1317,16 +1334,16 @@ switch ($_POST['action']) {
             echo json_encode(['result' => 'error', 'message' => 'No stacks selected for restore.']);
             break;
         }
-        exec("logger -t 'compose.manager' " . escapeshellarg("[restore] Restore started from " . $archive . " (" . count($stacks) . " stacks)"));
+        clientDebug("[restore] Restore starting from archive: " . $archive . " with " . count($stacks) . " stacks selected", null, 'daemon', 'info');
         $archivePath = resolveArchivePath($archive);
         $result = restoreStacks($archivePath, $stacks);
         if ($result['result'] === 'error') {
-            exec("logger -t 'compose.manager' " . escapeshellarg("[restore] Restore FAILED: " . ($result['message'] ?? 'Unknown error')));
+            clientDebug("[restore] Restore FAILED: " . ($result['message'] ?? 'Unknown error'), null, 'daemon', 'error');
         } else {
             $restoredList = implode(', ', $result['restored'] ?? []);
-            exec("logger -t 'compose.manager' " . escapeshellarg("[restore] Restore completed: " . count($result['restored']) . " stacks restored (" . $restoredList . ")"));
+            clientDebug("[restore] Restore completed: " . count($result['restored']) . " stacks restored (" . $restoredList . ")", null, 'daemon', 'info');
             if (!empty($result['errors'])) {
-                exec("logger -t 'compose.manager' " . escapeshellarg("[restore] Restore errors: " . implode(', ', $result['errors'])));
+                clientDebug("[restore] Restore errors: " . implode(', ', $result['errors']), null, 'daemon', 'error');
             }
         }
         echo json_encode($result);
@@ -1345,7 +1362,7 @@ switch ($_POST['action']) {
             break;
         }
         @unlink($archivePath);
-        exec("logger -t 'compose.manager' " . escapeshellarg("[backup] Deleted: " . basename($archive)));
+        clientDebug("[backup] Deleted backup archive: " . $archive, null, 'daemon', 'info');
         echo json_encode(['result' => 'success', 'message' => 'Backup deleted.']);
         break;
 
@@ -1368,9 +1385,12 @@ switch ($_POST['action']) {
 
         // Whitelist allowed setting keys to prevent arbitrary config injection
         $allowedKeys = [
-            'BACKUP_DESTINATION', 'BACKUP_RETENTION',
-            'BACKUP_SCHEDULE_ENABLED', 'BACKUP_SCHEDULE_FREQUENCY',
-            'BACKUP_SCHEDULE_TIME', 'BACKUP_SCHEDULE_DAY'
+            'BACKUP_DESTINATION',
+            'BACKUP_RETENTION',
+            'BACKUP_SCHEDULE_ENABLED',
+            'BACKUP_SCHEDULE_FREQUENCY',
+            'BACKUP_SCHEDULE_TIME',
+            'BACKUP_SCHEDULE_DAY'
         ];
         $settings = array_intersect_key($settings, array_flip($allowedKeys));
 
@@ -1425,11 +1445,12 @@ switch ($_POST['action']) {
             $minute = $timeParts[1];
             $ampm = $hour >= 12 ? 'PM' : 'AM';
             $hour12 = $hour % 12;
-            if ($hour12 === 0) $hour12 = 12;
+            if ($hour12 === 0)
+                $hour12 = 12;
             $time12 = "{$hour12}:{$minute} {$ampm}";
-            exec("logger -t 'compose.manager' " . escapeshellarg("[backup] Scheduler ENABLED: {$freq}{$day} at {$time12}"));
+            clientDebug("[backup] Scheduler ENABLED: {$freq}{$day} at {$time12}", null, 'daemon', 'info');
         } else {
-            exec("logger -t 'compose.manager' " . escapeshellarg("[backup] Scheduler DISABLED"));
+            clientDebug("[backup] Scheduler DISABLED", null, 'daemon', 'info');
         }
 
         echo json_encode(['result' => 'success', 'message' => 'Backup settings saved.']);

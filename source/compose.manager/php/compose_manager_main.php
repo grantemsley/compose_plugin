@@ -141,6 +141,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
 
 <script src="/plugins/compose.manager/javascript/ace/ace.js" type="text/javascript"></script>
 <script src="/plugins/compose.manager/javascript/js-yaml/js-yaml.min.js" type="text/javascript"></script>
+<script src="/plugins/compose.manager/javascript/common.js" type="text/javascript"></script>
 <script>
     var compose_root = <?php echo json_encode($compose_root); ?>;
     var caURL = "/plugins/compose.manager/php/exec.php";
@@ -162,7 +163,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
 
     // Load stack list asynchronously (namespaced to avoid conflict with Docker tab's loadlist)
     function composeLoadlist() {
-        composeClientDebug('composeLoadlist:start');
+        composeClientDebug('[composeLoadlist] start', null, 'daemon', 'debug');
         // Ensure local spinner exists and show it after a short delay to avoid flash on fast loads
         if ($('#compose-local-spinner').length === 0) {
             // place spinner just above the list and ensure parent can position overlay if needed
@@ -175,7 +176,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
 
         $.get('/plugins/compose.manager/php/compose_list.php', function(data) {
             try {
-                composeClientDebug('composeLoadlist:success');
+                composeClientDebug('[composeLoadlist] success', null, 'daemon', 'debug');
             } catch (e) {}
             clearTimeout(composeTimers.load);
 
@@ -197,11 +198,9 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                         status: status
                     });
                 });
-                try {
-                    composeClientDebug('composeLoadlist:initial-stack-statuses', {
-                        stacks: initialStatuses
-                    });
-                } catch (e) {}
+                composeClientDebug('[composeLoadlist] initial-stack-statuses', {
+                    stacks: initialStatuses
+                }, 'daemon', 'debug');
             } catch (e) {}
 
             // Normalize icons based on state text to ensure server-side render and
@@ -231,27 +230,23 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                     // If icon already matches, skip
                     if (($icon.hasClass('fa-' + desiredShape) && $icon.hasClass(desiredColor))) return;
 
-                    try {
-                        composeClientDebug('composeLoadlist:normalize-icon', {
-                            project: $row.data('project'),
-                            stateText: stateText,
-                            desiredShape: desiredShape,
-                            desiredColor: desiredColor,
-                            before: $icon.attr('class')
-                        });
-                    } catch (e) {}
+                    composeClientDebug('[composeLoadlist] normalize-icon', {
+                        project: $row.data('project'),
+                        stateText: stateText,
+                        desiredShape: desiredShape,
+                        desiredColor: desiredColor,
+                        before: $icon.attr('class')
+                    }, 'daemon', 'debug');
                     // Remove old fa-* classes, color classes and apply desired ones
                     $icon.removeClass(function(i, cls) {
                         return (cls.match(/fa-[^\s]+/g) || []).join(' ');
                     });
                     $icon.removeClass('green-text orange-text grey-text cyan-text');
                     $icon.addClass('fa fa-' + desiredShape + ' ' + desiredColor + ' compose-status-icon');
-                    try {
-                        composeClientDebug('composeLoadlist:normalize-icon-done', {
-                            project: $row.data('project'),
-                            after: $icon.attr('class')
-                        });
-                    } catch (e) {}
+                    composeClientDebug('[composeLoadlist] normalize-icon-done', {
+                        project: $row.data('project'),
+                        after: $icon.attr('class')
+                    }, 'daemon', 'debug');
                 });
             } catch (e) {}
 
@@ -282,12 +277,10 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
             // Notify other features (e.g. hide-from-docker) that compose list is ready
             $(document).trigger('compose-list-loaded');
         }).fail(function(xhr, status, error) {
-            try {
-                composeClientDebug('composeLoadlist:failed', {
-                    status: status,
-                    error: error
-                });
-            } catch (e) {}
+            composeClientDebug('[composeLoadlist] failed', {
+                status: status,
+                error: error
+            }, 'daemon', 'error');
             clearTimeout(composeTimers.load);
             $('#compose-local-spinner').fadeOut('fast');
             $('#compose_list').html('<tr><td colspan="7" style="text-align:center;padding:20px;color:#c00;">Failed to load stack list. Please refresh the page.</td></tr>');
@@ -360,27 +353,6 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
 
     function dirname(path) {
         return path.replace(/\\/g, '/').replace(/\/[^\/]*$/, '');
-    }
-
-    // Client-side debug helper: logs to console and posts short messages to server syslog
-    function composeClientDebug(msg, obj) {
-        try {
-            if (obj !== undefined) {
-                console.log('[Compose Debug] ' + msg, obj);
-            } else {
-                console.log('[Compose Debug] ' + msg);
-            }
-        } catch (e) {}
-        // Send lightweight debug message to server for persistence (non-blocking)
-        try {
-            var payload = {
-                action: 'clientDebug',
-                msg: msg
-            };
-            if (obj !== undefined) payload.data = JSON.stringify(obj);
-            // Fire-and-forget; no UI impact
-            $.post(caURL, payload).fail(function() {});
-        } catch (e) {}
     }
 
     // Editor modal state
@@ -734,17 +706,23 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                         var pendingStacks = Object.keys(response.pending);
                         if (pendingStacks.length > 0) {
                             hadPendingRechecks = true;
-                            console.log('Found pending rechecks for stacks:', pendingStacks);
+                            composeClientDebug('checkPendingRechecks:found', {
+                                pendingStacks: pendingStacks
+                            }, 'daemon', 'info');
 
                             // Check each pending stack
                             pendingStacks.forEach(function(stackName) {
-                                console.log('Running recheck for recently updated stack:', stackName);
+                                composeClientDebug('Running recheck for recently updated stack:', {
+                                    stackName: stackName
+                                }, 'daemon', 'info');
                                 checkStackUpdates(stackName);
                             });
                         }
                     }
                 } catch (e) {
-                    console.error('Failed to check pending rechecks:', e);
+                    composeClientDebug('checkPendingRechecks:failed', {
+                        error: e
+                    }, 'daemon', 'error');
                 }
             }
             if (callback) callback(hadPendingRechecks);
@@ -770,11 +748,11 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
         // If we have a lastChecked time and it's within the interval, don't check
         if (latestCheck > 0 && (now - latestCheck) < intervalSeconds) {
             needsCheck = false;
-            console.log('Auto-check: Last check was ' + Math.round((now - latestCheck) / 60) + ' minutes ago, interval is ' + Math.round(intervalSeconds / 60) + ' minutes. Skipping.');
+            composeClientDebug('[Updates] Last check was ' + Math.round((now - latestCheck) / 60) + ' minutes ago, interval is ' + Math.round(intervalSeconds / 60) + ' minutes. Skipping.', null, 'daemon', 'info');
         }
 
         if (needsCheck) {
-            console.log('Auto-check: Running automatic update check...');
+            composeClientDebug('[Updates] Running automatic update check...', null, 'daemon', 'info');
             checkAllUpdates();
         }
     }
@@ -1067,14 +1045,12 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
         // prevent a render->update->render loop.
         if (expandedStacks[stackId]) {
             if (stackDetailsLoading[stackId] || stackDetailsJustRendered[stackId]) {
-                try {
-                    composeClientDebug('updateStackUpdateUI:skip-refresh', {
-                        stackId: stackId,
-                        stackName: stackName,
-                        loading: !!stackDetailsLoading[stackId],
-                        justRendered: !!stackDetailsJustRendered[stackId]
-                    });
-                } catch (e) {}
+                composeClientDebug('[updateStackUpdateUI] skip-refresh', {
+                    stackId: stackId,
+                    stackName: stackName,
+                    loading: !!stackDetailsLoading[stackId],
+                    justRendered: !!stackDetailsJustRendered[stackId]
+                }, 'daemon', 'info');
             } else {
                 loadStackContainerDetails(stackId, stackName);
             }
@@ -1305,11 +1281,9 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
         // Set up MutationObserver to detect when ebox (progress dialog) closes
         // This is used to trigger update check after an update operation completes
         var eboxObserver = new MutationObserver(function(mutations) {
-            try {
-                composeClientDebug('eboxObserver:mutations', {
-                    count: mutations.length
-                });
-            } catch (e) {}
+            composeClientDebug('[eboxObserver] mutations', {
+                count: mutations.length
+            }, 'daemon', 'debug');
             mutations.forEach(function(mutation) {
                 if (mutation.removedNodes.length > 0) {
                     mutation.removedNodes.forEach(function(node) {
@@ -1323,7 +1297,9 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
 
                                 // Delay slightly to let page state settle
                                 setTimeout(function() {
-                                    console.log('Update completed, running check for updates on stacks:', stacksToCheck);
+                                    composeClientDebug('Update completed, running check for updates on stacks:', {
+                                        stacks: stacksToCheck
+                                    }, 'daemon', 'info');
                                     // Check each stack that was updated
                                     stacksToCheck.forEach(function(stackName) {
                                         checkStackUpdates(stackName);
@@ -1346,11 +1322,9 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                                 // Tell the loadlist hook to skip composeLoadlist once
                                 skipNextComposeLoadlist = true;
                                 // Schedule a debounced processor to handle pending compose reloads
-                                try {
-                                    composeClientDebug('eboxObserver:pending-compose-reloads', {
-                                        pending: pendingComposeReloadStacks.slice()
-                                    });
-                                } catch (e) {}
+                                composeClientDebug('[eboxObserver] pending-compose-reloads', {
+                                    pending: pendingComposeReloadStacks.slice()
+                                }, 'daemon', 'debug');
                                 schedulePendingComposeReloads(800);
                             }
 
@@ -1358,9 +1332,9 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                             // (compose up/down/update changes containers that Docker's view needs to reflect)
                             if (typeof window.loadlist === 'function') {
                                 setTimeout(function() {
-                                    try {
-                                        composeClientDebug('eboxObserver:calling-loadlist-for-docker-sync');
-                                    } catch (e) {}
+                                    composeClientDebug('[eboxObserver] calling-loadlist-for-docker-sync', {
+                                        pendingComposeReloadStacks: pendingComposeReloadStacks.slice()
+                                    }, 'daemon', 'debug');
                                     window.loadlist();
                                 }, 1500);
                             }
@@ -1409,7 +1383,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
 
                         // Skip compose reload if refreshStackRow is already handling it
                         if (pendingComposeRefreshCount > 0 || skipNextComposeLoadlist) {
-                            composeClientDebug('hookLoadlist: suppressed composeLoadlist (pending=' + pendingComposeRefreshCount + ', skip=' + skipNextComposeLoadlist + ')');
+                            composeClientDebug('[hookLoadlist]  suppressed composeLoadlist (pending=' + pendingComposeRefreshCount + ', skip=' + skipNextComposeLoadlist + ')', null, 'daemon', 'debug');
                             skipNextComposeLoadlist = false;
                             return;
                         }
@@ -1426,7 +1400,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                         }
                     };
                     window.loadlist._composeTabHooked = true;
-                    composeClientDebug('hookLoadlist: hooked loadlist() for cross-widget sync, tabbed=' + isTabbed);
+                    composeClientDebug('[hookLoadlist]  hooked loadlist() for cross-widget sync, tabbed=' + isTabbed, null, 'daemon', 'info');
                     return true;
                 }
                 return false;
@@ -1686,16 +1660,13 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                     for (var service_key in main_doc.services) {
                         var service = main_doc.services[service_key];
                         if (service.hasOwnProperty("profiles")) {
-                            // console.log(service.profiles);
                             for (const profile of service.profiles) {
                                 project_profiles.add(profile);
                             }
                         }
                     }
 
-                    // console.log(project_profiles);
                     var rawProfiles = JSON.stringify(Array.from(project_profiles));
-                    // console.log(rawProfiles);
                     $.post(caURL, {
                         action: "saveProfiles",
                         script: project,
@@ -1706,6 +1677,11 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                                 title: "Failed to update profiles.",
                                 type: "error"
                             });
+                            composeClientDebug('Failed to update profiles.', {
+                                project: project,
+                                rawProfiles: rawProfiles,
+                                response: data
+                            }, 'daemon', 'error');
                         }
                     });
                 }
@@ -1909,13 +1885,16 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
     // Track stacks that need update check after operation completes
     // Using array to support Update All Stacks operation
     var pendingUpdateCheckStacks = [];
+
     // >0 while refreshStackRow AJAX calls are in-flight; the loadlist
     // hook skips composeLoadlist until all pending refreshes complete.
     var pendingComposeRefreshCount = 0;
+
     // One-shot flag: consumed by the loadlist hook so the very next
     // loadlist call skips composeLoadlist even if refreshStackRow
     // already completed before loadlist fires.
     var skipNextComposeLoadlist = false;
+
     // Track stacks that need a full compose list reload after start/stop operations
     var pendingComposeReloadStacks = [];
     // Timer for batching compose reloads to avoid duplicate refreshes
@@ -1924,7 +1903,9 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
     // Schedule processing of pending compose reloads (debounced)
     function schedulePendingComposeReloads(ms) {
         ms = ms || 500;
-        if (pendingComposeReloadTimer) clearTimeout(pendingComposeReloadTimer);
+        if (pendingComposeReloadTimer) {
+            clearTimeout(pendingComposeReloadTimer);
+        }
         pendingComposeReloadTimer = setTimeout(function() {
             processPendingComposeReloads();
         }, ms);
@@ -1933,6 +1914,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
     // Process pending compose reloads: update parent rows from cache where possible,
     // otherwise fall back to a full composeLoadlist(). This centralizes reloads
     // so multiple triggers collapse into a single update.
+
     function processPendingComposeReloads() {
         if (pendingComposeReloadTimer) {
             clearTimeout(pendingComposeReloadTimer);
@@ -1942,11 +1924,9 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
         var reloadStacks = pendingComposeReloadStacks.slice();
         // Clear queue immediately to avoid re-entrancy
         pendingComposeReloadStacks = [];
-        try {
-            composeClientDebug('processPendingComposeReloads', {
-                stacks: reloadStacks.slice()
-            });
-        } catch (e) {}
+        composeClientDebug('processPendingComposeReloads', {
+            stacks: reloadStacks.slice()
+        }, 'daemon', 'info');
 
         // If any of the target rows are missing from DOM, fallback to full reload
         var anyMissing = reloadStacks.some(function(project) {
@@ -1967,12 +1947,10 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 var stackId = $('#compose_stacks tr.compose-sortable[data-project="' + project + '"]').attr('id').replace('stack-row-', '');
                 refreshStackRow(stackId, project);
             } catch (e) {
-                try {
-                    composeClientDebug('processPendingComposeReloads:update-failed', {
-                        project: project,
-                        err: e.toString()
-                    });
-                } catch (ex) {}
+                composeClientDebug('[processPendingComposeReloads] update-failed', {
+                    project: project,
+                    err: e.toString()
+                }, 'daemon', 'error');
             }
         });
     }
@@ -2025,7 +2003,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                         }
                     }
                 } catch (e) {
-                    composeClientDebug('refreshStackRow:parse-error', { project: project, err: e.toString() });
+                    composeClientDebug('[refreshStackRow] parse-error', { project: project, err: e.toString() }, 'daemon', 'error');
                     // Fallback: update from whatever cache we have
                     updateParentStackFromContainers(stackId, project);
                 }
@@ -2040,13 +2018,11 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
 
     // Toggle per-stack action-in-progress UI (replace status icon with spinner)
     function setStackActionInProgress(stackName, inProgress, text) {
-        try {
-            composeClientDebug('setStackActionInProgress', {
-                stack: stackName,
-                inProgress: inProgress,
-                text: text
-            });
-        } catch (e) {}
+        composeClientDebug('setStackActionInProgress', {
+            stack: stackName,
+            inProgress: inProgress,
+            text: text
+        }, 'daemon', 'info');
         var $stackRow = $('#compose_stacks tr.compose-sortable[data-project="' + stackName + '"]');
         if ($stackRow.length === 0) return;
         var $icon = $stackRow.find('.compose-status-icon');
@@ -2181,12 +2157,10 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
         stacks.forEach(function(s) {
             var stackName = s.project;
             if (pendingComposeReloadStacks.indexOf(stackName) === -1) pendingComposeReloadStacks.push(stackName);
-            try {
-                composeClientDebug('executeStartAllStacks:queued', {
-                    stack: stackName,
-                    pending: pendingComposeReloadStacks.slice()
-                });
-            } catch (e) {}
+            composeClientDebug('[executeStartAllStacks] queued', {
+                stack: stackName,
+                pending: pendingComposeReloadStacks.slice()
+            }, 'daemon', 'info');
             setStackActionInProgress(stackName, true);
         });
 
@@ -2272,12 +2246,10 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
         stacks.forEach(function(s) {
             var stackName = s.project;
             if (pendingComposeReloadStacks.indexOf(stackName) === -1) pendingComposeReloadStacks.push(stackName);
-            try {
-                composeClientDebug('executeStopAllStacks:queued', {
-                    stack: stackName,
-                    pending: pendingComposeReloadStacks.slice()
-                });
-            } catch (e) {}
+            composeClientDebug('[executeStopAllStacks] queued', {
+                stack: stackName,
+                pending: pendingComposeReloadStacks.slice()
+            }, 'daemon', 'info');
             setStackActionInProgress(stackName, true);
         });
 
@@ -3527,19 +3499,17 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                             }
                         }
                     } catch (e) {
-                        try {
-                            composeClientDebug('Delete response parse error:', {
-                                project: project,
-                                error: e
-                            });
-                        } catch (e) {}
-                        console.error('Delete response parse error:', e, data);
+                        composeClientDebug('[Delete response parse error] ', {
+                            project: project,
+                            error: e
+                        }, 'daemon', 'error');
                     }
-                    composeLoadlist();
                 }).fail(function() {
-                    console.error('Delete request failed for project:', project);
-                    composeLoadlist();
+                    composeClientDebug('[Delete request failed for project] ', {
+                        project: project
+                    }, 'daemon', 'error');
                 });
+                composeLoadlist();
             }
         });
     }
@@ -3578,21 +3548,17 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
 
         // Prevent parallel loads for same stack
         if (stackDetailsLoading[stackId]) {
-            try {
-                composeClientDebug('loadStackContainerDetails:already-loading', {
-                    stackId: stackId,
-                    project: project
-                });
-            } catch (e) {}
+            composeClientDebug('[loadStackContainerDetails] already-loading', {
+                stackId: stackId,
+                project: project
+            }, 'daemon', 'warning');
             return;
         }
         stackDetailsLoading[stackId] = true;
-        try {
-            composeClientDebug('loadStackContainerDetails:start', {
-                stackId: stackId,
-                project: project
-            });
-        } catch (e) {}
+        composeClientDebug('[loadStackContainerDetails] start', {
+            stackId: stackId,
+            project: project
+        }, 'daemon', 'info');
 
         // Show loading state
         $container.html('<div class="stack-details-loading"><i class="fa fa-spinner fa-spin"></i> Loading container details...</div>');
@@ -3633,13 +3599,11 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                     }
 
                     stackContainersCache[stackId] = containers;
-                    try {
-                        composeClientDebug('loadStackContainerDetails:success', {
-                            stackId: stackId,
-                            project: project,
-                            containers: containers.length
-                        });
-                    } catch (e) {}
+                    composeClientDebug('[loadStackContainerDetails] success', {
+                        stackId: stackId,
+                        project: project,
+                        containers: containers.length
+                    }, 'daemon', 'info');
                     renderContainerDetails(stackId, containers, project);
                     // Slide down details row now that content is rendered
                     $('#details-row-' + stackId).slideDown(200);
@@ -3649,35 +3613,29 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                     $container.html('<div class="stack-details-error"><i class="fa fa-exclamation-triangle"></i> ' + errorMsg + '</div>');
                     $('#details-row-' + stackId).slideDown(200);
                     stackDetailsLoading[stackId] = false;
-                    try {
-                        composeClientDebug('loadStackContainerDetails:error', {
-                            stackId: stackId,
-                            project: project,
-                            message: errorMsg
-                        });
-                    } catch (e) {}
+                    composeClientDebug('[loadStackContainerDetails] error', {
+                        stackId: stackId,
+                        project: project,
+                        message: errorMsg
+                    }, 'daemon', 'error');
                 }
             } else {
                 $container.html('<div class="stack-details-error"><i class="fa fa-exclamation-triangle"></i> Failed to load container details</div>');
                 $('#details-row-' + stackId).slideDown(200);
                 stackDetailsLoading[stackId] = false;
-                try {
-                    composeClientDebug('loadStackContainerDetails:empty-response', {
-                        stackId: stackId,
-                        project: project
-                    });
-                } catch (e) {}
+                composeClientDebug('[loadStackContainerDetails] empty-response', {
+                    stackId: stackId,
+                    project: project
+                }, 'daemon', 'warning');
             }
         }).fail(function() {
             $container.html('<div class="stack-details-error"><i class="fa fa-exclamation-triangle"></i> Failed to load container details</div>');
             $('#details-row-' + stackId).slideDown(200);
             stackDetailsLoading[stackId] = false;
-            try {
-                composeClientDebug('loadStackContainerDetails:failed', {
-                    stackId: stackId,
-                    project: project
-                });
-            } catch (e) {}
+            composeClientDebug('[loadStackContainerDetails] failed', {
+                stackId: stackId,
+                project: project
+            }, 'daemon', 'error');
         });
     }
 
@@ -3869,25 +3827,27 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 try {
                     updateParentStackFromContainers(stackId, project);
                 } catch (e) {
-                    try {
-                        composeClientDebug('renderContainerDetails:update-parent-failed', {
-                            err: e.toString(),
-                            stackId: stackId,
-                            project: project
-                        });
-                    } catch (ex) {}
+                    composeClientDebug('[renderContainerDetails] update-parent-failed', {
+                        err: e.toString(),
+                        stackId: stackId,
+                        project: project
+                    }, 'daemon', 'error');
                 }
                 // Mark that we just rendered so immediate subsequent update-driven
                 // refreshes don't re-trigger another load (breaks the render -> update -> render loop)
                 try {
                     stackDetailsJustRendered[stackId] = true;
-                } catch (ex) {}
-                try {
-                    composeClientDebug('renderContainerDetails:just-rendered', {
+                } catch (ex) {
+                    composeClientDebug('[renderContainerDetails] set-just-rendered-failed', {
+                        err: ex.toString(),
                         stackId: stackId,
                         project: project
-                    });
-                } catch (e) {}
+                    }, 'daemon', 'error');
+                }
+                composeClientDebug('[renderContainerDetails] just-rendered', {
+                    stackId: stackId,
+                    project: project
+                }, 'daemon', 'info');
                 // Clear the flag after a short window
                 setTimeout(function() {
                     try {
@@ -4023,14 +3983,12 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 newState = anyRunning ? 'started' : (anyPaused ? 'paused' : 'stopped');
                 $stateEl.text(newState);
             }
-            try {
-                composeClientDebug('updateParentStackFromContainers:state', {
-                    project: project,
-                    newState: newState,
-                    runningCount: runningCount,
-                    totalCount: totalCount
-                });
-            } catch (e) {}
+            composeClientDebug('[updateParentStackFromContainers] state', {
+                project: project,
+                newState: newState,
+                runningCount: runningCount,
+                totalCount: totalCount
+            }, 'daemon', 'debug');
 
             // Update the containers count cell (3rd column) to reflect cached values
             try {
@@ -4046,13 +4004,11 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 var colorClass = newState === 'started' ? 'green-text' : (newState === 'paused' || newState === 'partial' ? 'orange-text' : 'grey-text');
 
                 // Debug: record classes before we touch the icon
-                try {
-                    composeClientDebug('updateParentStackFromContainers:icon-before-classes', {
-                        project: project,
-                        classes: $icon.attr('class'),
-                        origClass: $icon.data('orig-class')
-                    });
-                } catch (e) {}
+                composeClientDebug('[updateParentStackFromContainers] icon-before-classes', {
+                    project: project,
+                    classes: $icon.attr('class'),
+                    origClass: $icon.data('orig-class')
+                }, 'daemon', 'debug');
 
                 // Remove spinner / temporary classes and any previous fa-<name> classes
                 $icon.removeClass('fa-refresh fa-spin compose-status-spinner');
@@ -4063,12 +4019,10 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 });
 
                 // Debug: record classes after removal
-                try {
-                    composeClientDebug('updateParentStackFromContainers:icon-after-removal', {
-                        project: project,
-                        classes: $icon.attr('class')
-                    });
-                } catch (e) {}
+                composeClientDebug('[updateParentStackFromContainers] icon-after-removal', {
+                    project: project,
+                    classes: $icon.attr('class')
+                }, 'daemon', 'debug');
 
                 // Remove any previous color classes
                 $icon.removeClass('green-text orange-text grey-text cyan-text');
@@ -4076,12 +4030,10 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 // Apply the new shape and color
                 $icon.addClass('fa fa-' + shape + ' ' + colorClass + ' compose-status-icon');
                 // Debug: report final classes for diagnostic purposes
-                try {
-                    composeClientDebug('updateParentStackFromContainers:icon-classes', {
-                        project: project,
-                        classes: $icon.attr('class')
-                    });
-                } catch (e) {}
+                composeClientDebug('[updateParentStackFromContainers] icon-classes', {
+                    project: project,
+                    classes: $icon.attr('class')
+                }, 'daemon', 'debug');
                 // Clear any saved orig-class since we've now applied the new state
                 if ($icon.data('orig-class')) {
                     $icon.removeData('orig-class');
@@ -4091,13 +4043,11 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
             // Re-apply view mode (advanced/basic) to ensure column content visibility
             applyListView();
         } catch (e) {
-            try {
-                composeClientDebug('updateParentStackFromContainers:error', {
-                    err: e.toString(),
-                    stackId: stackId,
-                    project: project
-                });
-            } catch (ex) {}
+            composeClientDebug('[updateParentStackFromContainers] error', {
+                err: e.toString(),
+                stackId: stackId,
+                project: project
+            }, 'daemon', 'error');
             // If anything goes wrong, fallback to full reload
             composeLoadlist();
         }
@@ -4287,14 +4237,12 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                 stateOrigText = $stateTextEl.text();
                 $stateTextEl.attr('data-orig-text', stateOrigText);
                 $stateTextEl.text(actionStatusText);
-                try {
-                    composeClientDebug('containerAction:set-status', {
-                        container: containerName,
-                        action: action,
-                        stackId: stackId,
-                        statusText: actionStatusText
-                    });
-                } catch (e) {}
+                composeClientDebug('[containerAction] set-status', {
+                    container: containerName,
+                    action: action,
+                    stackId: stackId,
+                    statusText: actionStatusText
+                }, 'daemon', 'info');
             } catch (e) {}
         }
 
@@ -4313,14 +4261,12 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                         var project = $('#stack-row-' + stackId).data('project');
                         if (project) {
                             if (pendingComposeReloadStacks.indexOf(project) === -1) pendingComposeReloadStacks.push(project);
-                            try {
-                                composeClientDebug('containerAction:queued-stack-reload', {
-                                    container: containerName,
-                                    action: action,
-                                    stack: project,
-                                    pending: pendingComposeReloadStacks.slice()
-                                });
-                            } catch (e) {}
+                            composeClientDebug('[containerAction] queued-stack-reload', {
+                                container: containerName,
+                                action: action,
+                                stack: project,
+                                pending: pendingComposeReloadStacks.slice()
+                            }, 'daemon', 'info');
                             // Show per-stack spinner immediately
                             try {
                                 setStackActionInProgress(project, true);

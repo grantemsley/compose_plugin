@@ -1,19 +1,68 @@
 <?php
 
-function sanitizeStr($a) {
-	$a = str_replace(".","_",$a);
-	$a = str_replace(" ","_",$a);
-	$a = str_replace("-","_",$a);
+require_once("/usr/local/emhttp/plugins/compose.manager/php/defines.php");
+require_once("/usr/local/emhttp/plugins/dynamix/include/Wrappers.php");
+
+/**
+ * Utility functions for Compose Manager
+ *
+ * This file contains shared utility functions used across the Compose Manager plugin.
+ * Functions include logging, string sanitization, path handling, and stack operation locking.
+ *
+ * These functions are designed to be reusable and testable. They are used by both the
+ * main plugin code and the AJAX action handlers.
+ */
+
+function clientDebug($message, $data = null, $type = 'daemon', $level = 'info')
+{
+    if ($type == '' || $type == null) {
+        $type = 'daemon';
+    }
+    switch ($level) {
+        case 'debug':
+            $logLevel = "$type.debug";
+            break;
+        case 'error':
+        case 'err':
+            $logLevel = "$type.err";
+            break;
+        case 'warning':
+        case 'warn':
+            $logLevel = "$type.warning";
+            break;
+        case 'info':
+        default:
+            $logLevel = "$type.info";
+    }
+    $cfg = @parse_ini_file("/boot/config/plugins/compose.manager/compose.manager.cfg", true, INI_SCANNER_RAW);
+    // Skip debug messages if debug logging is disabled in plugin settings
+    if ((($cfg['DEBUG_TO_LOG'] ?? 'false') == 'false') && $level == 'debug') {
+        return;
+    }
+    if ($data !== null && $data !== '' && $data !== 'null') {
+        exec("logger -t 'compose.manager' -p '$logLevel' " . escapeshellarg($message) . ' - Data: ' . escapeshellarg($data));
+    } else {
+        exec("logger -t 'compose.manager' -p '$logLevel' " . escapeshellarg($message));
+    }
+}
+
+function sanitizeStr($a)
+{
+    $a = str_replace(".", "_", $a);
+    $a = str_replace(" ", "_", $a);
+    $a = str_replace("-", "_", $a);
     return strtolower($a);
 }
 
-function isIndirect($path) {
+function isIndirect($path)
+{
     return is_file("$path/indirect");
 }
 
-function getPath($basePath) {
+function getPath($basePath)
+{
     $outPath = $basePath;
-    if ( isIndirect($basePath) ) {
+    if (isIndirect($basePath)) {
         $outPath = file_get_contents("$basePath/indirect");
     }
 
@@ -40,7 +89,8 @@ define('COMPOSE_FILE_NAMES', [
  * @param string $dir The directory to search in
  * @return string|false The full path to the compose file, or false if none found
  */
-function findComposeFile($dir) {
+function findComposeFile($dir)
+{
     foreach (COMPOSE_FILE_NAMES as $name) {
         if (is_file("$dir/$name")) {
             return "$dir/$name";
@@ -55,7 +105,8 @@ function findComposeFile($dir) {
  * @param string $dir The directory to check
  * @return bool
  */
-function hasComposeFile($dir) {
+function hasComposeFile($dir)
+{
     return findComposeFile($dir) !== false;
 }
 
@@ -70,7 +121,8 @@ function hasComposeFile($dir) {
  * Get the lock directory path
  * @return string
  */
-function getLockDir(): string {
+function getLockDir(): string
+{
     return $GLOBALS['compose_lock_dir'] ?? "/var/run/compose.manager";
 }
 
@@ -80,19 +132,20 @@ function getLockDir(): string {
  * @param int $timeout Maximum seconds to wait for lock (default 30)
  * @return resource|false File handle if lock acquired, false otherwise
  */
-function acquireStackLock($stackName, $timeout = 30) {
+function acquireStackLock($stackName, $timeout = 30)
+{
     $lockDir = getLockDir();
     if (!is_dir($lockDir)) {
         @mkdir($lockDir, 0755, true);
     }
-    
+
     $lockFile = "$lockDir/" . sanitizeStr($stackName) . ".lock";
     $fp = @fopen($lockFile, 'w');
-    
+
     if (!$fp) {
         return false;
     }
-    
+
     $waited = 0;
     while (!flock($fp, LOCK_EX | LOCK_NB)) {
         if ($waited >= $timeout) {
@@ -102,7 +155,7 @@ function acquireStackLock($stackName, $timeout = 30) {
         sleep(1);
         $waited++;
     }
-    
+
     // Write lock info for debugging
     fwrite($fp, json_encode([
         'pid' => getmypid(),
@@ -110,7 +163,7 @@ function acquireStackLock($stackName, $timeout = 30) {
         'stack' => $stackName
     ]));
     fflush($fp);
-    
+
     return $fp;
 }
 
@@ -118,7 +171,8 @@ function acquireStackLock($stackName, $timeout = 30) {
  * Release a stack lock
  * @param resource $fp File handle from acquireStackLock
  */
-function releaseStackLock($fp) {
+function releaseStackLock($fp)
+{
     if ($fp) {
         flock($fp, LOCK_UN);
         fclose($fp);
@@ -130,19 +184,20 @@ function releaseStackLock($fp) {
  * @param string $stackName The stack name/folder
  * @return array|false Lock info if locked, false if not locked
  */
-function isStackLocked($stackName) {
+function isStackLocked($stackName)
+{
     $lockDir = getLockDir();
     $lockFile = "$lockDir/" . sanitizeStr($stackName) . ".lock";
-    
+
     if (!is_file($lockFile)) {
         return false;
     }
-    
+
     $fp = @fopen($lockFile, 'r');
     if (!$fp) {
         return false;
     }
-    
+
     // Try to get a non-blocking lock
     if (flock($fp, LOCK_EX | LOCK_NB)) {
         // Got the lock, so it wasn't locked
@@ -150,11 +205,11 @@ function isStackLocked($stackName) {
         fclose($fp);
         return false;
     }
-    
+
     // Couldn't get lock, read the lock info
     $content = file_get_contents($lockFile);
     fclose($fp);
-    
+
     $info = @json_decode($content, true);
     return $info ?: ['locked' => true];
 }
@@ -164,7 +219,8 @@ function isStackLocked($stackName) {
  * @param string $stackPath Full path to the stack directory
  * @return array|null Result info or null if not found
  */
-function getStackLastResult($stackPath) {
+function getStackLastResult($stackPath)
+{
     $resultFile = "$stackPath/last_result.json";
     if (is_file($resultFile)) {
         $content = @file_get_contents($resultFile);
@@ -182,7 +238,8 @@ function getStackLastResult($stackPath) {
  *
  * @return bool
  */
-function hide_compose_from_docker(): bool {
+function hide_compose_from_docker(): bool
+{
     $cfg = [];
     if (function_exists('parse_plugin_cfg')) {
         $cfg = parse_plugin_cfg('compose.manager');
@@ -191,5 +248,3 @@ function hide_compose_from_docker(): bool {
     }
     return (isset($cfg['HIDE_COMPOSE_FROM_DOCKER']) && $cfg['HIDE_COMPOSE_FROM_DOCKER'] === 'true');
 }
-
-?>
