@@ -1581,48 +1581,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
         };
     }
 
-    function deleteStack(myID) {
-        var stackName = $("#" + myID).attr("data-scriptname");
-        var project = $("#" + myID).attr("data-namename");
-        var msgHtml = "Are you sure you want to delete <font color='red'><b>" + escapeHtml(project) + "</b></font> (<font color='green'>" + escapeHtml(compose_root) + "/" + escapeHtml(stackName) + "</font>)?";
-        swal({
-            title: "Delete Stack?",
-            text: msgHtml,
-            html: true,
-            type: "warning",
-            showCancelButton: true,
-            confirmButtonText: "Delete",
-            cancelButtonText: "Cancel"
-        }, function(confirmed) {
-            if (confirmed) {
-                $.post(caURL, {
-                    action: 'deleteStack',
-                    stackName: stackName
-                }, function(data) {
-                    try {
-                        if (data) {
-                            var response = JSON.parse(data);
-                            if (response.result == "warning") {
-                                swal({
-                                    title: "Files remain on disk.",
-                                    text: response.message,
-                                    type: "warning"
-                                }, function() {
-                                    location.reload();
-                                });
-                                return;
-                            }
-                        }
-                    } catch (e) {
-                        console.error('Delete response parse error:', e, data);
-                    }
-                    location.reload();
-                }).fail(function() {
-                    location.reload();
-                });
-            }
-        });
-    }
+
 
     function stripTags(string) {
         return string.replace(/(<([^>]+)>)/ig, "");
