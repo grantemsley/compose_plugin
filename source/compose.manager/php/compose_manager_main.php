@@ -1281,9 +1281,6 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
         // Set up MutationObserver to detect when ebox (progress dialog) closes
         // This is used to trigger update check after an update operation completes
         var eboxObserver = new MutationObserver(function(mutations) {
-            composeClientDebug('[eboxObserver] mutations', {
-                count: mutations.length
-            }, 'daemon', 'debug');
             mutations.forEach(function(mutation) {
                 if (mutation.removedNodes.length > 0) {
                     mutation.removedNodes.forEach(function(node) {
@@ -1299,7 +1296,7 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
                                 setTimeout(function() {
                                     composeClientDebug('Update completed, running check for updates on stacks:', {
                                         stacks: stacksToCheck
-                                    }, 'daemon', 'info');
+                                    }, 'daemon', 'debug');
                                     // Check each stack that was updated
                                     stacksToCheck.forEach(function(stackName) {
                                         checkStackUpdates(stackName);
