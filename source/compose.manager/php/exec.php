@@ -81,7 +81,27 @@ switch ($_POST['action']) {
         }
 
         // Create initial override file if it doesn't exist (for UI labels)
-        $overrideFile = "$folder/docker-compose.override.yml";
+        // Override filename must match the compose filename (e.g. compose.yaml -> compose.override.yaml)
+        // Overrides are stored in the project folder ($folder) even for indirect stacks.
+        $composeSource = $indirect != "" ? $indirect : $folder;
+        $foundCompose = findComposeFile($composeSource);
+        $composeBaseName = $foundCompose !== false ? basename($foundCompose) : 'docker-compose.yml';
+        $overrideName = preg_replace('/(\.[^.]+)$/', '.override$1', $composeBaseName);
+        $overrideFile = "$folder/$overrideName";
+
+        // Migrate legacy override filename if present in either project folder or indirect path
+        $legacyInProject = "$folder/docker-compose.override.yml";
+        $legacyInIndirect = ($indirect != "") ? "$indirect/docker-compose.override.yml" : null;
+        if (!is_file($overrideFile)) {
+            if (is_file($legacyInProject) && realpath($legacyInProject) !== realpath($overrideFile)) {
+                @rename($legacyInProject, $overrideFile);
+                clientDebug("[override] Migrated legacy override $legacyInProject -> $overrideFile", null, 'daemon', 'info');
+            } elseif ($legacyInIndirect && is_file($legacyInIndirect) && realpath($legacyInIndirect) !== realpath($overrideFile)) {
+                @rename($legacyInIndirect, $overrideFile);
+                clientDebug("[override] Migrated legacy override $legacyInIndirect -> $overrideFile", null, 'daemon', 'info');
+            }
+        }
+
         if (!is_file($overrideFile)) {
             $overrideContent = "# Override file for UI labels (icon, webui, shell)\n";
             $overrideContent .= "# This file is managed by Compose Manager\n";
@@ -199,15 +219,45 @@ switch ($_POST['action']) {
         break;
     case 'getOverride':
         $script = getPostScript();
-        $basePath = "$compose_root/$script";
-        $fileName = "docker-compose.override.yml";
+        $projectPath = "$compose_root/$script";
 
-        $scriptContents = is_file("$basePath/$fileName") ? file_get_contents("$basePath/$fileName") : "";
+        // If indirect exists, use it to discover the compose filename, but
+        // overrides are stored in the project folder ($projectPath).
+        $indirectPath = is_file("$projectPath/indirect") ? file_get_contents("$projectPath/indirect") : "";
+        $indirectPath = str_replace("\r", "", $indirectPath);
+        $composeSource = $indirectPath !== "" ? $indirectPath : $projectPath;
+
+        $foundCompose = findComposeFile($composeSource);
+        $composeBaseName = $foundCompose !== false ? basename($foundCompose) : 'docker-compose.yml';
+        $fileName = preg_replace('/(\.[^.]+)$/', '.override$1', $composeBaseName);
+
+        $overridePath = "$projectPath/$fileName";
+        $legacyProject = "$projectPath/docker-compose.override.yml";
+        $legacyIndirect = ($indirectPath !== "") ? "$indirectPath/docker-compose.override.yml" : null;
+
+        // Prefer correctly-named indirect override if present (do NOT move/rename indirect files)
+        if ($indirectPath !== "" && is_file("$indirectPath/$fileName")) {
+            $overridePath = "$indirectPath/$fileName";
+        } else {
+            // If indirect has a legacy-named override, warn the user and fall back to project override
+            if ($indirectPath !== "" && $legacyIndirect && is_file($legacyIndirect)) {
+                clientDebug("[override] Indirect override exists with non-matching name ($legacyIndirect). Using project fallback.", null, 'daemon', 'warning');
+            }
+
+            // Migrate legacy project override to computed name if present (project-only migration)
+            if (!is_file($projectPath.'/'.$fileName) && is_file($legacyProject) && realpath($legacyProject) !== realpath($projectPath.'/'.$fileName)) {
+                @rename($legacyProject, $projectPath.'/'.$fileName);
+                clientDebug("[override] Migrated legacy project override $legacyProject -> $projectPath/$fileName", null, 'daemon', 'info');
+            }
+            $overridePath = "$projectPath/$fileName";
+        }
+
+        $scriptContents = is_file($overridePath) ? file_get_contents($overridePath) : "";
         $scriptContents = str_replace("\r", "", $scriptContents);
         if (!$scriptContents) {
             $scriptContents = "";
         }
-        echo json_encode(['result' => 'success', 'fileName' => "$basePath/$fileName", 'content' => $scriptContents]);
+        echo json_encode(['result' => 'success', 'fileName' => $overridePath, 'content' => $scriptContents]);
         break;
     case 'saveYml':
         $script = getPostScript();
@@ -235,11 +285,43 @@ switch ($_POST['action']) {
     case 'saveOverride':
         $script = getPostScript();
         $scriptContents = isset($_POST['scriptContents']) ? $_POST['scriptContents'] : "";
-        $basePath = "$compose_root/$script";
-        $fileName = "docker-compose.override.yml";
+        $projectPath = "$compose_root/$script";
 
-        file_put_contents("$basePath/$fileName", $scriptContents);
-        echo "$basePath/$fileName saved";
+        // Determine compose source (indirect or project) for filename, but
+        // always store override in project folder.
+        $indirectPath = is_file("$projectPath/indirect") ? file_get_contents("$projectPath/indirect") : "";
+        $indirectPath = str_replace("\r", "", $indirectPath);
+        $composeSource = $indirectPath !== "" ? $indirectPath : $projectPath;
+
+        $foundCompose = findComposeFile($composeSource);
+        $composeBaseName = $foundCompose !== false ? basename($foundCompose) : 'docker-compose.yml';
+        $fileName = preg_replace('/(\.[^.]+)$/', '.override$1', $composeBaseName);
+
+        // Determine where to save: if indirect has a correctly-named override, save there (do NOT rename/move indirect files).
+        $indirectOverridePath = ($indirectPath !== "") ? "$indirectPath/$fileName" : null;
+        $legacyIndirect = ($indirectPath !== "") ? "$indirectPath/docker-compose.override.yml" : null;
+        $legacyProject = "$projectPath/docker-compose.override.yml";
+
+        if ($indirectOverridePath && is_file($indirectOverridePath)) {
+            // Save back to the indirect override file the user provided (preserve external file)
+            $overridePath = $indirectOverridePath;
+        } else {
+            // If an indirect legacy-named override exists, warn and save to project fallback (do not move it)
+            if ($legacyIndirect && is_file($legacyIndirect)) {
+                clientDebug("[override] Indirect override exists with non-matching name ($legacyIndirect). Saving to project override instead.", null, 'daemon', 'warning');
+            }
+
+            // Migrate legacy project override to computed name if present (project-only migration)
+            if (!is_file("$projectPath/$fileName") && is_file($legacyProject) && realpath($legacyProject) !== realpath("$projectPath/$fileName")) {
+                @rename($legacyProject, "$projectPath/$fileName");
+                clientDebug("[override] Migrated legacy project override $legacyProject -> $projectPath/$fileName", null, 'daemon', 'info');
+            }
+
+            $overridePath = "$projectPath/$fileName";
+        }
+
+        file_put_contents($overridePath, $scriptContents);
+        echo "$overridePath saved";
         break;
     case 'updateAutostart':
         $script = getPostScript();
