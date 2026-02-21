@@ -30,7 +30,7 @@ param(
     [string]$Version,
     [string]$ComposeVersion = "2.40.3",
     [string]$ComposeSwitchVersion = "1.0.5",
-    [string]$AceVersion = "1.4.14"
+    [string]$AceVersion = "1.43.5"
 )
 
 $ErrorActionPreference = "Stop"
