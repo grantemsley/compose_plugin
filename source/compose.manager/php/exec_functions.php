@@ -79,13 +79,15 @@ function buildComposeArgs(string $stack): array {
     $projectName = sanitizeStr($projectName);
 
     $basePath = getPath("$compose_root/$stack");
-    $composeFile = findComposeFile($basePath) ?: "$basePath/docker-compose.yml";
-    $overrideFile = "$compose_root/$stack/docker-compose.override.yml";
+    $composeFile = findComposeFile($basePath) ?: "$basePath/compose.yaml";
 
     $files = "-f " . escapeshellarg($composeFile);
-    if (is_file($overrideFile)) {
-        $files .= " -f " . escapeshellarg($overrideFile);
-    }
+
+    // Resolve override selection: prefer correctly-named indirect override if present,
+    // otherwise use project override (migrating legacy project override when applicable).
+    require_once("/usr/local/emhttp/plugins/compose.manager/php/util.php");
+    $overridePath = OverrideInfo::fromStack($compose_root, $stack)->getOverridePath();
+    $files .= " -f " . escapeshellarg($overridePath);
 
     $envFile = "";
     if (is_file("$compose_root/$stack/envpath")) {

@@ -110,6 +110,136 @@ function hasComposeFile($dir)
     return findComposeFile($dir) !== false;
 }
 
+class OverrideInfo
+{
+    /**
+     * @var string Computed override filename (e.g. compose.override.yaml)
+     */
+    public string $computedName = '';
+    /**
+     * @var string|null Path to project override file
+     */
+    public ?string $projectOverride = null;
+    /**
+     * @var string|null Path to indirect override file
+     */
+    public ?string $indirectOverride = null;
+    /**
+     * @var bool True if indirect override should be used
+     */
+    public bool $useIndirect = false;
+    /**
+     * @var bool True if indirect contains legacy-named override but not correctly-named one
+     */
+    public bool $mismatchIndirectLegacy = false;
+
+    /**
+     * @var string Compose root directory
+     */
+    private string $composeRoot;
+
+    /**
+     * @var string Stack name (folder name under compose root) - used for generating override template path
+     */
+    private string $stack;
+
+    /**
+     * Constructor
+     * @param string $composeRoot Compose root directory
+     */
+    private function __construct(string $composeRoot)
+    {
+        $this->composeRoot = rtrim($composeRoot, "/");
+    }
+
+    /**
+     * Static factory to create and resolve an OverrideInfo for a stack.
+     * @param string $composeRoot
+     * @param string $stack
+     * @return OverrideInfo
+     */
+    public static function fromStack(string $composeRoot, string $stack): OverrideInfo
+    {
+        $info = new self($composeRoot);
+        $info->resolve($stack);
+        return $info;
+    }
+
+    /**
+     * Resolve override information for a given stack and populate this instance.
+     * @param string $stack
+     * @return void
+     */
+    private function resolve(string $stack): void
+    {
+        $this->stack = $stack;
+        $projectPath = $this->getProjectPath($stack);
+        $indirectPath = is_file("$projectPath/indirect") ? trim(file_get_contents("$projectPath/indirect")) : null;
+        $composeSource = $indirectPath !== "" ? $indirectPath : $projectPath;
+
+        $foundCompose = findComposeFile($composeSource);
+        $composeBaseName = $foundCompose !== false ? basename($foundCompose) : COMPOSE_FILE_NAMES[0];
+        $this->computedName = preg_replace('/(\.[^.]+)$/', '.override$1', $composeBaseName);
+
+        $this->projectOverride = $projectPath . '/' . $this->computedName;
+        $this->indirectOverride = $indirectPath !== "" ? ($indirectPath . '/' . $this->computedName) : null;
+
+        $legacyProject = $projectPath . '/docker-compose.override.yml';
+        $legacyIndirect = $indirectPath !== "" ? ($indirectPath . '/docker-compose.override.yml') : null;
+
+        $this->useIndirect = ($this->indirectOverride && is_file($this->indirectOverride));
+        $this->mismatchIndirectLegacy = ($indirectPath !== "" && $legacyIndirect && is_file($legacyIndirect) && !($this->indirectOverride && is_file($this->indirectOverride)));
+
+        // Migrate legacy project override to computed project override (project-only migration)
+        if (!is_file($this->projectOverride) && is_file($legacyProject) && realpath($legacyProject) !== @realpath($this->projectOverride)) {
+            @rename($legacyProject, $this->projectOverride);
+            clientDebug("[override] Migrated legacy project override $legacyProject -> $this->projectOverride", null, 'daemon', 'info');
+        }
+
+        if (is_file($this->projectOverride) && is_file($legacyProject) && realpath($legacyProject) !== @realpath($this->projectOverride)) {
+            @rename($legacyProject, $legacyProject . ".bak");
+            clientDebug("[override] Removed stale legacy project override $legacyProject (mismatch with computed override)", null, 'daemon', 'info');
+        }
+
+        if ($this->mismatchIndirectLegacy) {
+            clientDebug("[override] Indirect override exists with non-matching name; using project fallback.", null, 'daemon', 'warning');
+        }
+
+        if (!is_file($this->projectOverride) && !$this->useIndirect) {
+            $overrideContent = "# Override file for UI labels (icon, webui, shell)\n";
+            $overrideContent .= "# This file is managed by Compose Manager\n";
+            $overrideContent .= "services: {}\n";
+            file_put_contents($this->projectOverride, $overrideContent);
+            clientDebug("[override] Created missing project override template at $this->projectOverride", null, 'daemon', 'info');
+        }
+    }
+
+    /**
+     * Get the override file to use (indirect if present, else project override)
+     * @return string|null
+     */
+    public function getOverridePath(): ?string
+    {
+        return $this->useIndirect ? $this->indirectOverride : $this->projectOverride;
+    }
+
+    /**
+     * Get the project path for a stack
+     * @param string $stack
+     * @return string
+     */
+    private function getProjectPath(string $stack): string
+    {
+        return $this->composeRoot . '/' . $stack;
+    }
+}
+
+
+
+
+
+
+
 /**
  * Stack operation locking functions
  * Prevents concurrent operations on the same stack

@@ -44,6 +44,7 @@ $o = "";
 $stackCount = 0;
 
 foreach ($composeProjects as $project) {
+    // Skip if not a directory or if it doesn't contain a compose file (either directly or via indirect)
     if (!hasComposeFile("$compose_root/$project") &&
         (! is_file("$compose_root/$project/indirect"))
     ) {
@@ -64,15 +65,17 @@ foreach ($composeProjects as $project) {
         ? trim(file_get_contents("$compose_root/$project/indirect"))
         : "$compose_root/$project";
     $composeFile = findComposeFile($basePath) ?: "$basePath/docker-compose.yml";
-    $overrideFile = "$compose_root/$project/docker-compose.override.yml";
+    // Resolve override via centralized helper (prefer correctly-named indirect override)
+    require_once("/usr/local/emhttp/plugins/compose.manager/php/util.php");
+    $overridePath = OverrideInfo::fromStack($compose_root, $project)->getOverridePath();
 
     // Use docker compose config --services to get accurate service count
     // This properly parses YAML, handles overrides, extends, etc.
     $definedServices = 0;
     if (is_file($composeFile)) {
         $files = "-f " . escapeshellarg($composeFile);
-        if (is_file($overrideFile)) {
-            $files .= " -f " . escapeshellarg($overrideFile);
+        if (is_file($overridePath)) {
+            $files .= " -f " . escapeshellarg($overridePath);
         }
 
         // Get env file if specified

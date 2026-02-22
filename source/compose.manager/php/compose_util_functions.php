@@ -91,10 +91,11 @@ function echoComposeCommand($action, $recreate = false)
             $composeCommand[] = "-f$composeFile";
         }
 
-        if (is_file("$path/docker-compose.override.yml")) {
-            $composeOverride = "-f$path/docker-compose.override.yml";
-            $composeCommand[] = $composeOverride;
-        }
+        // Resolve override using centralized helper
+        $stackName = basename($path);
+        require_once("/usr/local/emhttp/plugins/compose.manager/php/util.php");
+        $overridePath = OverrideInfo::fromStack($compose_root, $stackName)->getOverridePath();
+        $composeCommand[] = "-f" . escapeshellarg($overridePath);
 
         if (is_file("$path/envpath")) {
             $envPath = "-e" . trim(file_get_contents("$path/envpath"));
@@ -205,11 +206,10 @@ function echoComposeCommandMultiple($action, $paths)
             $composeCommand[] = "-f$composeFile";
         }
 
-        if (is_file("$path/docker-compose.override.yml")) {
-            $composeOverride = "-f$path/docker-compose.override.yml";
-            $composeCommand[] = $composeOverride;
-        }
-
+        // Resolve override using centralized helper
+        require_once("/usr/local/emhttp/plugins/compose.manager/php/util.php");
+        $overridePath = OverrideInfo::fromStack($compose_root, $stackName)->getOverridePath();
+        $composeCommand[] = "-f" . escapeshellarg($overridePath);
         if (is_file("$path/envpath")) {
             $envPath = "-e" . trim(file_get_contents("$path/envpath"));
             $composeCommand[] = $envPath;
