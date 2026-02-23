@@ -28,9 +28,16 @@
 >
 
 <CHANGES>
-###2026.02.20a
-- Bug Fixes: improve redirect handling for settings page access
-- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.02.20...v2026.02.20a)
+###2026.02.23
+- Features: implement centralized override management for compose files
+- Features: add Credits tab with acknowledgments and library references
+- Bug Fixes: remove unused stack property from OverrideInfo class
+- Bug Fixes: update compose override file naming and adjust related tests
+- Bug Fixes: use matching override file name and migrate legacy names
+- Bug Fixes: adjust debug logging level in ebox observer for update checks
+- Tests: add unit tests for OverrideInfo functionality
+- Chores: update AceEditor version to 1.43.5
+- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.02.20a...v2026.02.23)
 
 </CHANGES>
 
