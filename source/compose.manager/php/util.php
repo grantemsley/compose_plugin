@@ -139,11 +139,6 @@ class OverrideInfo
     private string $composeRoot;
 
     /**
-     * @var string Stack name (folder name under compose root) - used for generating override template path
-     */
-    private string $stack;
-
-    /**
      * Constructor
      * @param string $composeRoot Compose root directory
      */
@@ -172,7 +167,6 @@ class OverrideInfo
      */
     private function resolve(string $stack): void
     {
-        $this->stack = $stack;
         $projectPath = $this->getProjectPath($stack);
         $indirectPath = is_file("$projectPath/indirect") ? trim(file_get_contents("$projectPath/indirect")) : null;
         $composeSource = $indirectPath !== "" ? $indirectPath : $projectPath;
