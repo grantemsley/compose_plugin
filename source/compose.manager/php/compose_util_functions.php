@@ -64,9 +64,7 @@ function echoComposeCommand($action, $recreate = false)
     $originalAction = $action;
     if ($unRaidVars['mdState'] != "STARTED") {
         echo $plugin_root . "/scripts/arrayNotStarted.sh";
-        if ($debug) {
-            logger("Array not Started!");
-        }
+        clientDebug("Array Not Started", null, 'daemon', 'debug');
     } else {
         $composeCommand = array($plugin_root . "scripts/compose.sh");
 
@@ -75,28 +73,25 @@ function echoComposeCommand($action, $recreate = false)
             $projectName = trim(file_get_contents("$path/name"));
         }
         $projectName = sanitizeStr($projectName);
-
-        $projectName = "-p$projectName";
         $action = "-c$action";
         $composeCommand[] = $action;
-        $composeCommand[] = $projectName;
+        $composeCommand[] = "-p$projectName";
 
         if (isIndirect($path)) {
             $indirectPath = getPath($path);
             $found = findComposeFile($indirectPath);
-            $composeFile = $found ?: "$indirectPath/docker-compose.yml";
+            $composeFile = $found ?: "$indirectPath/compose.yaml";
             $composeCommand[] = "-f$composeFile";
         } else {
             $found = findComposeFile($path);
-            $composeFile = $found ?: "$path/docker-compose.yml";
+            $composeFile = $found ?: "$path/compose.yaml";
             $composeCommand[] = "-f$composeFile";
         }
 
         // Resolve override using centralized helper
-        $stackName = basename($path);
         require_once("/usr/local/emhttp/plugins/compose.manager/php/util.php");
-        $overridePath = OverrideInfo::fromStack($compose_root, $stackName)->getOverridePath();
-        $composeCommand[] = "-f" . escapeshellarg($overridePath);
+        $overridePath = OverrideInfo::fromStack($compose_root, $projectName)->getOverridePath();
+        $composeCommand[] = "-f" . $overridePath;
 
         if (is_file("$path/envpath")) {
             $envPath = "-e" . trim(file_get_contents("$path/envpath"));
@@ -191,10 +186,8 @@ function echoComposeCommandMultiple($action, $paths)
         $stackNames[] = $projectName;
         $projectName = sanitizeStr($projectName);
 
-        $projectName = "-p$projectName";
-        $actionArg = "-c$action";
-        $composeCommand[] = $actionArg;
-        $composeCommand[] = $projectName;
+        $composeCommand[] = "-c$action";
+        $composeCommand[] = "-p$projectName";
 
         if (isIndirect($path)) {
             // For indirect paths, resolve the target path and then locate the compose file
@@ -210,8 +203,8 @@ function echoComposeCommandMultiple($action, $paths)
 
         // Resolve override using centralized helper
         require_once("/usr/local/emhttp/plugins/compose.manager/php/util.php");
-        $overridePath = OverrideInfo::fromStack($compose_root, $stackName)->getOverridePath();
-        $composeCommand[] = "-f" . escapeshellarg($overridePath);
+        $overridePath = OverrideInfo::fromStack($compose_root, $projectName)->getOverridePath();
+        $composeCommand[] = "-f" . $overridePath;
         if (is_file("$path/envpath")) {
             $envPath = "-e" . trim(file_get_contents("$path/envpath"));
             $composeCommand[] = $envPath;
