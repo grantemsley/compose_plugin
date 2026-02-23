@@ -72,7 +72,6 @@ $dockerArgs = @(
     "-v", "${SourcePath}:/mnt/source:ro"
     "-e", "TZ=America/New_York"
     "-e", "COMPOSE_VERSION=$ComposeVersion"
-    "-e", "COMPOSE_SWITCH_VERSION=$ComposeSwitchVersion"
     "-e", "ACE_VERSION=$AceVersion"
     "-e", "OUTPUT_FOLDER=/mnt/output"
     "-e", "PKG_VERSION=$Version"
@@ -91,12 +90,12 @@ $PackagePath = Join-Path $OutputPath $PackageName
 if (Test-Path $PackagePath) {
     # Calculate MD5
     $md5 = (Get-FileHash -Path $PackagePath -Algorithm MD5).Hash.ToLower()
-    
+
     Write-Host ""
     Write-Host "Build successful!" -ForegroundColor Green
     Write-Host "  Package: $PackagePath" -ForegroundColor Cyan
     Write-Host "  MD5: $md5" -ForegroundColor Cyan
-    
+
     # Return build info for use by release script
     return @{
         Version = $Version
