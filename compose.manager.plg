@@ -84,7 +84,6 @@ if [ -f "$patch_script" ]; then
         #Grab the contents of our config file.
         source &lt;(grep = $config_file)
         patch_ui=${PATCH_UI:='false'}
-        hide_compose=${HIDE_COMPOSE_FROM_DOCKER:='false'}
 
         # Ensure any previously applied patches are removed first (cleanup)
         $patch_script -r 2>/dev/null || true
@@ -100,20 +99,15 @@ if [ -f "$patch_script" ]; then
 
             #Apply Patches
             $patch_script apply || true
-        fi
-
-        # If the 'hide compose from docker' setting is enabled, auto-apply patches now
-        if [ "$hide_compose" == 'true' ]; then
+        else
             echo ""
             echo "----------------------------------------------------"
-            echo " Applying WebUI Patches because HIDE_COMPOSE_FROM_DOCKER=true"
+            echo " Removing WebUI Patches because PATCH_UI=false"
+            echo " To enable the WebUI, set PATCH_UI=true in &name;.cfg"
+            echo " and apply patches from the plugin settings page."
             echo "----------------------------------------------------"
             echo ""
-            #Remove patchs if already applied
             $patch_script -r
-
-            #Apply Patches
-            $patch_script apply || true
         fi
     fi
 fi
@@ -134,7 +128,6 @@ echo ""
 <FILE Run="/bin/bash" Method="remove">
 <INLINE>
 #Remove patchs if already applied
-patch_remove_script=/usr/local/emhttp/plugins/compose.manager/scripts/patch_ui.sh
 patch_remove_script=/usr/local/emhttp/plugins/compose.manager/scripts/patch.sh
 if [ -f "$patch_remove_script" ]; then
     $patch_remove_script -r
@@ -148,4 +141,3 @@ rm -f $(ls &pluginLOC;/&name;*.txz 2>/dev/null|grep -v '&packageVER;')
 </FILE> 
 
 </PLUGIN>
-
