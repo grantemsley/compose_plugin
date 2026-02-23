@@ -55,6 +55,7 @@ function echoComposeCommand($action, $recreate = false)
 {
     global $plugin_root;
     global $sName;
+    global $compose_root;
     $cfg = parse_plugin_cfg($sName);
     $debug = $cfg['DEBUG_TO_LOG'] == "true";
     $path = isset($_POST['path']) ? trim($_POST['path']) : "";
@@ -163,6 +164,7 @@ function echoComposeCommandMultiple($action, $paths)
 {
     global $plugin_root;
     global $sName;
+    global $compose_root;
     $cfg = parse_plugin_cfg($sName);
     $debug = $cfg['DEBUG_TO_LOG'] == "true";
     $unRaidVars = parse_ini_file("/var/local/emhttp/var.ini");

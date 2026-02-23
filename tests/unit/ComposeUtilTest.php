@@ -11,11 +11,15 @@ declare(strict_types=1);
 
 namespace ComposeManager\Tests;
 
+use OverrideInfo;
 use PluginTests\TestCase;
 use PluginTests\Mocks\FunctionMocks;
 
 // Load the functions file directly (no switch statement)
 require_once '/usr/local/emhttp/plugins/compose.manager/php/compose_util_functions.php';
+require_once '/usr/local/emhttp/plugins/compose.manager/php/util.php';
+require_once '/usr/local/emhttp/plugins/compose.manager/php/defines.php';
+require_once '/usr/local/emhttp/plugins/compose.manager/php/exec_functions.php';
 
 /**
  * Tests for compose_util.php functions
@@ -45,6 +49,7 @@ class ComposeUtilTest extends TestCase
         FunctionMocks::setPluginConfig('compose.manager', [
             'DEBUG_TO_LOG' => 'false',
             'OUTPUTSTYLE' => 'nchan',
+            'XDEBUG_MODE' => 'coverage',
         ]);
     }
 
@@ -98,7 +103,7 @@ class ComposeUtilTest extends TestCase
         // Create stack directory with compose file
         $stackDir = "$tempDir/test-stack";
         mkdir($stackDir, 0755, true);
-        file_put_contents("$stackDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
+        file_put_contents("$stackDir/" . COMPOSE_FILE_NAMES[0], "services:\n  web:\n    image: nginx\n");
         file_put_contents("$stackDir/name", "TestStack");
         
         // Ensure array is started
@@ -138,7 +143,7 @@ class ComposeUtilTest extends TestCase
         // Create stack directory
         $stackDir = "$tempDir/test-stack";
         mkdir($stackDir, 0755, true);
-        file_put_contents("$stackDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
+        file_put_contents("$stackDir/" . COMPOSE_FILE_NAMES[0], "services:\n  web:\n    image: nginx\n");
         file_put_contents("$stackDir/name", "TestStack");
         
         // Ensure array is started
@@ -177,7 +182,7 @@ class ComposeUtilTest extends TestCase
         // Create stack directory
         $stackDir = "$tempDir/test-stack";
         mkdir($stackDir, 0755, true);
-        file_put_contents("$stackDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
+        file_put_contents("$stackDir/" . COMPOSE_FILE_NAMES[0], "services:\n  web:\n    image: nginx\n");
         file_put_contents("$stackDir/name", "TestStack");
         
         // Ensure array is started
@@ -216,7 +221,7 @@ class ComposeUtilTest extends TestCase
         
         // Create indirect target directory
         $indirectDir = $this->createTempDir();
-        file_put_contents("$indirectDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
+        file_put_contents("$indirectDir/" . COMPOSE_FILE_NAMES[0], "services:\n  web:\n    image: nginx\n");
         
         // Create stack directory with indirect pointer
         $stackDir = "$tempDir/test-stack";
@@ -241,7 +246,7 @@ class ComposeUtilTest extends TestCase
         
         // Should use -f flag with resolved compose file path
         $this->assertStringContainsString('-f', $output);
-        $this->assertStringContainsString("$indirectDir/docker-compose.yml", $output);
+        $this->assertStringContainsString("$indirectDir/" . COMPOSE_FILE_NAMES[0], $output);
         
         // Cleanup
         unlink("$varIniDir/var.ini");
@@ -257,13 +262,19 @@ class ComposeUtilTest extends TestCase
         global $compose_root;
         $tempDir = $this->createTempDir();
         $compose_root = $tempDir;
-        
+        echo "Testing echoComposeCommand with override file for stack: $compose_root\n";
+        $stackName = 'test-stack';
+        echo "Testing echoComposeCommand with override file for stack: $stackName\n";
         // Create stack directory with compose and override files
-        $stackDir = "$tempDir/test-stack";
+        $stackDir = "$tempDir/$stackName";
         mkdir($stackDir, 0755, true);
-        file_put_contents("$stackDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
-        file_put_contents("$stackDir/docker-compose.override.yml", "services:\n  web:\n    ports:\n      - 80:80\n");
-        file_put_contents("$stackDir/name", "TestStack");
+        file_put_contents("$stackDir/" . COMPOSE_FILE_NAMES[0], "services:\n  web:\n    image: nginx\n");
+        
+        $overrideInfo = OverrideInfo::fromStack($tempDir, $stackName);
+        file_put_contents($overrideInfo->getOverridePath(), "services:\n  web:\n    ports:\n      - 80:80\n");
+                
+        $sanitizedStackName = sanitizeFolderName($stackName);
+        file_put_contents("$stackDir/name", $sanitizedStackName);
         
         // Ensure array is started
         $varIniDir = sys_get_temp_dir() . '/emhttp_test_' . uniqid();
@@ -281,7 +292,7 @@ class ComposeUtilTest extends TestCase
         $output = ob_get_clean();
         
         // Should include override file
-        $this->assertStringContainsString('docker-compose.override.yml', $output);
+        $this->assertStringContainsString('compose.override.yaml', $output);
         
         // Cleanup
         unlink("$varIniDir/var.ini");
@@ -301,7 +312,7 @@ class ComposeUtilTest extends TestCase
         // Create stack directory with envpath file
         $stackDir = "$tempDir/test-stack";
         mkdir($stackDir, 0755, true);
-        file_put_contents("$stackDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
+        file_put_contents("$stackDir/" . COMPOSE_FILE_NAMES[0], "services:\n  web:\n    image: nginx\n");
         file_put_contents("$stackDir/name", "TestStack");
         file_put_contents("$stackDir/envpath", "/custom/path/.env");
         
@@ -342,7 +353,7 @@ class ComposeUtilTest extends TestCase
         // Create stack directory
         $stackDir = "$tempDir/test-stack";
         mkdir($stackDir, 0755, true);
-        file_put_contents("$stackDir/docker-compose.yml", "services:\n  web:\n    image: nginx\n");
+        file_put_contents("$stackDir/" . COMPOSE_FILE_NAMES[0], "services:\n  web:\n    image: nginx\n");
         file_put_contents("$stackDir/name", "TestStack");
         
         // Ensure array is started

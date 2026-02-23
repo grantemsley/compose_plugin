@@ -377,7 +377,7 @@ class ExecActionsTest extends TestCase
     {
         $overrideContent = "services:\n  web:\n    ports:\n      - '8080:80'";
         $stackPath = $this->createTestStack('test-stack');
-        file_put_contents($stackPath . '/docker-compose.override.yml', $overrideContent);
+        file_put_contents($stackPath . '/compose.override.yaml', $overrideContent);
         
         $output = $this->executeAction('getOverride', [
             'script' => 'test-stack',
@@ -391,17 +391,19 @@ class ExecActionsTest extends TestCase
     /**
      * Test getOverride returns empty when no file
      */
-    public function testGetOverrideEmptyWhenNoFile(): void
+    public function testGetOverrideCreatesWhenNoFile(): void
     {
         $this->createTestStack('test-stack');
         
         $output = $this->executeAction('getOverride', [
             'script' => 'test-stack',
         ]);
-        
+        $overrideContent = "# Override file for UI labels (icon, webui, shell)\n";
+        $overrideContent .= "# This file is managed by Compose Manager\n";
+        $overrideContent .= "services: {}\n";
         $result = json_decode($output, true);
         $this->assertEquals('success', $result['result']);
-        $this->assertEquals('', $result['content']);
+        $this->assertEquals($overrideContent, $result['content']);
     }
 
     // ===========================================
@@ -421,7 +423,7 @@ class ExecActionsTest extends TestCase
             'scriptContents' => $overrideContent,
         ]);
         
-        $this->assertEquals($overrideContent, file_get_contents($stackPath . '/docker-compose.override.yml'));
+        $this->assertEquals($overrideContent, file_get_contents($stackPath . '/compose.override.yaml'));
     }
 
     // ===========================================
