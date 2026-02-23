@@ -169,7 +169,7 @@ class OverrideInfo
     {
         $projectPath = $this->getProjectPath($stack);
         $indirectPath = is_file("$projectPath/indirect") ? trim(file_get_contents("$projectPath/indirect")) : null;
-        $composeSource = $indirectPath !== "" ? $indirectPath : $projectPath;
+        $composeSource = $indirectPath == "" || $indirectPath === null ? $projectPath : $indirectPath;
 
         $foundCompose = findComposeFile($composeSource);
         $composeBaseName = $foundCompose !== false ? basename($foundCompose) : COMPOSE_FILE_NAMES[0];

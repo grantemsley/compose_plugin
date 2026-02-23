@@ -17,6 +17,9 @@ namespace ComposeManager\Tests;
 use PluginTests\TestCase;
 use PluginTests\Mocks\FunctionMocks;
 
+
+require_once '/usr/local/emhttp/plugins/compose.manager/php/util.php';
+
 class ExecActionsTest extends TestCase
 {
     private string $testComposeRoot;
@@ -98,8 +101,8 @@ class ExecActionsTest extends TestCase
         mkdir($stackPath, 0755, true);
         
         // Create docker-compose.yml by default
-        if (!isset($files['docker-compose.yml'])) {
-            file_put_contents($stackPath . '/docker-compose.yml', "services:\n");
+        if (!isset($files[COMPOSE_FILE_NAMES[0]])) {
+            file_put_contents($stackPath . '/' . COMPOSE_FILE_NAMES[0], "services:\n");
         }
         
         foreach ($files as $filename => $content) {
@@ -271,7 +274,7 @@ class ExecActionsTest extends TestCase
     {
         $content = "services:\n  web:\n    image: nginx";
         $this->createTestStack('test-stack', [
-            'docker-compose.yml' => $content,
+            COMPOSE_FILE_NAMES[0] => $content,
         ]);
         
         $output = $this->executeAction('getYml', [
@@ -300,7 +303,7 @@ class ExecActionsTest extends TestCase
             'scriptContents' => $newContent,
         ]);
         
-        $this->assertEquals($newContent, file_get_contents($stackPath . '/docker-compose.yml'));
+        $this->assertEquals($newContent, file_get_contents($stackPath . '/' . COMPOSE_FILE_NAMES[0]));
         $this->assertStringContainsString('saved', $output);
     }
 
