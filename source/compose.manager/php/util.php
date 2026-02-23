@@ -176,10 +176,10 @@ class OverrideInfo
         $this->computedName = preg_replace('/(\.[^.]+)$/', '.override$1', $composeBaseName);
 
         $this->projectOverride = $projectPath . '/' . $this->computedName;
-        $this->indirectOverride = $indirectPath !== "" ? ($indirectPath . '/' . $this->computedName) : null;
+        $this->indirectOverride = $indirectPath !== "" && $indirectPath !== null ? ($indirectPath . '/' . $this->computedName) : null;
 
         $legacyProject = $projectPath . '/docker-compose.override.yml';
-        $legacyIndirect = $indirectPath !== "" ? ($indirectPath . '/docker-compose.override.yml') : null;
+        $legacyIndirect = $indirectPath !== "" && $indirectPath !== null ? ($indirectPath . '/docker-compose.override.yml') : null;
 
         $this->useIndirect = ($this->indirectOverride && is_file($this->indirectOverride));
         $this->mismatchIndirectLegacy = ($indirectPath !== "" && $legacyIndirect && is_file($legacyIndirect) && !($this->indirectOverride && is_file($this->indirectOverride)));

@@ -72,10 +72,8 @@ function echoComposeCommand($action, $recreate = false)
         if (is_file("$path/name")) {
             $projectName = trim(file_get_contents("$path/name"));
         }
-        $projectName = sanitizeStr($projectName);
-        $action = "-c$action";
-        $composeCommand[] = $action;
-        $composeCommand[] = "-p$projectName";
+        $composeCommand[] = "-c" . $action;
+        $composeCommand[] = "-p" . sanitizeStr($projectName);
 
         if (isIndirect($path)) {
             $indirectPath = getPath($path);
@@ -184,10 +182,9 @@ function echoComposeCommandMultiple($action, $paths)
             $projectName = trim(file_get_contents("$path/name"));
         }
         $stackNames[] = $projectName;
-        $projectName = sanitizeStr($projectName);
 
-        $composeCommand[] = "-c$action";
-        $composeCommand[] = "-p$projectName";
+        $composeCommand[] = "-c" . $action;
+        $composeCommand[] = "-p" . sanitizeStr($projectName);
 
         if (isIndirect($path)) {
             // For indirect paths, resolve the target path and then locate the compose file

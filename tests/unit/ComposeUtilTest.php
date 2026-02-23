@@ -101,10 +101,11 @@ class ComposeUtilTest extends TestCase
         $compose_root = $tempDir;
         
         // Create stack directory with compose file
-        $stackDir = "$tempDir/test-stack";
+        $stackName = 'test-stack';
+        $stackDir = "$tempDir/$stackName";
         mkdir($stackDir, 0755, true);
         file_put_contents("$stackDir/" . COMPOSE_FILE_NAMES[0], "services:\n  web:\n    image: nginx\n");
-        file_put_contents("$stackDir/name", "TestStack");
+        file_put_contents("$stackDir/name", $stackName);
         
         // Ensure array is started
         $varIniDir = sys_get_temp_dir() . '/emhttp_test_' . uniqid();
@@ -141,10 +142,11 @@ class ComposeUtilTest extends TestCase
         $compose_root = $tempDir;
         
         // Create stack directory
-        $stackDir = "$tempDir/test-stack";
+        $stackName = 'test-stack';
+        $stackDir = "$tempDir/$stackName";
         mkdir($stackDir, 0755, true);
         file_put_contents("$stackDir/" . COMPOSE_FILE_NAMES[0], "services:\n  web:\n    image: nginx\n");
-        file_put_contents("$stackDir/name", "TestStack");
+        file_put_contents("$stackDir/name", $stackName);
         
         // Ensure array is started
         $varIniDir = sys_get_temp_dir() . '/emhttp_test_' . uniqid();
@@ -180,10 +182,11 @@ class ComposeUtilTest extends TestCase
         $compose_root = $tempDir;
         
         // Create stack directory
-        $stackDir = "$tempDir/test-stack";
+        $stackName = 'test-stack';
+        $stackDir = "$tempDir/$stackName";
         mkdir($stackDir, 0755, true);
         file_put_contents("$stackDir/" . COMPOSE_FILE_NAMES[0], "services:\n  web:\n    image: nginx\n");
-        file_put_contents("$stackDir/name", "TestStack");
+        file_put_contents("$stackDir/name", $stackName);
         
         // Ensure array is started
         $varIniDir = sys_get_temp_dir() . '/emhttp_test_' . uniqid();
@@ -224,10 +227,11 @@ class ComposeUtilTest extends TestCase
         file_put_contents("$indirectDir/" . COMPOSE_FILE_NAMES[0], "services:\n  web:\n    image: nginx\n");
         
         // Create stack directory with indirect pointer
-        $stackDir = "$tempDir/test-stack";
+        $stackName = 'test-stack';
+        $stackDir = "$tempDir/$stackName";
         mkdir($stackDir, 0755, true);
         file_put_contents("$stackDir/indirect", $indirectDir);
-        file_put_contents("$stackDir/name", "TestStack");
+        file_put_contents("$stackDir/name", $stackName);
         
         // Ensure array is started
         $varIniDir = sys_get_temp_dir() . '/emhttp_test_' . uniqid();
@@ -262,10 +266,8 @@ class ComposeUtilTest extends TestCase
         global $compose_root;
         $tempDir = $this->createTempDir();
         $compose_root = $tempDir;
-        echo "Testing echoComposeCommand with override file for stack: $compose_root\n";
-        $stackName = 'test-stack';
-        echo "Testing echoComposeCommand with override file for stack: $stackName\n";
         // Create stack directory with compose and override files
+        $stackName = 'test-stack';
         $stackDir = "$tempDir/$stackName";
         mkdir($stackDir, 0755, true);
         file_put_contents("$stackDir/" . COMPOSE_FILE_NAMES[0], "services:\n  web:\n    image: nginx\n");
@@ -310,10 +312,11 @@ class ComposeUtilTest extends TestCase
         $compose_root = $tempDir;
         
         // Create stack directory with envpath file
-        $stackDir = "$tempDir/test-stack";
+        $stackName = 'test-stack';
+        $stackDir = "$tempDir/$stackName";
         mkdir($stackDir, 0755, true);
         file_put_contents("$stackDir/" . COMPOSE_FILE_NAMES[0], "services:\n  web:\n    image: nginx\n");
-        file_put_contents("$stackDir/name", "TestStack");
+        file_put_contents("$stackDir/name", $stackName);
         file_put_contents("$stackDir/envpath", "/custom/path/.env");
         
         // Ensure array is started
@@ -351,10 +354,11 @@ class ComposeUtilTest extends TestCase
         $compose_root = $tempDir;
         
         // Create stack directory
-        $stackDir = "$tempDir/test-stack";
+        $stackName = 'test-stack';
+        $stackDir = "$tempDir/$stackName";
         mkdir($stackDir, 0755, true);
         file_put_contents("$stackDir/" . COMPOSE_FILE_NAMES[0], "services:\n  web:\n    image: nginx\n");
-        file_put_contents("$stackDir/name", "TestStack");
+        file_put_contents("$stackDir/name", $stackName);
         
         // Ensure array is started
         $varIniDir = sys_get_temp_dir() . '/emhttp_test_' . uniqid();
