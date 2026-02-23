@@ -28,13 +28,9 @@
 >
 
 <CHANGES>
-###2026.02.23a
-- Bug Fixes: update compose file handling in tests and utility functions
-- Bug Fixes: update compose command handling
-- Bug Fixes: update default Docker Compose version to 5.0.2
-- Bug Fixes: remove unused hide_compose variable and update patch application logic
-- Build (compose): Update compose version to 5.0.2
-- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.02.23...v2026.02.23a)
+###2026.02.23b
+- Bug Fixes: improve project name handling in compose utility functions and tests
+- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.02.23a...v2026.02.23b)
 
 </CHANGES>
 
