@@ -28,7 +28,7 @@
 
 param(
     [string]$Version,
-    [string]$ComposeVersion = "2.40.3",
+    [string]$ComposeVersion = "5.0.2",
     [string]$ComposeSwitchVersion = "1.0.5",
     [string]$AceVersion = "1.43.5"
 )
