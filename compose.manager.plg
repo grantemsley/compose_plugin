@@ -28,16 +28,13 @@
 >
 
 <CHANGES>
-###2026.02.23
-- Features: implement centralized override management for compose files
-- Features: add Credits tab with acknowledgments and library references
-- Bug Fixes: remove unused stack property from OverrideInfo class
-- Bug Fixes: update compose override file naming and adjust related tests
-- Bug Fixes: use matching override file name and migrate legacy names
-- Bug Fixes: adjust debug logging level in ebox observer for update checks
-- Tests: add unit tests for OverrideInfo functionality
-- Chores: update AceEditor version to 1.43.5
-- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.02.20a...v2026.02.23)
+###2026.02.23a
+- Bug Fixes: update compose file handling in tests and utility functions
+- Bug Fixes: update compose command handling
+- Bug Fixes: update default Docker Compose version to 5.0.2
+- Bug Fixes: remove unused hide_compose variable and update patch application logic
+- Build (compose): Update compose version to 5.0.2
+- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.02.23...v2026.02.23a)
 
 </CHANGES>
 
