@@ -24,6 +24,7 @@ Access settings via **Settings → Compose** in the Unraid web UI.
 | **Hide Compose Containers (Dashboard Tile)** | No | Hide containers managed by Compose stacks from Unraid's Docker Containers dashboard tile. This avoids duplicate entries when both tiles are visible. Requires "Show Dashboard Tile". |
 | **Hide Compose Containers (Docker Page)** | No | Patch the native Docker UI to hide or filter Compose-managed containers. See the Web UI Patches section for version limitations. |
 | **Show Compose Above Docker Containers** | No | When the Docker page is displayed without tabs, move the Compose Stacks section above the built-in Docker Containers section. |
+| **Expand Stacks by Default** | No | Automatically expand all stack detail rows when the page loads. |
 
 ### Update Checking
 

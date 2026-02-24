@@ -333,6 +333,12 @@ $composeVersion = trim(shell_exec('docker compose version --short 2>/dev/null') 
             $('#compose_stacks').removeClass('cm-advanced-view');
         }
 
+        // Seed expandedStacks from any rows rendered expanded server-side
+        $('.stack-details-row:visible').each(function() {
+            var stackId = this.id.replace('details-row-', '');
+            expandedStacks[stackId] = true;
+        });
+
         // Load saved update status after list is loaded
         loadSavedUpdateStatus();
     }

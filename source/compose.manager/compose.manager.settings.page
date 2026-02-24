@@ -1257,6 +1257,16 @@ $projects_exist = intval(shell_exec("ls -l " . $compose_root . " | grep ^d | wc 
         </dl>
 
         <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Expand Stacks by Default)_:</dt>
+            <dd>
+                <input type="checkbox" name="STACKS_DEFAULT_EXPANDED" id="STACKS_DEFAULT_EXPANDED" class="compose-toggle" <?= ($cfg['STACKS_DEFAULT_EXPANDED'] ?? 'false') == 'true' ? 'checked' : '' ?>>
+                <blockquote class="inline_help">
+                    When enabled, all stack detail rows will be expanded when the page loads.
+                </blockquote>
+            </dd>
+        </dl>
+
+        <dl>
             <dt style="cursor: help;" onclick="toggleHelp(this)">_(Hide Compose Containers from Docker)_:</dt>
             <dd>
                 <input type="checkbox" name="HIDE_COMPOSE_FROM_DOCKER" id="HIDE_COMPOSE_FROM_DOCKER" class="compose-toggle" <?= ($cfg['HIDE_COMPOSE_FROM_DOCKER'] ?? 'false') == 'true' ? 'checked' : '' ?>>

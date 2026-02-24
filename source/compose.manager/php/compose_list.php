@@ -9,6 +9,8 @@ require_once("/usr/local/emhttp/plugins/compose.manager/php/defines.php");
 require_once("/usr/local/emhttp/plugins/compose.manager/php/util.php");
 // Note: helper functions removed; test suite provides any needed test-local helpers.
 
+$cfg = parse_plugin_cfg($sName);
+
 // Get stack state
 $stackstate = shell_exec($plugin_root . "/scripts/compose.sh -c list");
 $stackstate = json_decode($stackstate, TRUE);
@@ -280,7 +282,8 @@ foreach ($composeProjects as $project) {
     $o .= "<td class='ct-name' style='padding:8px 8px 8px 20px'>";
     // Expand arrow on the left (separate from the outer/inner structure)
     $o .= "<span style='display:inline-block;width:14px;text-align:left;vertical-align:middle;margin-right:8px;'>";
-    $o .= "<i class='fa fa-chevron-right expand-icon' id='expand-icon-$id' onclick='toggleStackDetails(\"$id\");event.stopPropagation();' style='cursor:pointer;'></i>";
+    $expandedClass = $cfg['STACKS_DEFAULT_EXPANDED'] == 'true' ? 'expanded' : '';
+    $o .= "<i class='fa fa-chevron-right expand-icon $expandedClass' id='expand-icon-$id' onclick='toggleStackDetails(\"$id\");event.stopPropagation();' style='cursor:pointer;'></i>";
     $o .= "</span>";
     // Icon and name using Docker's outer/inner structure
     $o .= "<span class='outer $outerClass'>";
@@ -331,8 +334,9 @@ foreach ($composeProjects as $project) {
 
     $o .= "</tr>";
 
-    // Expandable details row (hidden by default)
-    $o .= "<tr class='stack-details-row' id='details-row-$id' style='display:none;'>";
+    // Expandable details row
+    $detailsDisplay = $cfg['STACKS_DEFAULT_EXPANDED'] == 'true' ? 'table-row' : 'none';
+    $o .= "<tr class='stack-details-row' id='details-row-$id' style='display:$detailsDisplay;'>";
     $o .= "<td colspan='9' class='stack-details-cell' style='padding:0 0 0 60px;background:rgba(0,0,0,0.05);'>";
     $o .= "<div class='stack-details-container' id='details-container-$id' style='padding:8px 16px;'>";
     $o .= "<i class='fa fa-spinner fa-spin compose-spinner'></i> Loading containers...";
