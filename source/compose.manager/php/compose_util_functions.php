@@ -87,7 +87,6 @@ function echoComposeCommand($action, $recreate = false)
         }
 
         // Resolve override using centralized helper
-        require_once("/usr/local/emhttp/plugins/compose.manager/php/util.php");
         $overridePath = OverrideInfo::fromStack($compose_root, $projectName)->getOverridePath();
         $composeCommand[] = "-f" . $overridePath;
 
@@ -190,18 +189,19 @@ function echoComposeCommandMultiple($action, $paths)
             // For indirect paths, resolve the target path and then locate the compose file
             $indirectPath = getPath($path);
             $found = findComposeFile($indirectPath);
-            $composeFile = $found ?: "$indirectPath/docker-compose.yml";
+            $composeFile = $found ?: "$indirectPath/" . COMPOSE_FILE_NAMES[0];
             $composeCommand[] = "-f$composeFile";
         } else {
             $found = findComposeFile($path);
-            $composeFile = $found ?: "$path/docker-compose.yml";
+            $composeFile = $found ?: "$path/" . COMPOSE_FILE_NAMES[0];
             $composeCommand[] = "-f$composeFile";
         }
 
         // Resolve override using centralized helper
-        require_once("/usr/local/emhttp/plugins/compose.manager/php/util.php");
         $overridePath = OverrideInfo::fromStack($compose_root, $projectName)->getOverridePath();
         $composeCommand[] = "-f" . $overridePath;
+
+        // Add env-file if available for this stack
         if (is_file("$path/envpath")) {
             $envPath = "-e" . trim(file_get_contents("$path/envpath"));
             $composeCommand[] = $envPath;
