@@ -40,6 +40,9 @@ function clientDebug($message, $data = null, $type = 'daemon', $level = 'info')
         return;
     }
     if ($data !== null && $data !== '' && $data !== 'null') {
+        if (is_array($data) || is_object($data)) {
+            $data = json_encode($data);
+        }
         exec("logger -t 'compose.manager' -p '$logLevel' " . escapeshellarg($message) . ' - Data: ' . escapeshellarg($data));
     } else {
         exec("logger -t 'compose.manager' -p '$logLevel' " . escapeshellarg($message));
