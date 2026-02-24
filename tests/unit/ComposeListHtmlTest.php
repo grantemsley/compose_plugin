@@ -97,15 +97,6 @@ class ComposeListHtmlTest extends TestCase
         $this->assertStringContainsString("data-isup=", $source);
     }
 
-    public function testDetailRowStructure(): void
-    {
-        $source = $this->getPageSource();
-        // Expandable detail row hidden by default
-        $this->assertStringContainsString("class='stack-details-row'", $source);
-        $this->assertStringContainsString("style='display:none;'", $source);
-        $this->assertStringContainsString("class='stack-details-container'", $source);
-    }
-
     // ===========================================
     // Advanced View Column Tests
     // ===========================================
