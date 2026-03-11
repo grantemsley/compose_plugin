@@ -198,6 +198,106 @@ $projects_exist = intval(shell_exec("ls -l " . $compose_root . " | grep ^d | wc 
         color: #888;
     }
 
+    /* Auto-Updates styles - reuse backup-section layout */
+    #compose-tab-updates .backup-section {
+        margin-bottom: 20px;
+    }
+
+    #compose-tab-updates dl:has(blockquote.inline_help)>dt {
+        cursor: help;
+    }
+
+    /* Toggle switch in updates table */
+    #compose_updates .switch-button-background {
+        margin: 0 auto;
+    }
+
+    #compose_updates .switch-button-label {
+        margin-top: 0;
+    }
+
+    #compose_updates {
+        width: 100%;
+        max-width: 700px;
+        border-collapse: collapse;
+        table-layout: fixed;
+    }
+
+    #compose_updates th {
+        text-align: left;
+        padding: 6px 8px;
+        font-weight: 600;
+        border-bottom: 2px solid rgba(128, 128, 128, 0.3);
+        font-size: 0.9em;
+    }
+
+    #compose_updates th:nth-child(1) { width: auto; }
+    #compose_updates th:nth-child(2) { width: 120px; text-align: center; }
+    #compose_updates th:nth-child(3) { width: 100px; }
+    #compose_updates th:nth-child(4) { width: 90px; }
+    #compose_updates th:nth-child(5) { width: 140px; }
+
+    /* Toggle All button in header */
+    #compose_updates th .toggle-all-btn {
+        cursor: pointer;
+        font-size: 1.2em;
+        vertical-align: middle;
+        color: var(--header-background, #ff8c2f);
+    }
+
+    #compose_updates th .toggle-all-btn:hover {
+        opacity: 0.8;
+    }
+
+    #compose_updates th .toggle-label {
+        margin-left: 6px;
+        font-weight: 600;
+    }
+
+    #compose_updates td {
+        padding: 4px 8px;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+        vertical-align: middle;
+        font-size: 0.9em;
+    }
+
+    #compose_updates td:nth-child(2) {
+        text-align: center;
+    }
+
+    #compose_updates .au-schedule {
+        width: 100%;
+        padding: 4px 6px;
+    }
+
+    #compose_updates .au-time {
+        width: 100%;
+        padding: 4px 6px;
+    }
+
+    #compose_updates .au-weekday,
+    #compose_updates .au-monthday {
+        width: 100%;
+        padding: 4px 6px;
+    }
+
+    #compose_updates .au-monthday {
+        max-width: 90px;
+    }
+
+    #compose_updates tbody tr:hover {
+        background: rgba(128, 128, 128, 0.08);
+    }
+
+    /* Alternating row colors for updates table */
+    #compose_updates tbody tr:nth-child(odd) {
+        background-color: var(--dynamix-tablesorter-tbody-row-alt-bg-color, rgba(0,0,0,0.05));
+    }
+
+    #compose_updates tbody tr:nth-child(even) {
+        background-color: transparent;
+    }
+
     /* Backup / Restore tab styles */
     #compose-tab-backup .backup-section {
         margin-bottom: 20px;
@@ -327,18 +427,11 @@ $projects_exist = intval(shell_exec("ls -l " . $compose_root . " | grep ^d | wc 
 
     .backup-actions .spinner {
         display: none;
-        width: 16px;
-        height: 16px;
-        border: 2px solid rgba(128, 128, 128, 0.3);
-        border-top: 2px solid #ff8c2f;
-        border-radius: 50%;
-        animation: backup-spin 0.8s linear infinite;
+        color: #ff8c2f;
     }
 
-    @keyframes backup-spin {
-        to {
-            transform: rotate(360deg);
-        }
+    .backup-actions .spinner.visible {
+        display: inline-block;
     }
 
     .schedule-options {
@@ -655,6 +748,11 @@ $projects_exist = intval(shell_exec("ls -l " . $compose_root . " | grep ^d | wc 
             if (tabId === 'backup') {
                 loadBackupArchives();
             }
+            // Always load updates UI when switching to updates tab
+            if (tabId === 'updates') {
+                loadUpdatesUI();
+                refreshCronStatus();
+            }
         });
 
         // On page load, initialize toggles for all tabs only once
@@ -694,6 +792,12 @@ $projects_exist = intval(shell_exec("ls -l " . $compose_root . " | grep ^d | wc 
         if (savedTab === 'log') {
             loadLogs();
             startLogRefresh();
+        }
+
+        // If the default tab is updates, load updates UI immediately
+        if (savedTab === 'updates') {
+            loadUpdatesUI();
+            refreshCronStatus();
         }
     });
 
@@ -839,10 +943,10 @@ $projects_exist = intval(shell_exec("ls -l " . $compose_root . " | grep ^d | wc 
         var $spinner = $btn.siblings('.spinner');
         if (spinning) {
             $btn.prop('disabled', true);
-            $spinner.show();
+            $spinner.addClass('visible');
         } else {
             $btn.prop('disabled', false);
-            $spinner.hide();
+            $spinner.removeClass('visible');
         }
     }
 
@@ -1168,11 +1272,288 @@ $projects_exist = intval(shell_exec("ls -l " . $compose_root . " | grep ^d | wc 
             }
         });
     }
+
+    // ========== Per-Stack Auto-Update Functions ==========
+    function updateScheduleControls($row) {
+        var schedule = $row.find('.au-schedule').val();
+        var $weekday = $row.find('.au-weekday');
+        var $monthday = $row.find('.au-monthday');
+
+        if (schedule === 'weekly') {
+            $weekday.show().prop('disabled', false);
+            $monthday.hide().prop('disabled', true);
+        } else if (schedule === 'monthly') {
+            $weekday.hide().prop('disabled', true);
+            $monthday.show().prop('disabled', false);
+        } else {
+            $weekday.hide().prop('disabled', true);
+            $monthday.hide().prop('disabled', true);
+        }
+    }
+
+    function updateToggleAllState() {
+        var $checkboxes = $('#updates-tbody .au-enabled');
+        if ($checkboxes.length === 0) return;
+        var allChecked = $checkboxes.filter(':checked').length === $checkboxes.length;
+        updateToggleAllIcon(allChecked);
+    }
+
+    function updateToggleAllIcon(allOn) {
+        var $icon = $('#toggle-all-updates i');
+        if (typeof allOn === 'undefined') {
+            var $checkboxes = $('#updates-tbody .au-enabled');
+            allOn = $checkboxes.length > 0 && $checkboxes.filter(':checked').length === $checkboxes.length;
+        }
+        if (allOn) {
+            $icon.removeClass('fa-toggle-off').addClass('fa-toggle-on');
+        } else {
+            $icon.removeClass('fa-toggle-on').addClass('fa-toggle-off');
+        }
+    }
+
+    function loadUpdatesUI() {
+        $('#updates-tbody').html('<tr><td colspan="5" style="text-align:center;color:#888;padding:12px;">_(Loading stacks...)_</td></tr>');
+        $.post('/plugins/compose.manager/php/exec.php', {action: 'listProjects'}, function(projects) {
+            $.post('/plugins/compose.manager/php/autoupdate.php', {action: 'getConfig'}, function(cfg) {
+                // Response is already parsed as JSON by jQuery due to Content-Type header
+                if (typeof cfg !== 'object' || cfg === null) cfg = {};
+                $('#updates-tbody').empty();
+                projects.forEach(function(p) {
+                    var id = p.id;
+                    var key = p.path;
+                    var entry = cfg[key] || {};
+                    var enabled = entry.enabled ? 'checked' : '';
+                    var schedule = entry.schedule || 'daily';
+                    var time = entry.time || '02:00';
+                    var weekday = (entry.weekday !== undefined) ? entry.weekday : 0;
+                    var monthday = (entry.monthday !== undefined) ? entry.monthday : 1;
+                    var row = '<tr class="sortable" data-path="'+escapeHtml(key)+'">';
+                    row += '<td>'+escapeHtml(p.name)+'</td>';
+                    row += '<td><input type="checkbox" class="au-enabled compose-toggle" '+enabled+'></td>';
+                    row += '<td><select class="au-schedule"><option value="daily">_(Daily)_</option><option value="weekly">_(Weekly)_</option><option value="monthly">_(Monthly)_</option></select></td>';
+                    row += '<td><input type="time" class="au-time" value="'+escapeHtml(time)+'"></td>';
+                    row += '<td>';
+                    row += '<select class="au-weekday">';
+                    row += '<option value="0">_(Sunday)_</option>';
+                    row += '<option value="1">_(Monday)_</option>';
+                    row += '<option value="2">_(Tuesday)_</option>';
+                    row += '<option value="3">_(Wednesday)_</option>';
+                    row += '<option value="4">_(Thursday)_</option>';
+                    row += '<option value="5">_(Friday)_</option>';
+                    row += '<option value="6">_(Saturday)_</option>';
+                    row += '</select>';
+                    row += '<input type="number" class="au-monthday" min="1" max="31" step="1" value="'+escapeHtml(String(monthday))+'">';
+                    row += '</td>';
+                    row += '</tr>';
+                    $('#updates-tbody').append(row);
+                    var $last = $('#updates-tbody tr').last();
+                    $last.find('.au-schedule').val(schedule);
+                    $last.find('.au-weekday').val(String(weekday));
+                    $last.find('.au-monthday').val(monthday);
+                    updateScheduleControls($last);
+                });
+                // Initialize toggle switches for all au-enabled checkboxes
+                $('#updates-tbody .au-enabled').each(function() {
+                    $(this).switchButton({
+                        labels_placement: 'right',
+                        on_label: '',
+                        off_label: ''
+                    });
+                });
+                // Sync toggle-all state
+                updateToggleAllState();
+            }, 'json').fail(function() {
+                $('#updates-tbody').html('<tr><td colspan="5" style="text-align:center;color:#b33;padding:12px;">_(Failed to load auto-update settings.)_</td></tr>');
+            });
+        }, 'json').fail(function() {
+            $('#updates-tbody').html('<tr><td colspan="5" style="text-align:center;color:#b33;padding:12px;">_(Failed to load stacks.)_</td></tr>');
+        });
+    }
+
+    function refreshCronStatus() {
+        $.post('/plugins/compose.manager/php/autoupdate.php', {action: 'getCronStatus'}, function(r){
+            // Response is already parsed as JSON by jQuery due to Content-Type header
+            var installed = r && r.installed;
+            var $cb = $('#AUTOUPDATE_ENABLED');
+            var currentState = $cb.is(':checked');
+            // Only update if state changed to avoid flicker
+            if (currentState !== installed) {
+                // Click the switch-button-background to toggle visual state
+                var switchBg = $cb.next('.switch-button-background')[0];
+                if (switchBg) {
+                    switchBg.click();
+                } else {
+                    // Fallback if switchButton not yet initialized
+                    $cb.prop('checked', installed);
+                }
+            }
+        }, 'json').fail(function() {
+            // On failure, leave checkbox unchecked
+            var $cb = $('#AUTOUPDATE_ENABLED');
+            if ($cb.is(':checked')) {
+                var switchBg = $cb.next('.switch-button-background')[0];
+                if (switchBg) {
+                    switchBg.click();
+                } else {
+                    $cb.prop('checked', false);
+                }
+            }
+        });
+    }
+
+    function showUpdatesStatus(message, type) {
+        var $el = $('#updates-status');
+        $el.removeClass('success error info').addClass(type).text(message).show();
+        if (type === 'success') {
+            setTimeout(function() { $el.fadeOut(); }, 8000);
+        }
+    }
+
+    function setUpdatesSpinner(spinning) {
+        var $btn = $('#save-updates');
+        var $spinner = $('#updates-spinner');
+        if (spinning) {
+            $btn.prop('disabled', true);
+            $spinner.addClass('visible');
+        } else {
+            $btn.prop('disabled', false);
+            $spinner.removeClass('visible');
+        }
+    }
+
+    // Initialize Updates tab when it's shown
+    $(function() {
+        // Apply default schedule/time to all rows
+        $('#apply-default').on('click', function(){
+            var s = $('#default-schedule').val();
+            var t = $('#default-time').val();
+            $('#updates-tbody tr').each(function(){
+                $(this).find('.au-schedule').val(s);
+                $(this).find('.au-time').val(t);
+                updateScheduleControls($(this));
+            });
+        });
+
+        $(document).on('change', '#updates-tbody .au-schedule', function(){
+            updateScheduleControls($(this).closest('tr'));
+        });
+
+        // Toggle all auto-updates on/off
+        $(document).on('click', '#toggle-all-updates', function(){
+            var $checkboxes = $('#updates-tbody .au-enabled');
+            if ($checkboxes.length === 0) return;
+            
+            // Determine if we should turn all ON or OFF (if any are off, turn all on)
+            var anyOff = $checkboxes.filter(function(){ return !$(this).is(':checked'); }).length > 0;
+            var targetState = anyOff; // true = turn all on, false = turn all off
+            
+            $checkboxes.each(function(){
+                if ($(this).is(':checked') !== targetState) {
+                    // Click the switch-button-background sibling to toggle
+                    var switchBg = $(this).next('.switch-button-background')[0];
+                    if (switchBg) switchBg.click();
+                }
+            });
+            
+            // Update the toggle-all icon
+            updateToggleAllIcon();
+        });
+
+        // Sync toggle-all state when individual toggles change
+        $(document).on('change', '#updates-tbody .au-enabled', function(){
+            updateToggleAllState();
+        });
+
+        // Save auto-update settings (includes scheduler enable/disable)
+        $('#save-updates').on('click', function(){
+            setUpdatesSpinner(true);
+            
+            var cfg = {};
+            $('#updates-tbody tr').each(function(){
+                var path = $(this).data('path');
+                if (!path) return;
+                var enabled = $(this).find('.au-enabled').is(':checked');
+                var schedule = $(this).find('.au-schedule').val();
+                var time = $(this).find('.au-time').val();
+                var weekday = parseInt($(this).find('.au-weekday').val(), 10);
+                var monthday = parseInt($(this).find('.au-monthday').val(), 10);
+                if (isNaN(weekday) || weekday < 0 || weekday > 6) weekday = 0;
+                if (isNaN(monthday) || monthday < 1 || monthday > 31) monthday = 1;
+                cfg[path] = { enabled: enabled, schedule: schedule, time: time, weekday: weekday, monthday: monthday };
+            });
+            var defaults = { schedule: $('#default-schedule').val(), time: $('#default-time').val() };
+            cfg['defaults'] = defaults;
+            
+            var schedulerEnabled = $('#AUTOUPDATE_ENABLED').is(':checked');
+            
+            // Save config first
+            $.post('/plugins/compose.manager/php/autoupdate.php', {action: 'saveConfig', data: JSON.stringify(cfg)}, function(resp){
+                if (!resp || !resp.ok) {
+                    setUpdatesSpinner(false);
+                    showUpdatesStatus('Failed to save settings.', 'error');
+                    return;
+                }
+                
+                // Then update scheduler
+                var schedulerAction = schedulerEnabled ? 'installCron' : 'removeCron';
+                $.post('/plugins/compose.manager/php/autoupdate.php', {action: schedulerAction}, function(d){
+                    setUpdatesSpinner(false);
+                    refreshCronStatus();
+                    showUpdatesStatus('Auto-update settings saved.', 'success');
+                }, 'json').fail(function(){
+                    setUpdatesSpinner(false);
+                    showUpdatesStatus('Settings saved but scheduler update failed.', 'error');
+                });
+            }, 'json').fail(function(){
+                setUpdatesSpinner(false);
+                showUpdatesStatus('Failed to save settings.', 'error');
+            });
+        });
+
+        // Run auto-update now for enabled stacks (serialized to avoid overwhelming the server)
+        $('#run-now').on('click', function(){
+            var paths = [];
+            $('#updates-tbody tr').each(function(){
+                var path = $(this).data('path');
+                var enabled = $(this).find('.au-enabled').is(':checked');
+                if (enabled && path) {
+                    paths.push(path);
+                }
+            });
+            if (paths.length === 0) {
+                swal('Info', 'No stacks are enabled for auto-update.', 'info');
+                return;
+            }
+            
+            showUpdatesStatus('Running auto-update for ' + paths.length + ' stack(s)...', 'info');
+            
+            var idx = 0;
+            var completed = 0;
+            function runNext() {
+                if (idx >= paths.length) {
+                    showUpdatesStatus('Auto-update completed for ' + completed + ' stack(s).', 'success');
+                    return;
+                }
+                var p = paths[idx++];
+                $.post('/plugins/compose.manager/php/autoupdate.php', {action: 'runNow', path: p}, function(data){
+                    completed++;
+                    runNext();
+                }, 'json').fail(function(){
+                    console.log('runNow failed for path', p);
+                    runNext();
+                });
+            }
+            runNext();
+        });
+
+        // Note: Updates tab loading is now handled by the main tab switching handler
+    });
 </script>
 
 <!-- Tab Navigation -->
 <div class="compose-tabs">
     <div class="compose-tab active" data-tab="settings"><i class="fa fa-cog fa-fw"></i> _(Settings)_</div>
+    <div class="compose-tab" data-tab="updates"><i class="fa fa-refresh fa-fw"></i> _(Updates)_</div>
     <div class="compose-tab" data-tab="backup"><i class="fa fa-archive fa-fw"></i> _(Backup / Restore)_</div>
     <div class="compose-tab" data-tab="log"><i class="fa fa-file-text-o fa-fw"></i> _(Log)_</div>
     <div class="compose-tab" data-tab="credits"><i class="fa fa-star fa-fw"></i> _(Credits)_</div>
@@ -1402,6 +1783,86 @@ $projects_exist = intval(shell_exec("ls -l " . $compose_root . " | grep ^d | wc 
     </form>
 </div>
 
+<!-- Updates Tab -->
+<div id="compose-tab-updates" class="compose-tab-content">
+
+    <!-- Auto-Update Settings Section -->
+    <div class="backup-section">
+        <div class="title"><span class="left"><i class="fa fa-clock-o icon"></i>_(Auto-Update Settings)_</span></div>
+
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Enable Auto-Updates)_:</dt>
+            <dd>
+                <input type="checkbox" id="AUTOUPDATE_ENABLED" class="compose-toggle">
+                <blockquote class="inline_help">
+                    Enable the auto-update scheduler. When enabled, stacks with auto-update turned on<br>
+                    will be checked every 15 minutes and updated according to their individual schedules.
+                </blockquote>
+            </dd>
+        </dl>
+
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Default Schedule)_:</dt>
+            <dd>
+                <div class="schedule-options">
+                    <label>_(Frequency)_:
+                        <select id="default-schedule">
+                            <option value="daily">_(Daily)_</option>
+                            <option value="weekly">_(Weekly)_</option>
+                            <option value="monthly">_(Monthly)_</option>
+                        </select>
+                    </label>
+                    <label>_(Time)_:
+                        <input type="time" id="default-time" value="02:00">
+                    </label>
+                    <input type="button" id="apply-default" class="slim-button" value="_(Apply to All Stacks)_">
+                </div>
+                <blockquote class="inline_help">
+                    Set the default schedule for new stacks. Use "Apply to All Stacks" to apply this<br>
+                    schedule to all existing stacks in the table below.
+                </blockquote>
+            </dd>
+        </dl>
+
+        <dl>
+            <dt>&nbsp;</dt>
+            <dd>
+                <div class="backup-actions">
+                    <input type="button" id="save-updates" value="_(Save Settings)_" class="orange-button">
+                    <input type="button" id="run-now" value="_(Update Now)_" title="_(Run auto-update now for all enabled stacks)_">
+                    <i class="fa fa-spinner fa-spin spinner" id="updates-spinner"></i>
+                </div>
+                <div id="updates-status" class="backup-status"></div>
+            </dd>
+        </dl>
+    </div>
+
+    <!-- Per-Stack Configuration Section -->
+    <div class="backup-section">
+        <div class="title"><span class="left"><i class="fa fa-cubes icon"></i>_(Stack Configuration)_</span></div>
+
+        <dl>
+            <dt>_(Stacks)_:</dt>
+            <dd>
+                <table id="compose_updates" class="tablesorter shift">
+                    <thead>
+                        <tr>
+                            <th>_(Stack)_</th>
+                            <th><span id="toggle-all-updates" class="toggle-all-btn" title="_(Toggle all auto-updates on/off)_"><i class="fa fa-toggle-off"></i></span><span class="toggle-label">_(Auto-Update)_</span></th>
+                            <th>_(Schedule)_</th>
+                            <th>_(Time)_</th>
+                            <th>_(On)_</th>
+                        </tr>
+                    </thead>
+                    <tbody id="updates-tbody">
+                        <tr><td colspan="5" style="text-align:center;color:#888;padding:12px;">_(Loading stacks...)_</td></tr>
+                    </tbody>
+                </table>
+            </dd>
+        </dl>
+    </div>
+</div>
+
 <!-- Backup / Restore Tab -->
 <div id="compose-tab-backup" class="compose-tab-content">
 
@@ -1479,7 +1940,7 @@ $projects_exist = intval(shell_exec("ls -l " . $compose_root . " | grep ^d | wc 
                 <div class="backup-actions">
                     <input type="button" id="btn-save-backup-settings" value="_(Save Settings)_" onclick="saveBackupSettings()" class="orange-button">
                     <input type="button" id="btn-create-backup" value="_(Backup Now)_" onclick="createBackupNow()">
-                    <div class="spinner"></div>
+                    <i class="fa fa-spinner fa-spin spinner"></i>
                 </div>
                 <div id="backup-create-status" class="backup-status"></div>
             </dd>
@@ -1533,7 +1994,7 @@ $projects_exist = intval(shell_exec("ls -l " . $compose_root . " | grep ^d | wc 
             <dd>
                 <div class="backup-actions">
                     <input type="button" id="btn-restore-stacks" value="_(Restore Selected)_" onclick="restoreSelectedStacks()" class="orange-button" disabled>
-                    <div class="spinner"></div>
+                    <i class="fa fa-spinner fa-spin spinner"></i>
                     <span id="restore-selected-count" style="color:#888;"></span>
                 </div>
                 <div id="restore-status" class="backup-status"></div>
