@@ -770,8 +770,10 @@ switch ($_POST['action']) {
 
         // Get containers (all states) for update checking
         $rows = $stackInfo->getContainerList();
+        $buildBaseImages = $stackInfo->getBuildBaseImages();
 
         $updateResults = [];
+        $baseImageUpdateResults = [];
         $DockerUpdate = new DockerUpdate();
 
         // Load the update status file to get SHA values
@@ -779,12 +781,12 @@ switch ($_POST['action']) {
             'update-status' => UNRAID_UPDATE_STATUS_FILE
         ];
 
-        if ($rows) {
-            // Load the update status data ONCE before the loop instead of per-container
-            $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
-            $statusDirty = false;
+        // Load the update status data ONCE before the loop instead of per-image
+        $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
+        $statusDirty = false;
 
-            // First pass: clear cached local SHAs for all images that need checking
+        // First pass: clear cached local SHAs for all container images that need checking
+        if ($rows) {
             foreach ($rows as $container) {
                 $image = $container['Image'] ?? '';
                 if ($image) {
@@ -795,13 +797,24 @@ switch ($_POST['action']) {
                     }
                 }
             }
+        }
 
-            // Save once after clearing all cached SHAs
-            if ($statusDirty) {
-                DockerUtil::saveJSON($dockerManPaths['update-status'], $updateStatusData);
+        // Also clear cached local SHAs for build base images
+        foreach ($buildBaseImages as $baseImage) {
+            $normalizedBaseImage = normalizeImageForUpdateCheck($baseImage);
+            if (isset($updateStatusData[$normalizedBaseImage])) {
+                $updateStatusData[$normalizedBaseImage]['local'] = null;
+                $statusDirty = true;
             }
+        }
 
-            // Second pass: check updates and collect results
+        // Save once after clearing all cached SHAs
+        if ($statusDirty) {
+            DockerUtil::saveJSON($dockerManPaths['update-status'], $updateStatusData);
+        }
+
+        // Second pass: check container image updates and collect results
+        if ($rows) {
             foreach ($rows as $container) {
                 $containerName = $container['Name'] ?? '';
                 $image = $container['Image'] ?? '';
@@ -847,7 +860,43 @@ switch ($_POST['action']) {
             }
         }
 
-        echo json_encode(['result' => 'success', 'updates' => $updateResults, 'projectName' => $projectName]);
+        // Third pass: check build base image updates
+        foreach ($buildBaseImages as $baseImage) {
+            $normalizedBaseImage = normalizeImageForUpdateCheck($baseImage);
+
+            $DockerUpdate->reloadUpdateStatus($normalizedBaseImage);
+            $updateStatus = $DockerUpdate->getUpdateStatus($normalizedBaseImage);
+
+            $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
+            $localSha = '';
+            $remoteSha = '';
+
+            if (isset($updateStatusData[$normalizedBaseImage])) {
+                $localSha = $updateStatusData[$normalizedBaseImage]['local'] ?? '';
+                $remoteSha = $updateStatusData[$normalizedBaseImage]['remote'] ?? '';
+                if ($localSha && strpos($localSha, 'sha256:') === 0) {
+                    $localSha = substr($localSha, 7, 12);
+                }
+                if ($remoteSha && strpos($remoteSha, 'sha256:') === 0) {
+                    $remoteSha = substr($remoteSha, 7, 12);
+                }
+            }
+
+            $baseImageUpdateResults[] = [
+                'image' => $normalizedBaseImage,
+                'hasUpdate' => ($updateStatus === false),
+                'status' => ($updateStatus === null) ? 'unknown' : ($updateStatus ? 'up-to-date' : 'update-available'),
+                'localSha' => $localSha,
+                'remoteSha' => $remoteSha
+            ];
+        }
+
+        echo json_encode([
+            'result' => 'success',
+            'updates' => $updateResults,
+            'baseImages' => $baseImageUpdateResults,
+            'projectName' => $projectName
+        ]);
 
         // Save the update status for this stack
         $composeUpdateStatusFile = COMPOSE_UPDATE_STATUS_FILE;
@@ -855,12 +904,17 @@ switch ($_POST['action']) {
         if (is_file($composeUpdateStatusFile)) {
             $savedStatus = json_decode(file_get_contents($composeUpdateStatusFile), true) ?: [];
         }
+        $containerHasUpdate = count(array_filter($updateResults, function ($r) {
+            return $r['hasUpdate'];
+        })) > 0;
+        $baseImageHasUpdate = count(array_filter($baseImageUpdateResults, function ($r) {
+            return $r['hasUpdate'];
+        })) > 0;
         $savedStatus[$script] = [
             'projectName' => $projectName,
-            'hasUpdate' => count(array_filter($updateResults, function ($r) {
-                return $r['hasUpdate'];
-            })) > 0,
+            'hasUpdate' => ($containerHasUpdate || $baseImageHasUpdate),
             'containers' => $updateResults,
+            'baseImages' => $baseImageUpdateResults,
             'lastChecked' => time()
         ];
         file_put_contents($composeUpdateStatusFile, json_encode($savedStatus, JSON_PRETTY_PRINT));
@@ -884,8 +938,10 @@ switch ($_POST['action']) {
             $projectName = $stackInfoItem->projectFolder;
 
             $rows = $stackInfoItem->getContainerList();
+            $buildBaseImages = $stackInfoItem->getBuildBaseImages();
 
             $stackUpdates = [];
+            $baseImageUpdates = [];
             $hasStackUpdate = false;
             $isRunning = false;
 
@@ -906,6 +962,17 @@ switch ($_POST['action']) {
                                 $updateStatusData[$image]['local'] = null;
                                 $statusDirty = true;
                             }
+                        }
+                    }
+                }
+
+                // For running stacks, also clear cached local SHAs for build base images
+                if ($isRunning) {
+                    foreach ($buildBaseImages as $baseImage) {
+                        $normalizedBaseImage = normalizeImageForUpdateCheck($baseImage);
+                        if (isset($updateStatusData[$normalizedBaseImage])) {
+                            $updateStatusData[$normalizedBaseImage]['local'] = null;
+                            $statusDirty = true;
                         }
                     }
                 }
@@ -960,13 +1027,52 @@ switch ($_POST['action']) {
                         ])->toUpdateArray();
                     }
                 }
+
+                // Third pass: check build base images for running stacks
+                if ($isRunning) {
+                    foreach ($buildBaseImages as $baseImage) {
+                        $normalizedBaseImage = normalizeImageForUpdateCheck($baseImage);
+
+                        $DockerUpdate->reloadUpdateStatus($normalizedBaseImage);
+                        $updateStatus = $DockerUpdate->getUpdateStatus($normalizedBaseImage);
+
+                        $updateStatusData = DockerUtil::loadJSON($dockerManPaths['update-status']);
+                        $localSha = '';
+                        $remoteSha = '';
+
+                        if (isset($updateStatusData[$normalizedBaseImage])) {
+                            $localSha = $updateStatusData[$normalizedBaseImage]['local'] ?? '';
+                            $remoteSha = $updateStatusData[$normalizedBaseImage]['remote'] ?? '';
+                            if ($localSha && strpos($localSha, 'sha256:') === 0) {
+                                $localSha = substr($localSha, 7, 12);
+                            }
+                            if ($remoteSha && strpos($remoteSha, 'sha256:') === 0) {
+                                $remoteSha = substr($remoteSha, 7, 12);
+                            }
+                        }
+
+                        $hasUpdate = ($updateStatus === false);
+                        if ($hasUpdate) {
+                            $hasStackUpdate = true;
+                        }
+
+                        $baseImageUpdates[] = [
+                            'image' => $normalizedBaseImage,
+                            'hasUpdate' => $hasUpdate,
+                            'status' => ($updateStatus === null) ? 'unknown' : ($updateStatus ? 'up-to-date' : 'update-available'),
+                            'localSha' => $localSha,
+                            'remoteSha' => $remoteSha
+                        ];
+                    }
+                }
             }
 
             $allUpdates[$stackName] = [
                 'projectName' => $projectName,
                 'hasUpdate' => $hasStackUpdate,
                 'isRunning' => $isRunning,
-                'containers' => $stackUpdates
+                'containers' => $stackUpdates,
+                'baseImages' => $baseImageUpdates
             ];
         }
 

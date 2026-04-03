@@ -29,4 +29,13 @@ class StackInfoSourceTest extends TestCase
         $this->assertStringContainsString("--profile '*' config --services", $source);
         $this->assertStringContainsString('profile-tagged services remain', $source);
     }
+
+    public function testBuildBaseImageExtractionUsesComposeConfigJsonAndMetadataCache(): void
+    {
+        $source = $this->getSource();
+        $this->assertStringContainsString('public function getBuildBaseImages(): array', $source);
+        $this->assertStringContainsString("config --format json", $source);
+        $this->assertStringContainsString("build_base_images", $source);
+        $this->assertStringContainsString('extractBaseImagesFromDockerfile', $source);
+    }
 }

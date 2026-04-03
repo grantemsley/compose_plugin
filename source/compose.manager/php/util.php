@@ -1756,6 +1756,243 @@ class StackInfo
         return $hasBuild;
     }
 
+    /**
+     * Resolve base images used by Dockerfiles for services with `build:`.
+     *
+     * The result is cached in stack metadata (`build_base_images`) and
+     * invalidated when compose or override files change.
+     *
+     * @return string[] Normalized unique image references found in Dockerfile FROM lines
+     */
+    public function getBuildBaseImages(): array
+    {
+        if (array_key_exists('build_base_images_array', $this->metadataCache)) {
+            return $this->metadataCache['build_base_images_array'];
+        }
+
+        $raw = $this->readMetadata('build_base_images');
+        if ($raw !== null && $raw !== '' && !$this->isBuildBaseImagesCacheStale()) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $images = array_values(array_unique(array_filter(array_map(function ($image) {
+                    return trim((string) $image);
+                }, $decoded), function ($image) {
+                    return $image !== '';
+                })));
+                $this->metadataCache['build_base_images_array'] = $images;
+                return $images;
+            }
+        }
+
+        return $this->extractBuildBaseImagesFromCompose();
+    }
+
+    /**
+     * Check whether cached build base image metadata is stale.
+     *
+     * @return bool
+     */
+    private function isBuildBaseImagesCacheStale(): bool
+    {
+        $cacheFile = $this->path . '/build_base_images';
+        if (!is_file($cacheFile)) {
+            return true;
+        }
+        $cacheMtime = filemtime($cacheFile);
+
+        if ($this->composeFilePath !== null && is_file($this->composeFilePath)) {
+            if (filemtime($this->composeFilePath) > $cacheMtime) {
+                return true;
+            }
+        }
+
+        $overridePath = $this->getOverridePath();
+        if ($overridePath !== null && is_file($overridePath)) {
+            if (filemtime($overridePath) > $cacheMtime) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Inspect compose build config and Dockerfiles to extract base images.
+     *
+     * @return string[]
+     */
+    private function extractBuildBaseImagesFromCompose(): array
+    {
+        if ($this->composeFilePath === null || !is_file($this->composeFilePath)) {
+            $this->metadataCache['build_base_images_array'] = [];
+            return [];
+        }
+
+        $cmd = "docker compose -f " . escapeshellarg($this->composeFilePath);
+
+        $overridePath = $this->getOverridePath();
+        if ($overridePath !== null && is_file($overridePath)) {
+            $cmd .= " -f " . escapeshellarg($overridePath);
+        }
+
+        $envFilePath = $this->getEnvFilePath();
+        if ($envFilePath !== null && is_file($envFilePath)) {
+            $cmd .= " --env-file " . escapeshellarg($envFilePath);
+        }
+        $cmd .= " config --format json 2>/dev/null";
+
+        $output = shell_exec($cmd);
+        if (!is_string($output) || trim($output) === '') {
+            $this->writeMetadata('build_base_images', '[]');
+            $this->metadataCache['build_base_images_array'] = [];
+            return [];
+        }
+
+        $parsed = json_decode($output, true);
+        if (!is_array($parsed)) {
+            $this->writeMetadata('build_base_images', '[]');
+            $this->metadataCache['build_base_images_array'] = [];
+            return [];
+        }
+
+        $dockerfiles = $this->extractBuildDockerfilesFromComposeConfig($parsed);
+        if (empty($dockerfiles)) {
+            $this->writeMetadata('build_base_images', '[]');
+            $this->metadataCache['build_base_images_array'] = [];
+            return [];
+        }
+
+        $images = [];
+        foreach ($dockerfiles as $dockerfilePath) {
+            $images = array_merge($images, $this->extractBaseImagesFromDockerfile($dockerfilePath));
+        }
+
+        $images = array_values(array_unique($images));
+        $this->writeMetadata('build_base_images', json_encode($images));
+        $this->metadataCache['build_base_images_array'] = $images;
+        return $images;
+    }
+
+    /**
+     * Resolve Dockerfile paths for services that include build config.
+     *
+     * @param array $composeConfig Parsed compose config JSON
+     * @return string[] Absolute Dockerfile paths
+     */
+    private function extractBuildDockerfilesFromComposeConfig(array $composeConfig): array
+    {
+        $services = $composeConfig['services'] ?? null;
+        if (!is_array($services)) {
+            return [];
+        }
+
+        $composeDir = $this->composeFilePath !== null ? dirname($this->composeFilePath) : $this->composeSource;
+        $dockerfiles = [];
+
+        foreach ($services as $serviceDef) {
+            if (!is_array($serviceDef) || !array_key_exists('build', $serviceDef)) {
+                continue;
+            }
+
+            $build = $serviceDef['build'];
+            $context = '.';
+            $dockerfile = 'Dockerfile';
+
+            if (is_string($build)) {
+                $context = trim($build) !== '' ? $build : '.';
+            } elseif (is_array($build)) {
+                $contextVal = $build['context'] ?? '.';
+                $dockerfileVal = $build['dockerfile'] ?? 'Dockerfile';
+                $context = trim((string) $contextVal) !== '' ? (string) $contextVal : '.';
+                $dockerfile = trim((string) $dockerfileVal) !== '' ? (string) $dockerfileVal : 'Dockerfile';
+            } else {
+                continue;
+            }
+
+            $contextPath = self::isAbsolutePath($context)
+                ? $context
+                : $composeDir . '/' . $context;
+            $resolvedContext = realpath($contextPath);
+            if ($resolvedContext === false || !is_dir($resolvedContext)) {
+                continue;
+            }
+
+            $dockerfilePath = self::isAbsolutePath($dockerfile)
+                ? $dockerfile
+                : $resolvedContext . '/' . $dockerfile;
+
+            if (is_file($dockerfilePath)) {
+                $dockerfiles[] = $dockerfilePath;
+            }
+        }
+
+        return array_values(array_unique($dockerfiles));
+    }
+
+    /**
+     * Extract unique external base images from Dockerfile FROM lines.
+     *
+     * @param string $dockerfilePath
+     * @return string[]
+     */
+    private function extractBaseImagesFromDockerfile(string $dockerfilePath): array
+    {
+        $lines = @file($dockerfilePath, FILE_IGNORE_NEW_LINES);
+        if (!is_array($lines)) {
+            return [];
+        }
+
+        $images = [];
+        $stageNames = [];
+
+        foreach ($lines as $line) {
+            $trimmed = trim($line);
+            if ($trimmed === '' || strpos($trimmed, '#') === 0) {
+                continue;
+            }
+
+            if (!preg_match('/^FROM\s+(?:--platform=\S+\s+)?([^\s]+)(?:\s+AS\s+([^\s]+))?/i', $trimmed, $matches)) {
+                continue;
+            }
+
+            $imageRef = trim($matches[1]);
+            $stageAlias = strtolower(trim($matches[2] ?? ''));
+
+            if ($stageAlias !== '') {
+                $stageNames[] = $stageAlias;
+            }
+            if ($imageRef === '' || strpos($imageRef, '$') !== false) {
+                continue;
+            }
+
+            $imageRefLower = strtolower($imageRef);
+            if ($imageRefLower === 'scratch') {
+                continue;
+            }
+            if (in_array($imageRefLower, $stageNames, true)) {
+                continue;
+            }
+
+            $images[] = $imageRef;
+        }
+
+        return array_values(array_unique($images));
+    }
+
+    /**
+     * Determine whether a path is absolute.
+     *
+     * @param string $path
+     * @return bool
+     */
+    private static function isAbsolutePath(string $path): bool
+    {
+        return $path !== '' && (
+            $path[0] === '/' ||
+            preg_match('~^[A-Za-z]:[\\/]~', $path) === 1
+        );
+    }
+
     // ---------------------------------------------------------------
     // Internal helpers
     // ---------------------------------------------------------------
