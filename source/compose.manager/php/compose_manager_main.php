@@ -4313,6 +4313,103 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         }
     }
 
+    function escapeHtmlForDialog(text) {
+        if (text === null || text === undefined) return '';
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function truncateValidationDetails(details) {
+        if (!details) return '';
+        var normalized = String(details).trim();
+        if (normalized.length <= 2500) return normalized;
+        return normalized.substring(0, 2500) + '\n... (output truncated)';
+    }
+
+    function promptSaveAnywayOnValidationFailure(summary, details) {
+        return new Promise(function(resolve) {
+            if (details === undefined) {
+                details = summary;
+            }
+            var safeSummary = escapeHtmlForDialog(summary || 'docker compose config returned an error.');
+            var safeDetails = escapeHtmlForDialog(truncateValidationDetails(details) || 'docker compose config returned an error.');
+            swal({
+                title: 'Compose Validation Failed',
+                html: true,
+                text: '<div style="text-align:left;max-width:560px;margin:0 auto;">' +
+                    '<p class="compose-status-warning"><i class="fa fa-exclamation-triangle"></i> Compose validation failed. Save is blocked by default.</p>' +
+                    '<p style="margin-top:8px;"><strong>Reason:</strong> ' + safeSummary + '</p>' +
+                    '<div style="margin-top:10px;padding:10px;border-radius:4px;background:var(--background-color);max-height:280px;overflow:auto;white-space:pre-wrap;font-family:monospace;font-size:12px;">' + safeDetails + '</div>' +
+                    '<p style="margin-top:12px;">You can fix the file and save again, or choose <strong>Save Anyway</strong>.</p>' +
+                    '</div>',
+                type: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Save Anyway',
+                cancelButtonText: 'Cancel Save'
+            }, function(confirmed) {
+                resolve(!!confirmed);
+            });
+        });
+    }
+
+    function validateComposeForSave(tabsToValidate) {
+        var needsComposeValidation = tabsToValidate.indexOf('compose') !== -1 || tabsToValidate.indexOf('env') !== -1;
+        if (!needsComposeValidation) {
+            return Promise.resolve(true);
+        }
+
+        var project = editorModal.currentProject;
+        if (!project) {
+            return Promise.resolve(true);
+        }
+
+        var payload = {
+            action: 'validateComposeConfig',
+            script: project
+        };
+
+        if (tabsToValidate.indexOf('compose') !== -1 && editorModal.editors.compose) {
+            payload.composeContents = editorModal.editors.compose.getValue();
+            $('#editor-validation-compose').html('<i class="fa fa-refresh fa-spin editor-validation-icon"></i> Testing with docker compose config...').removeClass('error').addClass('valid');
+        }
+
+        if (tabsToValidate.indexOf('env') !== -1 && editorModal.editors.env) {
+            payload.envContents = editorModal.editors.env.getValue();
+            $('#editor-validation-env').html('<i class="fa fa-refresh fa-spin editor-validation-icon"></i> Testing with docker compose config...').removeClass('error').addClass('valid');
+        }
+
+        return $.post(caURL, payload).then(function(data) {
+            var response = (typeof data === 'string') ? tryParseJson(data) : data;
+            if (!response) {
+                return promptSaveAnywayOnValidationFailure('Invalid validation response from server.', 'Invalid validation response from server.');
+            }
+
+            if (response.result !== 'success') {
+                var endpointSummary = response.failureSummary || response.message || 'Failed to run compose validation.';
+                return promptSaveAnywayOnValidationFailure(endpointSummary, response.details || response.message || endpointSummary);
+            }
+
+            if (response.valid) {
+                if (tabsToValidate.indexOf('compose') !== -1 && editorModal.editors.compose) {
+                    $('#editor-validation-compose').html('<i class="fa fa-check editor-validation-icon"></i> Compose config validation passed').removeClass('error warning').addClass('valid');
+                }
+                if (tabsToValidate.indexOf('env') !== -1 && editorModal.editors.env) {
+                    $('#editor-validation-env').html('<i class="fa fa-check editor-validation-icon"></i> Compose config validation passed').removeClass('error warning').addClass('valid');
+                }
+                return true;
+            }
+
+            var failureSummary = response.failureSummary || response.message || 'Compose validation failed.';
+            return promptSaveAnywayOnValidationFailure(failureSummary, response.details || response.message || failureSummary);
+        }).fail(function() {
+            return promptSaveAnywayOnValidationFailure('Failed to reach validation endpoint.', 'Failed to reach validation endpoint.');
+        });
+    }
+
     function saveCurrentTab() {
         var currentTab = editorModal.currentTab;
         if (!currentTab) return;
@@ -4321,18 +4418,24 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         if (currentTab !== 'compose' && currentTab !== 'env') return;
         if (!editorModal.modifiedTabs.has(currentTab)) return;
 
-        saveTab(currentTab).then(function(result) {
-            if (result === true) {
-                // Brief feedback in validation panel
-                $('#editor-validation-' + currentTab).html('<i class="fa fa-check editor-validation-icon"></i> Saved!').removeClass('error warning').addClass('valid');
-                setTimeout(function() {
-                    if (editorModal.editors[currentTab]) validateYaml(currentTab, editorModal.editors[currentTab].getValue());
-                }, 1500);
-            } else {
-                $('#editor-validation-' + currentTab).html('<i class="fa fa-exclamation-triangle editor-validation-icon"></i> Save failed').removeClass('valid warning').addClass('error');
+        validateComposeForSave([currentTab]).then(function(allowedToSave) {
+            if (!allowedToSave) {
+                return;
             }
-        }).catch(function() {
-            $('#editor-validation-' + currentTab).html('<i class="fa fa-exclamation-triangle editor-validation-icon"></i> Save failed').removeClass('valid warning').addClass('error');
+
+            saveTab(currentTab).then(function(result) {
+                if (result === true) {
+                    // Brief feedback in validation panel
+                    $('#editor-validation-' + currentTab).html('<i class="fa fa-check editor-validation-icon"></i> Saved!').removeClass('error warning').addClass('valid');
+                    setTimeout(function() {
+                        if (editorModal.editors[currentTab]) validateYaml(currentTab, editorModal.editors[currentTab].getValue());
+                    }, 1500);
+                } else {
+                    $('#editor-validation-' + currentTab).html('<i class="fa fa-exclamation-triangle editor-validation-icon"></i> Save failed').removeClass('valid warning').addClass('error');
+                }
+            }).catch(function() {
+                $('#editor-validation-' + currentTab).html('<i class="fa fa-exclamation-triangle editor-validation-icon"></i> Save failed').removeClass('valid warning').addClass('error');
+            });
         });
     }
 
@@ -4381,71 +4484,82 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
 
     // Save all modified changes (files, settings, and labels)
     function saveAllChanges() {
-        var savePromises = [];
-        var saveErrors = [];
         var totalChanges = editorModal.modifiedTabs.size + editorModal.modifiedSettings.size + editorModal.modifiedLabels.size;
 
         if (totalChanges === 0) {
             return;
         }
 
-        // Track if labels are being modified (need to offer recreate)
-        var labelsWereModified = editorModal.modifiedLabels.size > 0;
+        var tabsToValidate = [];
+        if (editorModal.modifiedTabs.has('compose')) tabsToValidate.push('compose');
+        if (editorModal.modifiedTabs.has('env')) tabsToValidate.push('env');
 
-        // Save modified file tabs
-        editorModal.modifiedTabs.forEach(function(tabName) {
-            savePromises.push(saveTab(tabName, saveErrors));
-        });
+        validateComposeForSave(tabsToValidate).then(function(allowedToSave) {
+            if (!allowedToSave) {
+                return;
+            }
 
-        // Save settings if modified
-        if (editorModal.modifiedSettings.size > 0) {
-            savePromises.push(saveSettings(saveErrors));
-        }
+            var savePromises = [];
+            var saveErrors = [];
 
-        // Save labels if modified
-        if (editorModal.modifiedLabels.size > 0) {
-            savePromises.push(saveLabels());
-        }
+            // Track if labels are being modified (need to offer recreate)
+            var labelsWereModified = editorModal.modifiedLabels.size > 0;
 
-        $.when.apply($, savePromises).then(function() {
-            var results = Array.prototype.slice.call(arguments);
-            var allSucceeded = results.every(function(result) {
-                return result === true;
+            // Save modified file tabs
+            editorModal.modifiedTabs.forEach(function(tabName) {
+                savePromises.push(saveTab(tabName, saveErrors));
             });
 
-            if (allSucceeded) {
-                // Check if we should offer to recreate containers
-                if (labelsWereModified) {
-                    promptRecreateContainers();
+            // Save settings if modified
+            if (editorModal.modifiedSettings.size > 0) {
+                savePromises.push(saveSettings(saveErrors));
+            }
+
+            // Save labels if modified
+            if (editorModal.modifiedLabels.size > 0) {
+                savePromises.push(saveLabels());
+            }
+
+            $.when.apply($, savePromises).then(function() {
+                var results = Array.prototype.slice.call(arguments);
+                var allSucceeded = results.every(function(result) {
+                    return result === true;
+                });
+
+                if (allSucceeded) {
+                    // Check if we should offer to recreate containers
+                    if (labelsWereModified) {
+                        promptRecreateContainers();
+                    } else {
+                        // Close editor and refresh stack locally
+                        doCloseEditorModal();
+                        swal({
+                            title: "Saved!",
+                            text: "All changes have been saved.",
+                            type: "success",
+                            timer: 1500,
+                            showConfirmButton: false
+                        });
+                        setTimeout(function() {
+                            refreshStackByProject(editorModal.currentProject);
+                        }, 1600);
+                    }
                 } else {
-                    // Close editor and refresh stack locally
-                    doCloseEditorModal();
+                    var errorText = saveErrors.length > 0 ?
+                        saveErrors.join('\n') :
+                        'Some items could not be saved. Please try again.';
                     swal({
-                        title: "Saved!",
-                        text: "All changes have been saved.",
-                        type: "success",
-                        timer: 1500,
-                        showConfirmButton: false
+                        title: "Save Failed",
+                        text: errorText,
+                        type: "error"
                     });
-                    setTimeout(function() {
-                        refreshStackByProject(editorModal.currentProject);
-                    }, 1600);
                 }
-            } else {
-                var errorText = saveErrors.length > 0 ?
-                    saveErrors.join('\n') :
-                    'Some items could not be saved. Please try again.';
+            }).fail(function() {
                 swal({
                     title: "Save Failed",
-                    text: errorText,
+                    text: "An error occurred while saving. Please try again.",
                     type: "error"
                 });
-            }
-        }).fail(function() {
-            swal({
-                title: "Save Failed",
-                text: "An error occurred while saving. Please try again.",
-                type: "error"
             });
         });
     }

@@ -212,6 +212,128 @@ switch ($_POST['action']) {
         file_put_contents($overridePath, $scriptContents);
         echo "$overridePath saved";
         break;
+    case 'validateComposeConfig':
+        $script = getPostScript();
+        if (!$script) {
+            echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
+            break;
+        }
+
+        $stackInfo = StackInfo::fromProject($compose_root, $script);
+        $composeFilePath = $stackInfo->composeFilePath ?? ($stackInfo->composeSource . '/' . COMPOSE_FILE_NAMES[0]);
+        $overridePath = $stackInfo->getOverridePath();
+        $projectName = $stackInfo->projectName;
+
+        $composeOverrideContent = array_key_exists('composeContents', $_POST) ? (string)$_POST['composeContents'] : null;
+        $envOverrideContent = array_key_exists('envContents', $_POST) ? (string)$_POST['envContents'] : null;
+
+        $composePathForValidation = $composeFilePath;
+        $envPathForValidation = null;
+        $tempFiles = [];
+
+        try {
+            if ($composeOverrideContent !== null) {
+                $tempCompose = tempnam(sys_get_temp_dir(), 'cmpv_compose_');
+                if ($tempCompose === false) {
+                    throw new RuntimeException('Unable to create temporary compose file for validation.');
+                }
+                if (file_put_contents($tempCompose, $composeOverrideContent) === false) {
+                    throw new RuntimeException('Unable to write temporary compose file for validation.');
+                }
+                $composePathForValidation = $tempCompose;
+                $tempFiles[] = $tempCompose;
+            }
+
+            if ($envOverrideContent !== null) {
+                $tempEnv = tempnam(sys_get_temp_dir(), 'cmpv_env_');
+                if ($tempEnv === false) {
+                    throw new RuntimeException('Unable to create temporary env file for validation.');
+                }
+                if (file_put_contents($tempEnv, $envOverrideContent) === false) {
+                    throw new RuntimeException('Unable to write temporary env file for validation.');
+                }
+                $envPathForValidation = $tempEnv;
+                $tempFiles[] = $tempEnv;
+            } else {
+                $resolvedEnvPath = $stackInfo->getEnvFilePath();
+                if ($resolvedEnvPath !== null && is_file($resolvedEnvPath)) {
+                    $envPathForValidation = $resolvedEnvPath;
+                }
+            }
+
+            $cmd = "docker compose -f " . escapeshellarg($composePathForValidation);
+            if ($overridePath !== null && is_file($overridePath)) {
+                $cmd .= " -f " . escapeshellarg($overridePath);
+            }
+            if ($envPathForValidation !== null) {
+                $cmd .= " --env-file " . escapeshellarg($envPathForValidation);
+            }
+            $cmd .= " -p " . escapeshellarg($projectName) . " config 2>&1";
+
+            $output = [];
+            $exitCode = 0;
+            exec($cmd, $output, $exitCode);
+
+            $joinedOutput = trim(implode("\n", $output));
+            $failureSummary = '';
+
+            if ($exitCode !== 0) {
+                $normalizedLines = [];
+                foreach ($output as $line) {
+                    $line = preg_replace('/\x1B\[[0-9;]*[A-Za-z]/', '', (string)$line);
+                    $line = trim($line);
+                    if ($line !== '') {
+                        $normalizedLines[] = $line;
+                    }
+                }
+
+                $priorityPatterns = [
+                    '/\b(error|failed|invalid|cannot|not found|no such)\b/i',
+                    '/\b(line|yaml|compose|service|services|property|additional properties)\b/i',
+                ];
+
+                foreach ($priorityPatterns as $pattern) {
+                    foreach ($normalizedLines as $line) {
+                        if (preg_match($pattern, $line)) {
+                            $failureSummary = $line;
+                            break 2;
+                        }
+                    }
+                }
+
+                if ($failureSummary === '' && !empty($normalizedLines)) {
+                    $failureSummary = $normalizedLines[0];
+                }
+
+                if ($failureSummary === '') {
+                    $failureSummary = 'docker compose config failed with no error output.';
+                }
+            }
+
+            echo json_encode([
+                'result' => 'success',
+                'valid' => $exitCode === 0,
+                'message' => $exitCode === 0 ? 'Compose validation passed.' : 'Compose validation failed.',
+                'details' => $joinedOutput,
+                'failureSummary' => $failureSummary,
+                'exitCode' => $exitCode,
+            ]);
+        } catch (Throwable $e) {
+            clientDebug('[validateComposeConfig] Validation exception: ' . $e->getMessage(), null, 'daemon', 'error');
+            echo json_encode([
+                'result' => 'error',
+                'message' => 'Failed to run compose validation.',
+                'details' => $e->getMessage(),
+                'failureSummary' => $e->getMessage(),
+            ]);
+        } finally {
+            foreach ($tempFiles as $tmp) {
+                if (is_file($tmp)) {
+                    @unlink($tmp);
+                }
+            }
+        }
+        break;
     case 'updateAutostart':
         $script = getPostScript();
         if (!$script) {
