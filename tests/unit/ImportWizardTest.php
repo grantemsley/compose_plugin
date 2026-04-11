@@ -17,7 +17,7 @@ namespace ComposeManager\Tests;
 
 use PluginTests\TestCase;
 
-require_once '/usr/local/emhttp/plugins/compose.manager/php/util.php';
+require_once '/usr/local/emhttp/plugins/compose.manager/include/Util.php';
 
 class ImportWizardTest extends TestCase
 {
