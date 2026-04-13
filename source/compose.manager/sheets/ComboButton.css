@@ -380,13 +380,13 @@
 
   .import-wizard-step.completed .import-wizard-step-number {
     background: var(--status-success);
-    color: #fff;
+    color: var(--button-text-color, #fff);
     border-color: var(--status-success);
   }
 
   .import-wizard-step.active .import-wizard-step-number {
     background: var(--brand-orange);
-    color: #fff;
+    color: var(--button-text-color, #fff);
     border-color: var(--brand-orange);
   }
 
@@ -598,7 +598,7 @@
 
   .import-healthcheck-source.auto-detected {
     background: rgba(33, 150, 243, 0.15);
-    color: #2196f3;
+    color: var(--status-info, #2196f3);
   }
 
   .import-healthcheck-source.none {
@@ -756,7 +756,7 @@
   }
 
   .import-dep-remove:hover {
-    color: #f44336;
+    color: var(--status-error-hover, #f44336);
   }
 
   .import-dep-cycle-error {
@@ -824,8 +824,8 @@
   .import-preview-pre {
     max-height: 300px;
     overflow: auto;
-    background: #1e1e1e;
-    color: #d4d4d4;
+    background: var(--editor-background-color, var(--background-color));
+    color: var(--editor-text-color, var(--text-color));
     padding: 12px 16px;
     border-radius: 6px;
     font-size: 0.88rem;
@@ -898,7 +898,7 @@
   .import-ext-net-add button {
     padding: 6px 12px;
     background: var(--brand-orange);
-    color: #fff;
+    color: var(--button-text-color, #fff);
     border: none;
     border-radius: 4px;
     cursor: pointer;
