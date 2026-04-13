@@ -378,7 +378,9 @@ class ImportWizardTest extends TestCase
         $this->assertStringContainsString('test:', $yaml);
         $this->assertStringContainsString('CMD-SHELL', $yaml);
         $this->assertStringContainsString('interval: 30s', $yaml);
-        $this->assertMatchesRegularExpression('/retries: "?3"?/', $yaml);
+        $this->assertStringContainsString('retries: 3', $yaml);
+        // Verify retries is NOT quoted (should be bare integer, not "3")
+        $this->assertStringNotContainsString('retries: "3"', $yaml);
     }
 
     public function testComposeYmlWithRemovedHealthcheck(): void

@@ -870,11 +870,18 @@ function dockerContainerToComposeService(array $info): array
 
 /**
  * Quote a YAML scalar value if it contains special characters.
+ *
+ * Preserves native int/float types so that fields like healthcheck.retries
+ * are emitted as bare numbers (3) rather than quoted strings ("3").
  */
 function yamlQuoteValue($value): string
 {
     if (is_bool($value)) {
         return $value ? 'true' : 'false';
+    }
+    // Preserve actual numeric types as bare YAML scalars
+    if (is_int($value) || is_float($value)) {
+        return (string)$value;
     }
     $str = (string)$value;
     if ($str === '') {
