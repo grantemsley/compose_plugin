@@ -413,13 +413,22 @@ switch ($_POST['action']) {
                     break;
                 }
             }
-            file_put_contents($composePath, $composeYml);
+            if (file_put_contents($composePath, $composeYml) === false) {
+                echo json_encode(['result' => 'error', 'message' => 'Failed to write compose file']);
+                break;
+            }
         }
         if ($env !== '') {
-            file_put_contents($envPath, $env);
+            if (file_put_contents($envPath, $env) === false) {
+                echo json_encode(['result' => 'error', 'message' => 'Failed to write .env file']);
+                break;
+            }
         }
         if ($override !== '') {
-            file_put_contents($overridePath, $override);
+            if (file_put_contents($overridePath, $override) === false) {
+                echo json_encode(['result' => 'error', 'message' => 'Failed to write override file']);
+                break;
+            }
         }
 
         $containerIds = [];
