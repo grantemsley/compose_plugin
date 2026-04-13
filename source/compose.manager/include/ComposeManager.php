@@ -2409,29 +2409,41 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         return html;
     }
 
-    function iwToggleAdvancedMode() {
-        importWizard.advancedMode = !importWizard.advancedMode;
+    function iwSetAdvancedMode(isAdvanced) {
+        importWizard.advancedMode = !!isAdvanced;
         localStorage.setItem('compose_import_wizard_mode', importWizard.advancedMode ? 'advanced' : 'basic');
-        iwUpdateToggleLabel();
-        // Re-render current stage to show/hide fields
+
         var stage = importWizard.stage;
-        if (stage === 2) { iwSaveStage2(); renderImportStage2(); }
+        var visible = iwGetVisibleStages();
+        var visibleNums = visible.map(function(s) { return s.num; });
+
+        // If current stage is hidden in the new mode, jump to nearest visible stage
+        if (visibleNums.indexOf(stage) === -1) {
+            // Find the closest visible stage (prefer previous, fall back to next)
+            var prev = null, next = null;
+            for (var i = 0; i < visibleNums.length; i++) {
+                if (visibleNums[i] < stage) prev = visibleNums[i];
+                if (visibleNums[i] > stage && next === null) next = visibleNums[i];
+            }
+            var target = prev || next || 1;
+            iwNavigateToStage(target);
+            return;
+        }
+
+        // Current stage is still visible — re-render it to update fields + stepper
+        if (stage === 1) { $('#compose-import-stepper').html(renderWizardStepper(1)); }
+        else if (stage === 2) { iwSaveStage2(); renderImportStage2(); }
         else if (stage === 3) { iwSaveStage3(); renderImportStage3(); }
-        else if (stage === 4) renderImportStage4();
-        else if (stage === 5) {} // review stage — no toggle effect needed
+        else if (stage === 4) { renderImportStage4(); }
+        else if (stage === 5) { $('#compose-import-stepper').html(renderWizardStepper(5)); }
     }
 
-    function iwUpdateToggleLabel() {
-        var $btn = $('#iw-mode-toggle');
-        if ($btn.length) {
-            if (importWizard.advancedMode) {
-                $btn.html('<i class="fa fa-cogs"></i> Advanced');
-                $btn.attr('title', 'Switch to Basic mode');
-            } else {
-                $btn.html('<i class="fa fa-cog"></i> Basic');
-                $btn.attr('title', 'Switch to Advanced mode');
-            }
-        }
+    function iwNavigateToStage(stageNum) {
+        if (stageNum === 1) renderImportStage1();
+        else if (stageNum === 2) renderImportStage2();
+        else if (stageNum === 3) renderImportStage3();
+        else if (stageNum === 4) renderImportStage4();
+        else if (stageNum === 5) renderImportStageReview();
     }
 
     function wizardFooter(opts) {
@@ -2472,15 +2484,14 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             result: null
         };
 
-        var modeLabel = importWizard.advancedMode ? '<i class="fa fa-cogs"></i> Advanced' : '<i class="fa fa-cog"></i> Basic';
-        var modeTitle = importWizard.advancedMode ? 'Switch to Basic mode' : 'Switch to Advanced mode';
-
         var modalHtml = '<div id="compose-import-modal-overlay" class="compose-modal-overlay" style="display:flex;">' +
             '<div class="compose-modal import-wizard-modal" role="dialog" aria-modal="true" aria-labelledby="compose-import-modal-title" tabindex="-1">' +
-            '<div class="compose-modal-header">' +
+            '<div class="compose-modal-header" id="compose-import-modal-header">' +
             '<span id="compose-import-modal-title">Import from Docker Manager</span>' +
-            '<button type="button" class="iw-mode-toggle-btn" id="iw-mode-toggle" onclick="iwToggleAdvancedMode()" title="' + modeTitle + '">' + modeLabel + '</button>' +
+            '<div style="display:flex;align-items:center;gap:10px;margin-left:auto;">' +
+            '<input type="checkbox" id="iw-mode-toggle"' + (importWizard.advancedMode ? ' checked' : '') + '>' +
             '<button type="button" class="editor-btn editor-btn-cancel" onclick="closeComposeImportModal()" aria-label="Close modal"><i class="fa fa-times"></i></button>' +
+            '</div>' +
             '</div>' +
             '<div id="compose-import-stepper"></div>' +
             '<div class="compose-modal-body" id="compose-import-modal-body">Loading Docker Manager containers...</div>' +
@@ -2495,6 +2506,17 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             var overlay = document.getElementById('compose-import-modal-overlay');
             if (overlay) overlay.remove();
         };
+
+        // Initialize Compose-style toggle switch after DOM insertion
+        $('#iw-mode-toggle').switchButton({
+            labels_placement: 'left',
+            on_label: 'Advanced View',
+            off_label: 'Basic View',
+            checked: importWizard.advancedMode
+        });
+        $('#iw-mode-toggle').change(function() {
+            iwSetAdvancedMode($(this).is(':checked'));
+        });
 
         renderImportStage1();
     }
