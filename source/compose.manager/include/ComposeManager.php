@@ -2548,7 +2548,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             var rows = importWizard.containers.map(function(ct) {
                 var iconHtml = ct.Icon ? '<img src="' + composeEscapeHtml(ct.Icon) + '" style="height:20px;max-width:20px;" />' : '';
                 var urlHtml = (ct.Url && /^https?:\/\//i.test(ct.Url)) ?
-                    '<a href="' + composeEscapeHtml(ct.Url) + '" target="_blank">Link</a>' : '';
+                    '<a href="' + composeEscapeHtml(ct.Url) + '" target="_blank" rel="noopener noreferrer">Link</a>' : '';
                 return '<tr>' +
                     '<td><input type="checkbox" class="cm-import-container" value="' + composeEscapeHtml(ct.Id) + '"></td>' +
                     '<td>' + composeEscapeHtml(ct.Name) + '</td>' +
