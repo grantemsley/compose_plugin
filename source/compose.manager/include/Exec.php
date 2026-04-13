@@ -140,7 +140,7 @@ switch ($_POST['action']) {
         break;
 
     case 'generateImportData':
-        // Rich import data for the 6-stage wizard — returns per-service metadata, port conflicts, networks
+        // Rich import data for the 5-stage wizard — returns per-service metadata, port conflicts, networks
         $containerIds = [];
         if (!empty($_POST['containerIds'])) {
             $data = json_decode($_POST['containerIds'], true);

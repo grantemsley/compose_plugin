@@ -1,6 +1,6 @@
 # Import Wizard
 
-The Import Wizard lets you convert existing Docker Manager containers into a Compose Manager stack with a guided 6-stage workflow.
+The Import Wizard lets you convert existing Docker Manager containers into a Compose Manager stack with a guided 5-stage workflow.
 
 ## Where to Find It
 
@@ -23,7 +23,7 @@ For each selected container, Compose Manager reads Docker metadata and converts 
 
 The wizard can also auto-detect likely healthchecks for common services when no healthcheck exists.
 
-## 6-Stage Workflow
+## 5-Stage Workflow
 
 ### Stage 1: Select Containers
 
@@ -77,25 +77,15 @@ Safety checks:
 - Dependency cycles are detected and block progress.
 - A calculated startup order preview is shown when possible.
 
-### Stage 5: Generating
+### Stage 5: Review & Import
 
-Compose Manager generates:
+Compose Manager generates the configuration and presents a final review screen with:
 
-- `docker-compose.yml`
+- `docker-compose.yml` (with parse validation)
 - `.env` content (when needed)
 - Override content for labels/icons (when needed)
-
-The generated Compose YAML is also checked for parse validity.
-
-### Stage 6: Validate Compose
-
-You get a final review screen with:
-
 - Validation result and any parse errors
 - Import summary (services, networks, healthchecks, dependencies)
-- Compose YAML preview
-- Optional `.env` preview
-- Optional override preview
 
 Click **Import** to write files and complete the transfer.
 

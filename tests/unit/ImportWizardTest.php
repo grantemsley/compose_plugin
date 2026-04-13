@@ -3,7 +3,7 @@
 /**
  * Unit Tests for Import Wizard backend functions (REAL SOURCE)
  *
- * Tests new functions added for the 6-stage import wizard:
+ * Tests new functions added for the 5-stage import wizard:
  * - guessHealthcheck()
  * - nanosToComposeDuration()
  * - parsePortMapping()
