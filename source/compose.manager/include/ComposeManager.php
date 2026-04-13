@@ -2461,7 +2461,8 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             right += '<button class="editor-btn editor-btn-save-all" id="import-wizard-next-btn" onclick="' + opts.next + '"' + disabledAttr + '>' + composeEscapeHtml(label) + ' <i class="fa fa-arrow-right"></i></button>';
         }
         if (opts.action) {
-            right += '<button class="editor-btn editor-btn-save-all" onclick="' + opts.action + '">' + composeEscapeHtml(opts.actionLabel || 'Import') + '</button>';
+            var actionDisabledAttr = opts.actionDisabled ? ' disabled' : '';
+            right += '<button class="editor-btn editor-btn-save-all" onclick="' + opts.action + '"' + actionDisabledAttr + '>' + composeEscapeHtml(opts.actionLabel || 'Import') + '</button>';
         }
         return '<div style="display:flex;justify-content:space-between;align-items:center;width:100%;">' +
                '<div>' + left + '</div><div style="display:flex;gap:8px;">' + right + '</div></div>';
@@ -3402,7 +3403,8 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         $('#compose-import-modal-footer').html(wizardFooter({
             back: backTarget,
             action: 'importWizardConfirmAndPerform()',
-            actionLabel: 'Import'
+            actionLabel: 'Import',
+            actionDisabled: !validation.valid
         }));
 
         // Wire after-import checkbox constraints
