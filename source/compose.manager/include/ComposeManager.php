@@ -2351,11 +2351,12 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
 
 
     // =========================================================================
-    // Import Wizard — 6-Stage Flow
+    // Import Wizard — 5-Stage Flow (Basic / Advanced)
     // =========================================================================
 
     var importWizard = {
         stage: 1,
+        advancedMode: (localStorage.getItem('compose_import_wizard_mode') === 'advanced'),
         containerIds: [],
         containers: [],     // raw container list from getDockerContainersForImport
         services: {},       // per-service metadata from generateImportData
@@ -2379,27 +2380,58 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         result: null        // finalizeImportCompose response
     };
 
-    var WIZARD_STAGES = [
+    var WIZARD_STAGES_ALL = [
         { num: 1, label: 'Select Containers' },
-        { num: 2, label: 'Select Options' },
-        { num: 3, label: 'Configure Containers' },
-        { num: 4, label: 'Configure Dependencies' },
-        { num: 5, label: 'Generating' },
-        { num: 6, label: 'Validate Compose' }
+        { num: 2, label: 'Stack Options' },
+        { num: 3, label: 'Configure Services' },
+        { num: 4, label: 'Dependencies', advancedOnly: true },
+        { num: 5, label: 'Review & Import' }
     ];
 
+    function iwGetVisibleStages() {
+        if (importWizard.advancedMode) return WIZARD_STAGES_ALL;
+        return WIZARD_STAGES_ALL.filter(function(s) { return !s.advancedOnly; });
+    }
+
     function renderWizardStepper(activeStage) {
+        var stages = iwGetVisibleStages();
         var html = '<div class="import-wizard-stepper">';
-        WIZARD_STAGES.forEach(function(s, i) {
+        stages.forEach(function(s, i) {
             var cls = 'import-wizard-step';
             if (s.num < activeStage) cls += ' completed';
             else if (s.num === activeStage) cls += ' active';
             if (i > 0) html += '<div class="import-wizard-step-connector"></div>';
-            var icon = s.num < activeStage ? '<i class="fa fa-check"></i>' : s.num;
+            var displayNum = i + 1;
+            var icon = s.num < activeStage ? '<i class="fa fa-check"></i>' : displayNum;
             html += '<div class="' + cls + '"><span class="import-wizard-step-number">' + icon + '</span><span>' + composeEscapeHtml(s.label) + '</span></div>';
         });
         html += '</div>';
         return html;
+    }
+
+    function iwToggleAdvancedMode() {
+        importWizard.advancedMode = !importWizard.advancedMode;
+        localStorage.setItem('compose_import_wizard_mode', importWizard.advancedMode ? 'advanced' : 'basic');
+        iwUpdateToggleLabel();
+        // Re-render current stage to show/hide fields
+        var stage = importWizard.stage;
+        if (stage === 2) { iwSaveStage2(); renderImportStage2(); }
+        else if (stage === 3) { iwSaveStage3(); renderImportStage3(); }
+        else if (stage === 4) renderImportStage4();
+        else if (stage === 5) {} // review stage — no toggle effect needed
+    }
+
+    function iwUpdateToggleLabel() {
+        var $btn = $('#iw-mode-toggle');
+        if ($btn.length) {
+            if (importWizard.advancedMode) {
+                $btn.html('<i class="fa fa-cogs"></i> Advanced');
+                $btn.attr('title', 'Switch to Basic mode');
+            } else {
+                $btn.html('<i class="fa fa-cog"></i> Basic');
+                $btn.attr('title', 'Switch to Advanced mode');
+            }
+        }
     }
 
     function wizardFooter(opts) {
@@ -2426,7 +2458,9 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
     function importFromDockerManager() {
         // Reset wizard state
         importWizard = {
-            stage: 1, containerIds: [], containers: [], services: {},
+            stage: 1,
+            advancedMode: (localStorage.getItem('compose_import_wizard_mode') === 'advanced'),
+            containerIds: [], containers: [], services: {},
             portConflicts: [], availableNetworks: [],
             config: {
                 stackName: '', stackDesc: '',
@@ -2438,10 +2472,14 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             result: null
         };
 
+        var modeLabel = importWizard.advancedMode ? '<i class="fa fa-cogs"></i> Advanced' : '<i class="fa fa-cog"></i> Basic';
+        var modeTitle = importWizard.advancedMode ? 'Switch to Basic mode' : 'Switch to Advanced mode';
+
         var modalHtml = '<div id="compose-import-modal-overlay" class="compose-modal-overlay" style="display:flex;">' +
             '<div class="compose-modal import-wizard-modal" role="dialog" aria-modal="true" aria-labelledby="compose-import-modal-title" tabindex="-1">' +
             '<div class="compose-modal-header">' +
             '<span id="compose-import-modal-title">Import from Docker Manager</span>' +
+            '<button type="button" class="iw-mode-toggle-btn" id="iw-mode-toggle" onclick="iwToggleAdvancedMode()" title="' + modeTitle + '">' + modeLabel + '</button>' +
             '<button type="button" class="editor-btn editor-btn-cancel" onclick="closeComposeImportModal()" aria-label="Close modal"><i class="fa fa-times"></i></button>' +
             '</div>' +
             '<div id="compose-import-stepper"></div>' +
@@ -2604,18 +2642,18 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             '<input type="checkbox" id="iw-stack-net-enabled"' + stackNetChecked + '> Create Stack Network</label>' +
             '<div id="iw-stack-net-details"' + (netCfg.stackNetwork.enabled ? '' : ' style="display:none;"') + '>' +
             '<div class="import-field-row">' +
-            '<div class="import-field"><label>Network Name</label>' +
+            '<div class="import-field iw-advanced-section"><label>Network Name</label>' +
             '<input type="text" id="iw-stack-net-name" value="' + composeEscapeHtml(netCfg.stackNetwork.name) + '" placeholder="stack_net"></div>' +
-            '<div class="import-field"><label>Driver</label>' +
+            '<div class="import-field iw-advanced-section"><label>Driver</label>' +
             '<input type="text" value="bridge" disabled style="opacity:0.6;"></div>' +
             '</div></div></div>';
 
-        // External Networks
+        // External Networks (Advanced)
         var existingNets = importWizard.availableNetworks.filter(function(n) {
             return n.name !== 'bridge' && n.name !== 'host' && n.name !== 'none';
         });
         var selectedExt = netCfg.externalNetworks || [];
-        html += '<div style="margin-bottom:16px;padding:14px;background:var(--dynamix-tablesorter-tbody-row-alt-bg-color);border:1px solid var(--border-color);border-radius:6px;">' +
+        html += '<div class="iw-advanced-section" style="margin-bottom:16px;padding:14px;background:var(--dynamix-tablesorter-tbody-row-alt-bg-color);border:1px solid var(--border-color);border-radius:6px;">' +
             '<div style="font-weight:600;margin-bottom:10px;">External Networks</div>';
         if (existingNets.length) {
             html += '<div class="import-net-checks" id="iw-ext-nets">';
@@ -2633,15 +2671,9 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             '<button type="button" onclick="iwAddCustomNetwork()">Add</button>' +
             '</div></div>';
 
-        // Container handling
-        html += '<div style="padding:14px;background:var(--dynamix-tablesorter-tbody-row-alt-bg-color);border:1px solid var(--border-color);border-radius:6px;">' +
-            '<div style="font-weight:600;margin-bottom:10px;">After Import</div>' +
-            '<label style="display:block;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="iw-stop-containers"' + (cfg.stopContainers ? ' checked' : '') + '> Stop original containers</label>' +
-            '<label style="display:block;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="iw-remove-containers"' + (cfg.removeContainers ? ' checked' : '') + '> Remove original containers</label>' +
-            '<label style="display:block;cursor:pointer;"><input type="checkbox" id="iw-start-stack"' + (cfg.startStack ? ' checked' : '') + '> Start imported stack</label>' +
-            '</div>';
-
         $('#compose-import-modal-body').html(html);
+        // Apply advanced/basic visibility
+        if (!importWizard.advancedMode) $('.iw-advanced-section').hide();
         $('#compose-import-modal-footer').html(wizardFooter({
             back: 'renderImportStage1()',
             next: 'importWizardStage2Next()'
@@ -2661,12 +2693,20 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         $('#iw-stack-net-enabled').on('change', function() {
             $('#iw-stack-net-details').toggle(this.checked);
         });
-        $('#iw-remove-containers').on('change', function() {
-            if (this.checked) $('#iw-stop-containers').prop('checked', true);
-        });
-        $('#iw-stop-containers').on('change', function() {
-            if (!this.checked) $('#iw-remove-containers').prop('checked', false);
-        });
+    }
+
+    function iwSaveStage2() {
+        var cfg = importWizard.config;
+        var el = document.getElementById('iw-stack-name');
+        if (el) cfg.stackName = el.value.trim();
+        var netCfg = cfg.networkConfig;
+        var netEl = document.getElementById('iw-stack-net-enabled');
+        if (netEl) netCfg.stackNetwork.enabled = netEl.checked;
+        var nameEl = document.getElementById('iw-stack-net-name');
+        if (nameEl) netCfg.stackNetwork.name = nameEl.value.trim();
+        var extNets = [];
+        $('.iw-ext-net-cb:checked').each(function() { extNets.push(this.value); });
+        netCfg.externalNetworks = extNets;
     }
 
     function iwAddCustomNetwork() {
@@ -2689,25 +2729,11 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
     }
 
     function importWizardStage2Next() {
-        var cfg = importWizard.config;
-        cfg.stackName = document.getElementById('iw-stack-name').value.trim();
-        if (!cfg.stackName) {
+        iwSaveStage2();
+        if (!importWizard.config.stackName) {
             swal('Stack name required', 'Please enter a stack name.', 'warning');
             return;
         }
-
-        var netCfg = cfg.networkConfig;
-        netCfg.stackNetwork.enabled = document.getElementById('iw-stack-net-enabled').checked;
-        netCfg.stackNetwork.name = document.getElementById('iw-stack-net-name').value.trim();
-
-        var extNets = [];
-        $('.iw-ext-net-cb:checked').each(function() { extNets.push(this.value); });
-        netCfg.externalNetworks = extNets;
-
-        cfg.stopContainers = document.getElementById('iw-stop-containers').checked;
-        cfg.removeContainers = document.getElementById('iw-remove-containers').checked;
-        cfg.startStack = document.getElementById('iw-start-stack').checked;
-
         renderImportStage3();
     }
 
@@ -2774,7 +2800,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             html += '<div class="import-field"><label>Container Name</label>' +
                 '<input type="text" class="iw-container-name" data-service="' + composeEscapeHtml(key) + '" value="' + composeEscapeHtml(cName) + '">' +
                 '<div class="import-field-error" id="iw-name-error-' + composeEscapeHtml(key) + '"></div></div>';
-            html += '<div class="import-field"><label>Network Mode</label>' +
+            html += '<div class="import-field iw-advanced-section"><label>Network Mode</label>' +
                 '<select class="iw-net-mode" data-service="' + composeEscapeHtml(key) + '">' +
                 '<option value="default"' + (netMode === 'default' ? ' selected' : '') + '>Default (compose managed)</option>' +
                 '<option value="bridge"' + (netMode === 'bridge' ? ' selected' : '') + '>Bridge</option>' +
@@ -2783,11 +2809,11 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                 '</select></div>';
             html += '</div>';
 
-            // Row 2: Network attachments
+            // Row 2: Network attachments (Advanced)
             var stackNetAvailable = netCfg.stackNetwork.enabled && netCfg.stackNetwork.name;
             var hasExtNets = netCfg.externalNetworks.length > 0;
             if (stackNetAvailable || hasExtNets) {
-                html += '<div class="import-field" style="margin-bottom:14px;"><label>Network Attachments</label>';
+                html += '<div class="import-field iw-advanced-section" style="margin-bottom:14px;"><label>Network Attachments</label>';
                 html += '<div class="import-net-checks iw-svc-nets" data-service="' + composeEscapeHtml(key) + '">';
                 if (stackNetAvailable) {
                     var stackChecked = (attachStackNet && !isNetModeRestricted) ? ' checked' : '';
@@ -2832,11 +2858,11 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                 html += '</div></div>';
             }
 
-            // Healthcheck section
+            // Healthcheck section (Advanced)
             var hcSourceLabel = hcSource === 'image' ? 'From Image' : (hcSource === 'auto' ? 'Auto-Detected' : 'None');
             var hcSourceClass = hcSource === 'image' ? 'from-image' : (hcSource === 'auto' ? 'auto-detected' : 'none');
             var hcExpanded = hc ? ' expanded' : '';
-            html += '<div class="import-healthcheck-section' + hcExpanded + '" data-service="' + composeEscapeHtml(key) + '">';
+            html += '<div class="import-healthcheck-section iw-advanced-section' + hcExpanded + '" data-service="' + composeEscapeHtml(key) + '">';
             html += '<div class="import-healthcheck-header" onclick="iwToggleHealthcheck(this)">' +
                 '<span><i class="fa fa-heartbeat"></i> Healthcheck <span class="import-healthcheck-source ' + hcSourceClass + '">' + hcSourceLabel + '</span></span>' +
                 '<i class="fa fa-chevron-right import-service-card-toggle"></i></div>';
@@ -2865,6 +2891,8 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         });
 
         $('#compose-import-modal-body').html(html);
+        // Apply advanced/basic visibility
+        if (!importWizard.advancedMode) $('.iw-advanced-section').hide();
         $('#compose-import-modal-footer').html(wizardFooter({
             back: 'iwSaveStage3(); renderImportStage2()',
             next: 'importWizardStage3Next()',
@@ -2989,7 +3017,12 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             swal('Name conflicts', 'Please resolve container name conflicts before continuing.', 'warning');
             return;
         }
-        renderImportStage4();
+        // In basic mode, skip dependencies and go straight to review
+        if (!importWizard.advancedMode) {
+            renderImportStageReview();
+        } else {
+            renderImportStage4();
+        }
     }
 
     // ── Stage 4: Configure Dependencies ─────────────────────────────────────
@@ -3230,11 +3263,11 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             swal('Dependency cycle', 'Please resolve the dependency cycle before continuing.', 'warning');
             return;
         }
-        renderImportStage5();
+        renderImportStageReview();
     }
 
-    // ── Stage 5: Generating ─────────────────────────────────────────────────
-    function renderImportStage5() {
+    // ── Stage 5: Review & Import (merged generating + validation) ───────────
+    function renderImportStageReview() {
         importWizard.stage = 5;
         $('#compose-import-stepper').html(renderWizardStepper(5));
         $('#compose-import-modal-body').html(
@@ -3256,22 +3289,20 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             if (response.result !== 'success') {
                 $('#compose-import-modal-body').html('<div style="color:#f44336;padding:20px;">' +
                     composeEscapeHtml(response.message || 'Failed to generate compose configuration') + '</div>');
-                $('#compose-import-modal-footer').html(wizardFooter({ back: 'renderImportStage4()' }));
+                var backTarget = importWizard.advancedMode ? 'renderImportStage4()' : 'renderImportStage3()';
+                $('#compose-import-modal-footer').html(wizardFooter({ back: backTarget }));
                 return;
             }
             importWizard.result = response;
-            renderImportStage6();
+            iwRenderReviewContent();
         }).fail(function() {
             $('#compose-import-modal-body').html('<div style="color:#f44336;padding:20px;">Communication error</div>');
-            $('#compose-import-modal-footer').html(wizardFooter({ back: 'renderImportStage4()' }));
+            var backTarget = importWizard.advancedMode ? 'renderImportStage4()' : 'renderImportStage3()';
+            $('#compose-import-modal-footer').html(wizardFooter({ back: backTarget }));
         });
     }
 
-    // ── Stage 6: Validate Compose ───────────────────────────────────────────
-    function renderImportStage6() {
-        importWizard.stage = 6;
-        $('#compose-import-stepper').html(renderWizardStepper(6));
-
+    function iwRenderReviewContent() {
         var result = importWizard.result;
         var validation = result.validation || { valid: true, errors: [] };
         var cfg = importWizard.config;
@@ -3335,15 +3366,67 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                 '<pre class="import-preview-pre">' + composeEscapeHtml(result.override) + '</pre></details>';
         }
 
+        // After Import actions — always visible
+        html += '<div style="margin-top:16px;padding:14px;background:var(--dynamix-tablesorter-tbody-row-alt-bg-color);border:1px solid var(--border-color);border-radius:6px;">' +
+            '<div style="font-weight:600;margin-bottom:10px;">After Import</div>' +
+            '<label style="display:block;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="iw-stop-containers"' + (cfg.stopContainers ? ' checked' : '') + '> Stop original containers</label>' +
+            '<label style="display:block;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="iw-remove-containers"' + (cfg.removeContainers ? ' checked' : '') + '> Remove original containers</label>' +
+            '<label style="display:block;cursor:pointer;"><input type="checkbox" id="iw-start-stack"' + (cfg.startStack ? ' checked' : '') + '> Start imported stack</label>' +
+            '</div>';
+
         $('#compose-import-modal-body').html(html);
+
+        var backTarget = importWizard.advancedMode ? 'renderImportStage4()' : 'renderImportStage3()';
         $('#compose-import-modal-footer').html(wizardFooter({
-            back: 'renderImportStage4()',
-            action: 'importWizardPerform()',
+            back: backTarget,
+            action: 'importWizardConfirmAndPerform()',
             actionLabel: 'Import'
         }));
+
+        // Wire after-import checkbox constraints
+        $('#iw-remove-containers').on('change', function() {
+            if (this.checked) $('#iw-stop-containers').prop('checked', true);
+        });
+        $('#iw-stop-containers').on('change', function() {
+            if (!this.checked) $('#iw-remove-containers').prop('checked', false);
+        });
     }
 
-    // ── Final: Perform Import ───────────────────────────────────────────────
+    // ── Final: Confirm & Perform Import ─────────────────────────────────────
+    function importWizardConfirmAndPerform() {
+        // Save after-import options from the review stage
+        var cfg = importWizard.config;
+        cfg.stopContainers = document.getElementById('iw-stop-containers').checked;
+        cfg.removeContainers = document.getElementById('iw-remove-containers').checked;
+        cfg.startStack = document.getElementById('iw-start-stack').checked;
+
+        var containerCount = importWizard.containerIds.length;
+
+        // Build confirmation message for destructive actions
+        if (cfg.stopContainers || cfg.removeContainers) {
+            var actions = [];
+            if (cfg.stopContainers) actions.push('stop');
+            if (cfg.removeContainers) actions.push('remove');
+            var actionText = actions.join(' and ');
+            var msg = 'This will ' + actionText + ' ' + containerCount + ' original container' + (containerCount !== 1 ? 's' : '');
+            if (cfg.startStack) msg += ', then start the imported stack';
+            msg += '. Continue?';
+
+            swal({
+                title: 'Confirm Import',
+                text: msg,
+                type: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, import',
+                cancelButtonText: 'Cancel'
+            }, function(confirmed) {
+                if (confirmed) importWizardPerform();
+            });
+        } else {
+            importWizardPerform();
+        }
+    }
+
     function importWizardPerform() {
         var cfg = importWizard.config;
         var result = importWizard.result;
@@ -3381,6 +3464,9 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
     // Keep legacy function names working (old callers)
     function composeImportPreview() { importWizardStage1Next(); }
     function composeImportPerform() { importWizardPerform(); }
+    // Keep old stage names as aliases for any callers
+    function renderImportStage5() { renderImportStageReview(); }
+    function renderImportStage6() { iwRenderReviewContent(); }
 
     function stripTags(string) {
         return string.replace(/(<([^>]+)>)/ig, "");
