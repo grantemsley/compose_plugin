@@ -287,6 +287,20 @@ class ImportWizardTest extends TestCase
         $this->assertEmpty($conflicts);
     }
 
+    public function testDetectPortConflictsPortRange(): void
+    {
+        $services = [
+            'svc1' => ['ports' => ['8000-8005:8000-8005/tcp']],
+            'svc2' => ['ports' => ['8000-8005:9000-9005/tcp']],
+        ];
+        $conflicts = detectPortConflicts($services);
+        $this->assertCount(1, $conflicts);
+        $this->assertEquals('8000-8005', $conflicts[0]['hostPort']);
+        $this->assertEquals('tcp', $conflicts[0]['protocol']);
+        $this->assertContains('svc1', $conflicts[0]['services']);
+        $this->assertContains('svc2', $conflicts[0]['services']);
+    }
+
     // =========================================================
     // dockerServicesToComposeYml() with wizardConfig
     // =========================================================
