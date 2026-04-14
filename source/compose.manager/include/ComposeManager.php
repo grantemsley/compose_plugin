@@ -3416,7 +3416,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
 
         // YAML preview
         html += '<div class="import-preview-section">' +
-            '<div class="import-preview-section-title">docker-compose.yml</div>' +
+            '<div class="import-preview-section-title">compose.yaml</div>' +
             '<pre class="import-preview-pre" id="iw-yaml-preview">' + composeEscapeHtml(result.composeYml || '') + '</pre>' +
             '</div>';
 

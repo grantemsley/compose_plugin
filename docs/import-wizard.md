@@ -81,7 +81,7 @@ Safety checks:
 
 Compose Manager generates the configuration and presents a final review screen with:
 
-- `docker-compose.yml` (with parse validation)
+- `compose.yaml` (with parse validation)
 - `.env` content (when needed)
 - Override content for labels/icons (when needed)
 - Validation result and any parse errors
