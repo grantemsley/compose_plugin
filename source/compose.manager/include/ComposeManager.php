@@ -2942,7 +2942,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             html += '<div class="import-field"><label>Start Period</label>' +
                 '<input type="text" class="iw-hc-start-period" data-service="' + composeEscapeHtml(key) + '" value="' + composeEscapeHtml(hc ? (hc.start_period || '10s') : '10s') + '"></div>';
             html += '<div class="import-field"><label>&nbsp;</label>' +
-                '<button type="button" class="editor-btn editor-btn-cancel" style="padding:6px 14px;font-size:0.85rem;" onclick="iwRemoveHealthcheck(\'' + composeEscapeHtml(key) + '\')"><i class="fa fa-trash"></i> Remove</button></div>';
+                '<button type="button" class="editor-btn editor-btn-cancel iw-remove-hc-btn" style="padding:6px 14px;font-size:0.85rem;" data-svc="' + composeEscapeHtml(key) + '"><i class="fa fa-trash"></i> Remove</button></div>';
             html += '</div></div>'; // healthcheck section
 
             html += '</div></div>'; // card body + card
@@ -2958,6 +2958,9 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         }));
 
         // Wire events
+        $('#compose-import-modal-body').off('click.iwHcRm').on('click.iwHcRm', '.iw-remove-hc-btn', function() {
+            iwRemoveHealthcheck($(this).data('svc'));
+        });
         $('.iw-container-name').on('input', iwValidateContainerNames);
         $('.iw-net-mode').on('change', function() {
             var svc = $(this).data('service');
@@ -3126,7 +3129,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                 });
             }
             html += '</div>';
-            html += '<button type="button" class="import-dep-add" onclick="iwAddDep(\'' + composeEscapeHtml(key) + '\')"><i class="fa fa-plus"></i> Add Dependency</button>';
+            html += '<button type="button" class="import-dep-add" data-svc="' + composeEscapeHtml(key) + '"><i class="fa fa-plus"></i> Add Dependency</button>';
             html += '</td><td></td></tr>';
         });
         html += '</tbody></table>';
@@ -3161,7 +3164,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         html += '<option value="service_healthy"' + (condition === 'service_healthy' ? ' selected' : '') + (!hasHC && condition !== 'service_healthy' ? ' disabled' : '') + '>service_healthy' + (!hasHC ? ' (no healthcheck)' : '') + '</option>';
         html += '</select>';
 
-        html += '<button type="button" class="import-dep-remove" onclick="iwRemoveDep(\'' + composeEscapeHtml(svc) + '\',' + index + ')"><i class="fa fa-times"></i></button>';
+        html += '<button type="button" class="import-dep-remove" data-svc="' + composeEscapeHtml(svc) + '" data-index="' + index + '"><i class="fa fa-times"></i></button>';
         html += '</div>';
         return html;
     }
@@ -3188,6 +3191,12 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         });
         $container.find('.iw-dep-condition').off('change.iw').on('change.iw', function() {
             iwCheckDependencyCycles();
+        });
+        $container.off('click.iwAdd').on('click.iwAdd', '.import-dep-add', function() {
+            iwAddDep($(this).data('svc'));
+        });
+        $container.off('click.iwRm').on('click.iwRm', '.import-dep-remove', function() {
+            iwRemoveDep($(this).data('svc'), $(this).data('index'));
         });
     }
 
