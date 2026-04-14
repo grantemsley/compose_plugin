@@ -3529,6 +3529,15 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         var cfg = importWizard.config;
         var result = importWizard.result;
 
+        // Close wizard immediately and show a loading spinner overlay
+        closeComposeImportModal();
+        var spinnerHtml = '<div id="compose-import-spinner-overlay" style="position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);">' +
+            '<div style="text-align:center;color:#fff;font-size:1.3em;">' +
+            '<i class="fa fa-spinner fa-spin" style="font-size:2.5em;margin-bottom:12px;display:block;"></i>' +
+            'Importing stack<span id="compose-import-spinner-details">...</span>' +
+            '</div></div>';
+        document.body.insertAdjacentHTML('beforeend', spinnerHtml);
+
         $.post(caURL, {
             action: 'performImportTransfer',
             stackName: cfg.stackName,
@@ -3541,20 +3550,24 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             override: result.override || '',
             containerIds: JSON.stringify(importWizard.containerIds)
         }, function(data) {
+            var spinner = document.getElementById('compose-import-spinner-overlay');
+            if (spinner) spinner.remove();
+
             var response;
             try { response = JSON.parse(data); } catch (e) { response = { result:'error', message: 'Invalid response' }; }
             if (response.result === 'success') {
-                closeComposeImportModal();
                 composeLoadlist();
                 openEditorModalByProject(response.project, response.projectName);
                 if (response.startStack === 1 && response.projectPath) {
-                    ComposeUp(response.projectPath);
+                    ComposeUpConfirmed(response.projectPath, "", true, true);
                 }
                 swal('Imported', 'Stack imported successfully.', 'success');
             } else {
                 swal('Import failed', response.message || 'Unknown error', 'error');
             }
         }).fail(function() {
+            var spinner = document.getElementById('compose-import-spinner-overlay');
+            if (spinner) spinner.remove();
             swal('Import failed', 'Communication error', 'error');
         });
     }
