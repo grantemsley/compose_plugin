@@ -109,6 +109,28 @@ class ImportWizardTest extends TestCase
         ], $result);
     }
 
+    public function testParsePortMappingIpv6Loopback(): void
+    {
+        $result = parsePortMapping('[::1]:8080:80/tcp');
+        $this->assertEquals([
+            'hostIp' => '::1',
+            'hostPort' => '8080',
+            'containerPort' => '80',
+            'protocol' => 'tcp',
+        ], $result);
+    }
+
+    public function testParsePortMappingIpv6Unspecified(): void
+    {
+        $result = parsePortMapping('[::]:8080:80/tcp');
+        $this->assertEquals([
+            'hostIp' => '::',
+            'hostPort' => '8080',
+            'containerPort' => '80',
+            'protocol' => 'tcp',
+        ], $result);
+    }
+
     // =========================================================
     // guessHealthcheck()
     // =========================================================

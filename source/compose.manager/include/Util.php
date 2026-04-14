@@ -619,6 +619,23 @@ function parsePortMapping(string $portStr): array
         $portStr = substr($portStr, 0, $slashPos);
     }
 
+    // Handle bracketed IPv6 host IP: [::1]:8080:80
+    if (str_starts_with($portStr, '[')) {
+        $bracketEnd = strpos($portStr, ']');
+        if ($bracketEnd !== false) {
+            $hostIp = substr($portStr, 1, $bracketEnd - 1);
+            $rest = substr($portStr, $bracketEnd + 1); // e.g. ":8080:80"
+            $rest = ltrim($rest, ':');
+            $parts = explode(':', $rest);
+            if (count($parts) === 2) {
+                return ['hostIp' => $hostIp, 'hostPort' => $parts[0], 'containerPort' => $parts[1], 'protocol' => $protocol];
+            }
+            if (count($parts) === 1 && $parts[0] !== '') {
+                return ['hostIp' => $hostIp, 'hostPort' => '', 'containerPort' => $parts[0], 'protocol' => $protocol];
+            }
+        }
+    }
+
     $parts = explode(':', $portStr);
     $count = count($parts);
 
@@ -760,7 +777,9 @@ function dockerContainerToComposeService(array $info): array
                 $hostIp = $bind['HostIp'] ?? '';
                 $hostPort = $bind['HostPort'] ?? '';
                 if ($hostIp !== '' && $hostIp !== '0.0.0.0') {
-                    $ports[] = "{$hostIp}:{$hostPort}:{$privatePort}/{$proto}";
+                    // Bracket IPv6 addresses for valid Compose port syntax
+                    $formattedIp = str_contains($hostIp, ':') ? "[{$hostIp}]" : $hostIp;
+                    $ports[] = "{$formattedIp}:{$hostPort}:{$privatePort}/{$proto}";
                 } elseif ($hostPort !== '') {
                     $ports[] = "{$hostPort}:{$privatePort}/{$proto}";
                 } else {

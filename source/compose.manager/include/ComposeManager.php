@@ -2891,7 +2891,8 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                 html += '<div class="import-field" style="margin-bottom:14px;"><label>Ports</label>';
                 html += '<div class="import-port-list">';
                 meta.ports.forEach(function(p) {
-                    var portStr = (p.hostIp && p.hostIp !== '0.0.0.0' ? p.hostIp + ':' : '') + (p.hostPort ? p.hostPort + ':' : '') + p.containerPort + '/' + p.protocol;
+                    var displayIp = (p.hostIp && p.hostIp !== '0.0.0.0') ? (p.hostIp.indexOf(':') !== -1 ? '[' + p.hostIp + ']' : p.hostIp) : '';
+                    var portStr = (displayIp ? displayIp + ':' : '') + (p.hostPort ? p.hostPort + ':' : '') + p.containerPort + '/' + p.protocol;
                     var isConflict = false;
                     conflicts.forEach(function(c) {
                         if (c.hostPort === p.hostPort && c.protocol === p.protocol) isConflict = true;
