@@ -82,62 +82,6 @@ switch ($_POST['action']) {
         $candidates = getDockerManagerImportCandidates();
         echo json_encode(['result' => 'success', 'containers' => $candidates]);
         break;
-    case 'generateImportPreview':
-        $containerIds = [];
-        if (!empty($_POST['containerIds'])) {
-            $data = json_decode($_POST['containerIds'], true);
-            if (is_array($data)) {
-                $containerIds = $data;
-            }
-        }
-        if (empty($containerIds)) {
-            echo json_encode(['result' => 'error', 'message' => 'No containers selected']);
-            break;
-        }
-
-        $services = [];
-        foreach ($containerIds as $id) {
-            $id = trim($id);
-            if ($id === '') {
-                continue;
-            }
-            $info = getDockerManagerContainerInfo($id);
-            if (empty($info)) {
-                continue;
-            }
-            $converted = dockerContainerToComposeService($info);
-            $name = $converted['name'];
-            $service = $converted['service'];
-
-            $serviceIcon = $info['Config']['Labels']['net.unraid.docker.icon'] ?? '';
-            $serviceWebui = $info['Config']['Labels']['net.unraid.docker.webui'] ?? '';
-            if ($serviceIcon) {
-                $service['icon'] = $serviceIcon;
-            }
-            if ($serviceWebui) {
-                $service['webui'] = $serviceWebui;
-            }
-
-            $originalName = $name;
-            $append = 1;
-            while (isset($services[$name])) {
-                $name = $originalName . '_' . $append;
-                $append++;
-            }
-            $services[$name] = $service;
-        }
-
-        if (empty($services)) {
-            echo json_encode(['result' => 'error', 'message' => 'No valid Docker Manager containers found for import']);
-            break;
-        }
-
-        $env = dockerResolveEnvAndCompose($services);
-        $composeYml = dockerServicesToComposeYml($services);
-        $override = dockerAddOverrideIcons($services);
-
-        echo json_encode(['result' => 'success', 'composeYml' => $composeYml, 'env' => $env, 'override' => $override]);
-        break;
 
     case 'generateImportData':
         // Rich import data for the 5-stage wizard — returns per-service metadata, port conflicts, networks
