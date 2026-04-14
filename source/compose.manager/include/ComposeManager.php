@@ -2820,7 +2820,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             var cName = cfg.containerNames[key] || meta.containerName || key;
             var perSvc = netCfg.perService[key] || {};
             var netMode = perSvc.networkMode || 'default';
-            var isNetModeRestricted = (netMode === 'host' || netMode === 'none');
+            var isNetModeRestricted = (netMode === 'host' || netMode === 'none' || netMode === 'bridge');
             var attachStackNet = perSvc.attachStackNet !== false;
             var svcExtNets = perSvc.externalNets || [];
             var hc = cfg.healthchecks[key];
@@ -2868,6 +2868,9 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             if (stackNetAvailable || hasExtNets) {
                 html += '<div class="import-field iw-advanced-section" style="margin-bottom:14px;"><label>Network Attachments</label>';
                 html += '<div class="import-net-checks iw-svc-nets" data-service="' + composeEscapeHtml(key) + '">';
+                if (isNetModeRestricted) {
+                    html += '<div style="font-size:0.85rem;color:var(--alt-text-color);margin-bottom:6px;"><i class="fa fa-info-circle"></i> Network attachments unavailable in ' + composeEscapeHtml(netMode) + ' mode</div>';
+                }
                 if (stackNetAvailable) {
                     var stackChecked = (attachStackNet && !isNetModeRestricted) ? ' checked' : '';
                     var stackDisabled = isNetModeRestricted ? ' disabled' : '';
@@ -2959,7 +2962,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         $('.iw-net-mode').on('change', function() {
             var svc = $(this).data('service');
             var mode = this.value;
-            var restricted = (mode === 'host' || mode === 'none');
+            var restricted = (mode === 'host' || mode === 'none' || mode === 'bridge');
             var $nets = $('.iw-svc-nets[data-service="' + svc + '"]');
             $nets.find('input[type="checkbox"]').prop('disabled', restricted);
             if (restricted) {
