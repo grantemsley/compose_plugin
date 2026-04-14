@@ -827,10 +827,10 @@ class ExecActionsTest extends TestCase
         $this->assertEquals('success', $result['result']);
         $this->assertStringContainsString('import-ok', $result['projectPath']);
 
-        // compose file written
+        // compose file written (trim() in handler strips trailing newline)
         $composePath = $result['projectPath'] . '/compose.yaml';
         $this->assertFileExists($composePath);
-        $this->assertEquals($yaml, file_get_contents($composePath));
+        $this->assertEquals(trim($yaml), file_get_contents($composePath));
     }
 
     public function testPerformImportTransferWritesEnvAndOverride(): void
@@ -850,8 +850,8 @@ class ExecActionsTest extends TestCase
         $this->assertEquals('success', $result['result']);
 
         $basePath = $result['projectPath'];
-        $this->assertEquals($env, file_get_contents($basePath . '/.env'));
-        $this->assertEquals($override, file_get_contents($basePath . '/docker-compose.override.yml'));
+        $this->assertEquals(trim($env), file_get_contents($basePath . '/.env'));
+        $this->assertEquals(trim($override), file_get_contents($basePath . '/compose.override.yaml'));
     }
 
     // ===========================================
