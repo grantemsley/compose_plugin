@@ -384,6 +384,11 @@ switch ($_POST['action']) {
             $stopContainers = true;
         }
 
+        if ($startStack && !$removeContainers) {
+            echo json_encode(['result' => 'error', 'message' => 'Cannot start imported stack without removing original containers — container names would conflict']);
+            break;
+        }
+
         try {
             $stackInfo = StackInfo::createNew($compose_root, $stackName, $stackDesc);
         } catch (\RuntimeException $e) {

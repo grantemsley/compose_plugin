@@ -3450,9 +3450,19 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         // Wire after-import checkbox constraints
         $('#iw-remove-containers').on('change', function() {
             if (this.checked) $('#iw-stop-containers').prop('checked', true);
+            if (!this.checked) $('#iw-start-stack').prop('checked', false);
         });
         $('#iw-stop-containers').on('change', function() {
-            if (!this.checked) $('#iw-remove-containers').prop('checked', false);
+            if (!this.checked) {
+                $('#iw-remove-containers').prop('checked', false);
+                $('#iw-start-stack').prop('checked', false);
+            }
+        });
+        $('#iw-start-stack').on('change', function() {
+            if (this.checked) {
+                $('#iw-stop-containers').prop('checked', true);
+                $('#iw-remove-containers').prop('checked', true);
+            }
         });
     }
 
