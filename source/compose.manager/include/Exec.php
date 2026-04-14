@@ -465,12 +465,11 @@ switch ($_POST['action']) {
                 continue;
             }
 
-            if ($stopContainers) {
-                exec('docker stop ' . escapeshellarg($id) . ' 2>&1');
-            }
-
             if ($removeContainers) {
+                // rm -f already force-stops the container; no separate stop needed
                 exec('docker rm -f ' . escapeshellarg($id) . ' 2>&1');
+            } elseif ($stopContainers) {
+                exec('docker stop ' . escapeshellarg($id) . ' 2>&1');
             }
         }
 
