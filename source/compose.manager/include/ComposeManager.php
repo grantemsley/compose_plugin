@@ -2380,6 +2380,8 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         result: null        // finalizeImportCompose response
     };
 
+    var iwDepIdCounter = 0;
+
     var WIZARD_STAGES_ALL = [
         { num: 1, label: 'Select Containers' },
         { num: 2, label: 'Stack Options' },
@@ -2484,6 +2486,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             },
             result: null
         };
+        iwDepIdCounter = 0;
 
         var modalHtml = '<div id="compose-import-modal-overlay" class="compose-modal-overlay" style="display:flex;">' +
             '<div class="compose-modal import-wizard-modal" role="dialog" aria-modal="true" aria-labelledby="compose-import-modal-title" tabindex="-1">' +
@@ -3114,8 +3117,8 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             html += '<tr><td style="font-weight:600;">' + composeEscapeHtml(key) + '</td>';
             html += '<td><div class="iw-dep-entries" data-service="' + composeEscapeHtml(key) + '">';
             if (svcDeps.length) {
-                svcDeps.forEach(function(d, di) {
-                    html += iwRenderDepRow(key, svcKeys, d, di);
+                svcDeps.forEach(function(d) {
+                    html += iwRenderDepRow(key, svcKeys, d, iwDepIdCounter++);
                 });
             }
             html += '</div>';
@@ -3187,7 +3190,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
     function iwAddDep(svc) {
         var $entries = $('.iw-dep-entries[data-service="' + svc + '"]');
         var allKeys = Object.keys(importWizard.services);
-        var index = $entries.find('.import-dep-row').length;
+        var index = iwDepIdCounter++;
         $entries.append(iwRenderDepRow(svc, allKeys, null, index));
         iwWireDepEvents($entries);
     }
