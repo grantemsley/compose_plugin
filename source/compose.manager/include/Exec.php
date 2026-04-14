@@ -134,6 +134,7 @@ switch ($_POST['action']) {
                 'webui' => $serviceWebui,
                 'networkMode' => $service['network_mode'] ?? null,
                 'networks' => $service['networks'] ?? [],
+                'networkIPs' => $service['__network_ips'] ?? [],
             ];
 
             // Healthcheck info

@@ -858,17 +858,26 @@ function dockerContainerToComposeService(array $info): array
         }
     }
 
-    // Extract named networks from NetworkSettings
+    // Extract named networks from NetworkSettings (including static IPs)
     $networks = $info['NetworkSettings']['Networks'] ?? [];
     if (is_array($networks) && !isset($service['network_mode'])) {
         $namedNetworks = [];
-        foreach (array_keys($networks) as $netName) {
+        $networkIPs = [];
+        foreach ($networks as $netName => $netInfo) {
             if (!in_array($netName, ['bridge', 'host', 'none'], true)) {
                 $namedNetworks[] = $netName;
+                // Preserve static IP from IPAMConfig (user-assigned, not DHCP)
+                $staticIP = $netInfo['IPAMConfig']['IPv4Address'] ?? '';
+                if ($staticIP !== '') {
+                    $networkIPs[$netName] = $staticIP;
+                }
             }
         }
         if (!empty($namedNetworks)) {
             $service['networks'] = $namedNetworks;
+        }
+        if (!empty($networkIPs)) {
+            $service['__network_ips'] = $networkIPs;
         }
     }
 
@@ -1007,7 +1016,7 @@ function dockerServicesToComposeYml(array $services, array $wizardConfig = []): 
     // Internal fields to skip when emitting YAML
     $internalKeys = [
         '__resolved_env', '__exposed_ports', '__guessed_healthcheck',
-        '__healthcheck_source', 'icon', 'webui',
+        '__healthcheck_source', '__network_ips', 'icon', 'webui',
     ];
 
     foreach ($services as $name => $service) {
@@ -1032,6 +1041,7 @@ function dockerServicesToComposeYml(array $services, array $wizardConfig = []): 
                 unset($service['network_mode']);
 
                 $serviceNetworks = [];
+                $svcIPv4 = $svcNetCfg['ipv4Addresses'] ?? [];
                 // Attach to stack network if enabled
                 if ($stackNetEnabled && $stackNetName !== '' && !empty($svcNetCfg['attachStackNet'])) {
                     $serviceNetworks[] = $stackNetName;
@@ -1045,7 +1055,24 @@ function dockerServicesToComposeYml(array $services, array $wizardConfig = []): 
                     }
                 }
                 if (!empty($serviceNetworks)) {
-                    $service['networks'] = $serviceNetworks;
+                    // Use mapping format if any network has a static IP
+                    $hasIPs = false;
+                    foreach ($serviceNetworks as $netName) {
+                        if (!empty($svcIPv4[$netName])) {
+                            $hasIPs = true;
+                            break;
+                        }
+                    }
+                    if ($hasIPs) {
+                        $netMap = [];
+                        foreach ($serviceNetworks as $netName) {
+                            $ip = $svcIPv4[$netName] ?? '';
+                            $netMap[$netName] = $ip !== '' ? ['ipv4_address' => $ip] : null;
+                        }
+                        $service['networks'] = $netMap;
+                    } else {
+                        $service['networks'] = $serviceNetworks;
+                    }
                 } else {
                     unset($service['networks']);
                 }
@@ -1085,9 +1112,18 @@ function dockerServicesToComposeYml(array $services, array $wizardConfig = []): 
 
         // Collect all referenced networks for the top-level block
         if (!empty($service['networks']) && is_array($service['networks'])) {
-            foreach ($service['networks'] as $networkName) {
-                if (!in_array($networkName, $allNetworks, true)) {
-                    $allNetworks[] = $networkName;
+            if (array_is_list($service['networks'])) {
+                foreach ($service['networks'] as $networkName) {
+                    if (!in_array($networkName, $allNetworks, true)) {
+                        $allNetworks[] = $networkName;
+                    }
+                }
+            } else {
+                // Mapping format (network => config or null)
+                foreach (array_keys($service['networks']) as $networkName) {
+                    if (!in_array($networkName, $allNetworks, true)) {
+                        $allNetworks[] = $networkName;
+                    }
                 }
             }
         }
@@ -1124,6 +1160,22 @@ function dockerServicesToComposeYml(array $services, array $wizardConfig = []): 
                         }
                     } elseif (is_string($hcVal) || is_numeric($hcVal)) {
                         $yaml .= "      $hcKey: " . yamlQuoteValue($hcVal) . "\n";
+                    }
+                }
+                continue;
+            }
+            if ($key === 'networks' && is_array($value) && !array_is_list($value)) {
+                // Networks mapping format with per-network config (e.g. ipv4_address)
+                $yaml .= "    networks:\n";
+                foreach ($value as $netName => $netConfig) {
+                    if (is_array($netConfig) && !empty($netConfig)) {
+                        $yaml .= "      " . $netName . ":\n";
+                        foreach ($netConfig as $nk => $nv) {
+                            $yaml .= "        " . $nk . ": " . yamlQuoteValue($nv) . "\n";
+                        }
+                    } else {
+                        // No config for this network — emit as simple entry
+                        $yaml .= "      " . $netName . ":\n";
                     }
                 }
                 continue;

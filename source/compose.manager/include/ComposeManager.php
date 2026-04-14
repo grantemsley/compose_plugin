@@ -2614,7 +2614,8 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                     importWizard.config.networkConfig.perService[key] = {
                         networkMode: meta.networkMode || 'default',
                         attachStackNet: !meta.networkMode || meta.networkMode === 'default',
-                        externalNets: meta.networks || []
+                        externalNets: meta.networks || [],
+                        ipv4Addresses: meta.networkIPs || {}
                     };
                 }
                 // Auto-seed discovered service networks into global externalNetworks list
@@ -2885,7 +2886,26 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                     html += '<label' + extDisabledCls + '><input type="checkbox" class="iw-attach-ext" data-service="' + composeEscapeHtml(key) + '" value="' + composeEscapeHtml(en) + '"' + extChecked + extDisabled + '> ' +
                         composeEscapeHtml(en) + ' <small>(external)</small></label>';
                 });
-                html += '</div></div>';
+                html += '</div>';
+
+                // Static IP fields for attached networks
+                var svcIPs = perSvc.ipv4Addresses || {};
+                var attachedNets = [];
+                if (stackNetAvailable && attachStackNet && !isNetModeRestricted) attachedNets.push(netCfg.stackNetwork.name);
+                svcExtNets.forEach(function(n) { if (!isNetModeRestricted) attachedNets.push(n); });
+                if (attachedNets.length > 0) {
+                    html += '<div class="import-ip-fields" data-service="' + composeEscapeHtml(key) + '" style="margin-top:8px;">';
+                    attachedNets.forEach(function(netName) {
+                        var ipVal = svcIPs[netName] || '';
+                        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
+                            '<label style="min-width:120px;font-size:0.85rem;">' + composeEscapeHtml(netName) + ' IP:</label>' +
+                            '<input type="text" class="iw-ipv4-addr" data-service="' + composeEscapeHtml(key) + '" data-network="' + composeEscapeHtml(netName) + '" ' +
+                            'value="' + composeEscapeHtml(ipVal) + '" placeholder="(auto)" style="max-width:180px;font-size:0.85rem;">' +
+                            '</div>';
+                    });
+                    html += '</div>';
+                }
+                html += '</div>';
             }
 
             // Ports (read-only)
@@ -2974,8 +2994,49 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             } else {
                 $nets.find('label').removeClass('disabled');
             }
+            iwRefreshIpFields(svc);
+        });
+        $('.iw-attach-stack, .iw-attach-ext').on('change', function() {
+            iwRefreshIpFields($(this).data('service'));
         });
         iwValidateContainerNames();
+    }
+
+    function iwRefreshIpFields(svc) {
+        var $container = $('.import-ip-fields[data-service="' + svc + '"]');
+        if (!$container.length) return;
+        // Gather currently checked networks
+        var nets = [];
+        var $card = $container.closest('.import-service-card');
+        var mode = $card.find('.iw-net-mode').val();
+        var restricted = (mode === 'host' || mode === 'none' || mode === 'bridge');
+        if (!restricted) {
+            $card.find('.iw-attach-stack:checked').each(function() {
+                var netCfg = importWizard.config.networkConfig;
+                if (netCfg.stackNetwork.enabled && netCfg.stackNetwork.name) {
+                    nets.push(netCfg.stackNetwork.name);
+                }
+            });
+            $card.find('.iw-attach-ext:checked').each(function() { nets.push(this.value); });
+        }
+        // Save existing IP values
+        var existingIPs = {};
+        $container.find('.iw-ipv4-addr').each(function() {
+            existingIPs[$(this).data('network')] = this.value;
+        });
+        // Also check saved config
+        var savedIPs = (importWizard.config.networkConfig.perService[svc] || {}).ipv4Addresses || {};
+        // Rebuild IP fields
+        var html = '';
+        nets.forEach(function(netName) {
+            var ipVal = existingIPs[netName] || savedIPs[netName] || '';
+            html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
+                '<label style="min-width:120px;font-size:0.85rem;">' + composeEscapeHtml(netName) + ' IP:</label>' +
+                '<input type="text" class="iw-ipv4-addr" data-service="' + composeEscapeHtml(svc) + '" data-network="' + composeEscapeHtml(netName) + '" ' +
+                'value="' + composeEscapeHtml(ipVal) + '" placeholder="(auto)" style="max-width:180px;font-size:0.85rem;">' +
+                '</div>';
+        });
+        $container.html(html);
     }
 
     function iwToggleCard(headerEl) {
@@ -3045,6 +3106,14 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             $('.iw-attach-ext[data-service="' + svc + '"]:checked').each(function() { extNets.push(this.value); });
             if (!cfg.networkConfig.perService[svc]) cfg.networkConfig.perService[svc] = {};
             cfg.networkConfig.perService[svc].externalNets = extNets;
+            // Save static IP addresses
+            var ips = {};
+            $('.iw-ipv4-addr[data-service="' + svc + '"]').each(function() {
+                var net = $(this).data('network');
+                var ip = this.value.trim();
+                if (net && ip) ips[net] = ip;
+            });
+            cfg.networkConfig.perService[svc].ipv4Addresses = ips;
         });
         // Save healthchecks
         Object.keys(importWizard.services).forEach(function(svc) {
