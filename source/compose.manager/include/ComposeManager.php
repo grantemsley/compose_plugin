@@ -2614,6 +2614,13 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                         externalNets: meta.networks || []
                     };
                 }
+                // Auto-seed discovered service networks into global externalNetworks list
+                var svcNets = meta.networks || [];
+                svcNets.forEach(function(netName) {
+                    if (importWizard.config.networkConfig.externalNetworks.indexOf(netName) === -1) {
+                        importWizard.config.networkConfig.externalNetworks.push(netName);
+                    }
+                });
                 // Initialize healthcheck from service data
                 if (!importWizard.config.healthchecks.hasOwnProperty(key)) {
                     if (meta.healthcheck) {
@@ -2833,8 +2840,13 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             html += '</div>';
 
             // Row 2: Network attachments (Advanced)
+            // Build union of global external networks and per-service networks
+            var allExtNets = (netCfg.externalNetworks || []).slice();
+            svcExtNets.forEach(function(n) {
+                if (allExtNets.indexOf(n) === -1) allExtNets.push(n);
+            });
             var stackNetAvailable = netCfg.stackNetwork.enabled && netCfg.stackNetwork.name;
-            var hasExtNets = netCfg.externalNetworks.length > 0;
+            var hasExtNets = allExtNets.length > 0;
             if (stackNetAvailable || hasExtNets) {
                 html += '<div class="import-field iw-advanced-section" style="margin-bottom:14px;"><label>Network Attachments</label>';
                 html += '<div class="import-net-checks iw-svc-nets" data-service="' + composeEscapeHtml(key) + '">';
@@ -2845,7 +2857,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                     html += '<label' + stackDisabledCls + '><input type="checkbox" class="iw-attach-stack" data-service="' + composeEscapeHtml(key) + '"' + stackChecked + stackDisabled + '> ' +
                         composeEscapeHtml(netCfg.stackNetwork.name) + ' <small>(stack)</small></label>';
                 }
-                netCfg.externalNetworks.forEach(function(en) {
+                allExtNets.forEach(function(en) {
                     var extChecked = (svcExtNets.indexOf(en) >= 0 && !isNetModeRestricted) ? ' checked' : '';
                     var extDisabled = isNetModeRestricted ? ' disabled' : '';
                     var extDisabledCls = isNetModeRestricted ? ' class="disabled"' : '';
