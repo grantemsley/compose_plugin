@@ -921,11 +921,6 @@
   }
 
 
-  /* Advanced-only sections hidden in basic mode */
-  .iw-advanced-section.iw-hidden {
-    display: none !important;
-  }
-
   .compose-ct-table .ct-col-ip {
     width: 8%;
   }
