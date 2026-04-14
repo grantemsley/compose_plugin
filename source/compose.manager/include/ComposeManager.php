@@ -2623,10 +2623,25 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                 });
                 // Initialize healthcheck from service data
                 if (!importWizard.config.healthchecks.hasOwnProperty(key)) {
+                    var hcData = null;
                     if (meta.healthcheck) {
-                        importWizard.config.healthchecks[key] = meta.healthcheck;
+                        hcData = meta.healthcheck;
                     } else if (meta.guessedHealthcheck) {
-                        importWizard.config.healthchecks[key] = meta.guessedHealthcheck;
+                        hcData = meta.guessedHealthcheck;
+                    }
+                    if (hcData) {
+                        // Store original test type (CMD/CMD-SHELL) and command text for comparison on save
+                        var origType = 'CMD-SHELL';
+                        var origCmd = '';
+                        if (Array.isArray(hcData.test) && hcData.test.length > 0) {
+                            origType = hcData.test[0];
+                            origCmd = hcData.test.slice(1).join(' ');
+                        } else if (typeof hcData.test === 'string') {
+                            origCmd = hcData.test;
+                        }
+                        hcData.__originalTestType = origType;
+                        hcData.__originalTestCmd = origCmd;
+                        importWizard.config.healthchecks[key] = hcData;
                     } else {
                         importWizard.config.healthchecks[key] = null;
                     }
@@ -2908,8 +2923,9 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             if (hc && hc.test) {
                 testCmd = Array.isArray(hc.test) ? (hc.test.length > 1 ? hc.test.slice(1).join(' ') : hc.test[0]) : hc.test;
             }
+            var origTestCmd = (hc && hc.__originalTestCmd) || '';
             html += '<div class="import-field full-width"><label>Test Command</label>' +
-                '<input type="text" class="iw-hc-test" data-service="' + composeEscapeHtml(key) + '" value="' + composeEscapeHtml(testCmd) + '" placeholder="curl -f http://localhost/ || exit 1"></div>';
+                '<input type="text" class="iw-hc-test" data-service="' + composeEscapeHtml(key) + '" data-original-cmd="' + composeEscapeHtml(origTestCmd) + '" value="' + composeEscapeHtml(testCmd) + '" placeholder="curl -f http://localhost/ || exit 1"></div>';
             html += '<div class="import-field"><label>Interval</label>' +
                 '<input type="text" class="iw-hc-interval" data-service="' + composeEscapeHtml(key) + '" value="' + composeEscapeHtml(hc ? (hc.interval || '30s') : '30s') + '"></div>';
             html += '<div class="import-field"><label>Timeout</label>' +
@@ -3022,10 +3038,18 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         });
         // Save healthchecks
         Object.keys(importWizard.services).forEach(function(svc) {
-            var testCmd = $('.iw-hc-test[data-service="' + svc + '"]').val();
+            var $input = $('.iw-hc-test[data-service="' + svc + '"]');
+            var testCmd = $input.val();
             if (testCmd && testCmd.trim()) {
+                // Preserve original test type (CMD/CMD-SHELL) if command text unchanged
+                var origCmd = $input.data('original-cmd') || '';
+                var existingHc = cfg.healthchecks[svc];
+                var testType = 'CMD-SHELL';
+                if (testCmd.trim() === origCmd && existingHc && existingHc.__originalTestType) {
+                    testType = existingHc.__originalTestType;
+                }
                 cfg.healthchecks[svc] = {
-                    test: ['CMD-SHELL', testCmd.trim()],
+                    test: [testType, testCmd.trim()],
                     interval: $('.iw-hc-interval[data-service="' + svc + '"]').val() || '30s',
                     timeout: $('.iw-hc-timeout[data-service="' + svc + '"]').val() || '10s',
                     retries: parseInt($('.iw-hc-retries[data-service="' + svc + '"]').val()) || 3,
