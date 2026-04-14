@@ -1062,6 +1062,10 @@ function dockerServicesToComposeYml(array $services, array $wizardConfig = []): 
             if ($key === 'healthcheck' && is_array($value)) {
                 $yaml .= "    healthcheck:\n";
                 foreach ($value as $hcKey => $hcVal) {
+                    // Skip private metadata keys (e.g. __originalTestType)
+                    if (is_string($hcKey) && str_starts_with($hcKey, '__')) {
+                        continue;
+                    }
                     if ($hcKey === 'test' && is_array($hcVal)) {
                         $yaml .= "      test:\n";
                         foreach ($hcVal as $testItem) {

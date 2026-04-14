@@ -3342,12 +3342,24 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         $('#compose-import-modal-footer').html('');
 
         var cfg = importWizard.config;
+        // Strip __-prefixed metadata keys from healthchecks before sending
+        var cleanHC = {};
+        Object.keys(cfg.healthchecks).forEach(function(svc) {
+            var hc = cfg.healthchecks[svc];
+            if (hc && typeof hc === 'object') {
+                var clean = {};
+                Object.keys(hc).forEach(function(k) { if (k.indexOf('__') !== 0) clean[k] = hc[k]; });
+                cleanHC[svc] = clean;
+            } else {
+                cleanHC[svc] = hc;
+            }
+        });
         $.post(caURL, {
             action: 'finalizeImportCompose',
             containerIds: JSON.stringify(importWizard.containerIds),
             containerNames: JSON.stringify(cfg.containerNames),
             networkConfig: JSON.stringify(cfg.networkConfig),
-            healthchecks: JSON.stringify(cfg.healthchecks),
+            healthchecks: JSON.stringify(cleanHC),
             dependencies: JSON.stringify(cfg.dependencies)
         }, function(data) {
             var response;
