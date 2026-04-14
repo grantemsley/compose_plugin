@@ -2613,7 +2613,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                 if (!importWizard.config.networkConfig.perService[key]) {
                     importWizard.config.networkConfig.perService[key] = {
                         networkMode: meta.networkMode || 'default',
-                        attachStackNet: !meta.networkMode || meta.networkMode === 'default' || meta.networkMode === 'bridge',
+                        attachStackNet: !meta.networkMode || meta.networkMode === 'default',
                         externalNets: meta.networks || []
                     };
                 }
