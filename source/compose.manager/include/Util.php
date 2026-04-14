@@ -920,7 +920,7 @@ function yamlQuoteValue($value): string
         || in_array(strtolower($str), ['true', 'false', 'null', 'yes', 'no', 'on', 'off'], true)
         || is_numeric($str)
     ) {
-        return '"' . str_replace(['\\', '"', "\n"], ['\\\\', '\\"', '\\n'], $str) . '"';
+        return '"' . str_replace(['\\', '"', "\n", "\t"], ['\\\\', '\\"', '\\n', '\\t'], $str) . '"';
     }
     return $str;
 }
@@ -1179,8 +1179,31 @@ function dockerResolveEnvAndCompose(array &$services): string
     }
     unset($service);
 
+    // Build per-service lookup: envKey → [serviceName, ...]
+    $keyServices = [];
+    foreach ($services as $svcName => $svc) {
+        if (!empty($svc['environment']) && is_array($svc['environment'])) {
+            foreach ($svc['environment'] as $entry) {
+                if (preg_match('/^[^=]+=\$\{(.+)\}$/', $entry, $m)) {
+                    $keyServices[$m[1]][] = $svcName;
+                }
+            }
+        }
+    }
+
     $lines = [];
+    $lastServices = null;
     foreach ($globalEnv as $k => $v) {
+        // Add service-group comment when the owning service(s) change
+        $owners = $keyServices[$k] ?? [];
+        sort($owners);
+        if ($owners !== $lastServices) {
+            if (!empty($lines)) {
+                $lines[] = '';
+            }
+            $lines[] = '# ' . implode(', ', $owners);
+            $lastServices = $owners;
+        }
         // Quote values that contain special characters to prevent .env parsing issues
         if (preg_match('/[\s#$"\\\n]/', $v) || $v === '') {
             $escaped = str_replace(['\\', '"', '$', "\n"], ['\\\\', '\\"', '\\$', '\\n'], $v);
