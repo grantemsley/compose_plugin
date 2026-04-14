@@ -640,7 +640,8 @@ function parsePortMapping(string $portStr): array
  */
 function detectPortConflicts(array $services): array
 {
-    $portMap = []; // key: "hostIp:hostPort/protocol" => [serviceName, ...]
+    // Maps grouping key => ['ip' => ..., 'port' => ..., 'proto' => ..., 'services' => [...]]
+    $portMap = [];
 
     foreach ($services as $serviceName => $service) {
         if (empty($service['ports']) || !is_array($service['ports'])) {
@@ -654,20 +655,26 @@ function detectPortConflicts(array $services): array
             // Normalize: treat empty and 0.0.0.0 as equivalent
             $ip = ($parsed['hostIp'] === '' || $parsed['hostIp'] === '0.0.0.0') ? '0.0.0.0' : $parsed['hostIp'];
             $key = "{$ip}:{$parsed['hostPort']}/{$parsed['protocol']}";
-            $portMap[$key][] = $serviceName;
+            if (!isset($portMap[$key])) {
+                $portMap[$key] = [
+                    'hostIp' => $ip,
+                    'hostPort' => $parsed['hostPort'],
+                    'protocol' => $parsed['protocol'],
+                    'services' => [],
+                ];
+            }
+            $portMap[$key]['services'][] = $serviceName;
         }
     }
 
     $conflicts = [];
-    foreach ($portMap as $key => $serviceNames) {
-        if (count($serviceNames) > 1) {
-            // Parse the key back
-            preg_match('/^(.+):(\d+)\/(.+)$/', $key, $m);
+    foreach ($portMap as $entry) {
+        if (count($entry['services']) > 1) {
             $conflicts[] = [
-                'hostIp' => $m[1] ?? '',
-                'hostPort' => $m[2] ?? '',
-                'protocol' => $m[3] ?? '',
-                'services' => array_unique($serviceNames),
+                'hostIp' => $entry['hostIp'],
+                'hostPort' => $entry['hostPort'],
+                'protocol' => $entry['protocol'],
+                'services' => array_values(array_unique($entry['services'])),
             ];
         }
     }
