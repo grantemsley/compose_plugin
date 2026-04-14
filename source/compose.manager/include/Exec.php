@@ -150,11 +150,6 @@ switch ($_POST['action']) {
             $servicesMeta[$name] = $meta;
         }
 
-        if (empty($services)) {
-            echo json_encode(['result' => 'error', 'message' => 'No valid Docker Manager containers found for import']);
-            break;
-        }
-
         // Detect port conflicts across all services
         $portConflicts = detectPortConflicts($services);
 
