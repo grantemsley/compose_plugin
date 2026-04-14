@@ -28,9 +28,14 @@ parameters:
     # Platform classes (Docker management)
     - messages:
         - "#DockerClient#"
+        - "#DockerTemplates#"
         - "#DockerUpdate#"
         - "#DockerUtil#"
       identifier: class.notFound
+    # Platform functions (Docker management)
+    - messages:
+        - "#xmlToCommand#"
+      identifier: function.notFound
     # Global variables from platform/defines.php
     - message: "#Variable \\$\\w+ might not be defined#"
       identifier: variable.undefined
