@@ -706,13 +706,15 @@ function detectPortConflicts(array $services): array
 function getDockerNetworks(): array
 {
     $networks = [];
-    $output = shell_exec("docker network ls --format '{{.Name}}\t{{.Driver}}' 2>/dev/null");
-    if ($output) {
-        foreach (explode("\n", trim($output)) as $line) {
-            $parts = explode("\t", $line);
-            if (count($parts) === 2) {
-                $networks[] = ['name' => $parts[0], 'driver' => $parts[1]];
-            }
+    exec("docker network ls --format '{{.Name}}\t{{.Driver}}' 2>/dev/null", $outputLines, $exitCode);
+    if ($exitCode !== 0) {
+        clientDebug('Failed to list Docker networks (exit code ' . $exitCode . ')', null, 'daemon', 'warning');
+        return [];
+    }
+    foreach ($outputLines as $line) {
+        $parts = explode("\t", $line);
+        if (count($parts) === 2) {
+            $networks[] = ['name' => $parts[0], 'driver' => $parts[1]];
         }
     }
     return $networks;
@@ -892,6 +894,55 @@ function dockerContainerToComposeService(array $info): array
     }
 
     return ['name' => $serviceName, 'originalName' => $originalName, 'service' => $service];
+}
+
+/**
+ * Fetch, convert, and deduplicate Docker Manager containers into compose services.
+ *
+ * Shared by generateImportData and finalizeImportCompose to avoid duplicating
+ * the container-fetch → convert → label-extract → dedup loop.
+ *
+ * @param string[] $containerIds Docker container IDs to process
+ * @return array{services: array, inspectData: array} services keyed by deduped name,
+ *         inspectData keyed by same name → raw docker inspect array
+ */
+function buildImportServicesFromIds(array $containerIds): array
+{
+    $services = [];
+    $inspectData = [];
+    foreach ($containerIds as $id) {
+        $id = trim($id);
+        if ($id === '') {
+            continue;
+        }
+        $info = getDockerManagerContainerInfo($id);
+        if (empty($info)) {
+            continue;
+        }
+        $converted = dockerContainerToComposeService($info);
+        $name = $converted['name'];
+        $service = $converted['service'];
+
+        $serviceIcon = $info['Config']['Labels']['net.unraid.docker.icon'] ?? '';
+        $serviceWebui = $info['Config']['Labels']['net.unraid.docker.webui'] ?? '';
+        if ($serviceIcon) {
+            $service['icon'] = $serviceIcon;
+        }
+        if ($serviceWebui) {
+            $service['webui'] = $serviceWebui;
+        }
+
+        // Deduplicate service keys
+        $baseName = $name;
+        $append = 1;
+        while (isset($services[$name])) {
+            $name = $baseName . '_' . $append;
+            $append++;
+        }
+        $services[$name] = $service;
+        $inspectData[$name] = $info;
+    }
+    return ['services' => $services, 'inspectData' => $inspectData];
 }
 
 /**
