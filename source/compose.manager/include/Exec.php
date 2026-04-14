@@ -374,6 +374,11 @@ switch ($_POST['action']) {
             break;
         }
 
+        if ($composeYml === '') {
+            echo json_encode(['result' => 'error', 'message' => 'Compose content is required']);
+            break;
+        }
+
         if ($removeContainers && !$stopContainers) {
             // Enforce logical dependency (remove implies stop)
             $stopContainers = true;
@@ -395,37 +400,47 @@ switch ($_POST['action']) {
             break;
         }
 
+        // Helper to clean up the newly created stack folder on failure
+        $cleanupStack = function () use ($stackInfo) {
+            if (is_dir($stackInfo->path)) {
+                exec('rm -rf ' . escapeshellarg($stackInfo->path));
+                \StackInfo::clearCache();
+            }
+        };
+
         $composePath = $stackInfo->composeFilePath;
         $envPath = $stackInfo->getEnvFilePath() ?? $stackInfo->composeSource . '/.env';
         $overridePath = $stackInfo->getOverridePath() ?: $stackInfo->composeSource . '/docker-compose.override.yml';
 
-        if ($composeYml !== '') {
-            // Validate that the compose content is parseable YAML before writing
-            try {
+        // Validate that the compose content is parseable YAML before writing
+        try {
+            if (function_exists('yaml_parse')) {
                 $parsed = yaml_parse($composeYml);
                 if ($parsed === false) {
                     throw new \Exception('Invalid YAML');
                 }
-            } catch (\Throwable $e) {
-                // yaml_parse may not be available; fall back to basic structure check
-                if (function_exists('yaml_parse')) {
-                    echo json_encode(['result' => 'error', 'message' => 'Generated compose YAML is invalid']);
-                    break;
-                }
             }
-            if (file_put_contents($composePath, $composeYml) === false) {
-                echo json_encode(['result' => 'error', 'message' => 'Failed to write compose file']);
-                break;
-            }
+        } catch (\Throwable $e) {
+            $cleanupStack();
+            echo json_encode(['result' => 'error', 'message' => 'Generated compose YAML is invalid']);
+            break;
+        }
+
+        if (file_put_contents($composePath, $composeYml) === false) {
+            $cleanupStack();
+            echo json_encode(['result' => 'error', 'message' => 'Failed to write compose file']);
+            break;
         }
         if ($env !== '') {
             if (file_put_contents($envPath, $env) === false) {
+                $cleanupStack();
                 echo json_encode(['result' => 'error', 'message' => 'Failed to write .env file']);
                 break;
             }
         }
         if ($override !== '') {
             if (file_put_contents($overridePath, $override) === false) {
+                $cleanupStack();
                 echo json_encode(['result' => 'error', 'message' => 'Failed to write override file']);
                 break;
             }
