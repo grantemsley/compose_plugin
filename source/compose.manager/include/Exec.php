@@ -393,12 +393,12 @@ switch ($_POST['action']) {
             $rollbackRemoved = function (array $removedSnapshots) {
                 foreach (array_reverse($removedSnapshots) as $snap) {
                     if (empty($snap['xmlTemplate'])) {
-                        clientDebug('[import] Cannot restore container ' . $snap['name'] . ': no XML template found', null, 'daemon', 'error');
+                        composeLogger('Cannot restore container ' . $snap['name'] . ': no XML template found', null, 'daemon', 'error', 'import');
                         continue;
                     }
                     $cmdResult = xmlToCommand($snap['xmlTemplate']);
                     if (!is_array($cmdResult) || empty($cmdResult[0])) {
-                        clientDebug('[import] Failed to generate recreate command for ' . $snap['name'], null, 'daemon', 'error');
+                        composeLogger('Failed to generate recreate command for ' . $snap['name'], null, 'daemon', 'error', 'import');
                         continue;
                     }
                     $cmd = $cmdResult[0];
@@ -407,7 +407,7 @@ switch ($_POST['action']) {
                     }
                     exec($cmd . ' 2>&1', $cmdOutput, $exitCode);
                     if ($exitCode !== 0) {
-                        clientDebug('[import] Failed to recreate container ' . $snap['name'] . ': exit ' . $exitCode, null, 'daemon', 'error');
+                        composeLogger('Failed to recreate container ' . $snap['name'] . ': exit ' . $exitCode, null, 'daemon', 'error', 'import');
                     }
                 }
             };

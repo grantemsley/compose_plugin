@@ -708,7 +708,7 @@ function getDockerNetworks(): array
     $networks = [];
     exec("docker network ls --format '{{.Name}}\t{{.Driver}}' 2>/dev/null", $outputLines, $exitCode);
     if ($exitCode !== 0) {
-        clientDebug('Failed to list Docker networks (exit code ' . $exitCode . ')', null, 'daemon', 'warning');
+        composeLogger('Failed to list Docker networks (exit code ' . $exitCode . ')', null, 'daemon', 'warning');
         return [];
     }
     foreach ($outputLines as $line) {
