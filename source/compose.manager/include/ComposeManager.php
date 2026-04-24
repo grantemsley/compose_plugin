@@ -2479,7 +2479,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             portConflicts: [], availableNetworks: [],
             config: {
                 stackName: '', stackDesc: '',
-                stopContainers: true, removeContainers: true, startStack: true,
+                stopContainers: true, removeContainers: true, startStack: true, openEditor: false,
                 containerNames: {},
                 networkConfig: { stackNetwork: { enabled: true, name: '' }, externalNetworks: [], perService: {} },
                 healthchecks: {}, dependencies: {}
@@ -3527,7 +3527,8 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             '<div style="font-weight:600;margin-bottom:10px;">After Import</div>' +
             '<label style="display:block;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="iw-stop-containers"' + (cfg.stopContainers ? ' checked' : '') + '> Stop original containers</label>' +
             '<label style="display:block;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="iw-remove-containers"' + (cfg.removeContainers ? ' checked' : '') + '> Remove original containers</label>' +
-            '<label style="display:block;cursor:pointer;"><input type="checkbox" id="iw-start-stack"' + (cfg.startStack ? ' checked' : '') + '> Start imported stack</label>' +
+            '<label style="display:block;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="iw-start-stack"' + (cfg.startStack ? ' checked' : '') + '> Start imported stack</label>' +
+            '<label style="display:block;cursor:pointer;"><input type="checkbox" id="iw-open-editor"' + (cfg.openEditor ? ' checked' : '') + '> Open editor after import</label>' +
             '</div>';
 
         $('#compose-import-modal-body').html(html);
@@ -3556,6 +3557,9 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                 $('#iw-stop-containers').prop('checked', true);
                 $('#iw-remove-containers').prop('checked', true);
             }
+        });
+        $('#iw-open-editor').on('change', function() {
+            importWizard.config.openEditor = this.checked;
         });
     }
 
@@ -3598,14 +3602,8 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         var cfg = importWizard.config;
         var result = importWizard.result;
 
-        // Close wizard immediately and show a loading spinner overlay
         closeComposeImportModal();
-        var spinnerHtml = '<div id="compose-import-spinner-overlay" style="position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);">' +
-            '<div style="text-align:center;color:#fff;font-size:1.3em;">' +
-            '<i class="fa fa-spinner fa-spin" style="font-size:2.5em;margin-bottom:12px;display:block;"></i>' +
-            'Importing stack<span id="compose-import-spinner-details">...</span>' +
-            '</div></div>';
-        document.body.insertAdjacentHTML('beforeend', spinnerHtml);
+        showComposeSpinner();
 
         $.post(caURL, {
             action: 'performImportTransfer',
@@ -3619,24 +3617,31 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             override: result.override || '',
             containerIds: JSON.stringify(importWizard.containerIds)
         }, function(data) {
-            var spinner = document.getElementById('compose-import-spinner-overlay');
-            if (spinner) spinner.remove();
+            hideComposeSpinner();
 
             var response;
             try { response = JSON.parse(data); } catch (e) { response = { result:'error', message: 'Invalid response' }; }
             if (response.result === 'success') {
-                composeLoadlist();
-                openEditorModalByProject(response.project, response.projectName);
-                if (response.startStack === 1 && response.projectPath) {
-                    ComposeUpConfirmed(response.projectPath, "", true, true);
-                }
-                swal('Imported', 'Stack imported successfully.', 'success');
+                composeLoadlist().then(function() {
+                    if (cfg.openEditor) {
+                        openEditorModalByProject(response.project, response.projectName);
+                    }
+                    if (response.startStack === 1 && response.projectPath) {
+                        ComposeUpConfirmed(response.projectPath, "", true, true);
+                    }
+                    if (!cfg.openEditor) {
+                        swal('Imported', 'Stack imported successfully.', 'success');
+                    }
+                }).catch(function() {
+                    if (!cfg.openEditor) {
+                        swal('Imported', 'Stack imported successfully.', 'success');
+                    }
+                });
             } else {
                 swal('Import failed', response.message || 'Unknown error', 'error');
             }
         }).fail(function() {
-            var spinner = document.getElementById('compose-import-spinner-overlay');
-            if (spinner) spinner.remove();
+            hideComposeSpinner();
             swal('Import failed', 'Communication error', 'error');
         });
     }
