@@ -45,6 +45,7 @@
     max-width: 90vw;
     width: 100%;
     max-height: 80vh;
+    min-height: 0;
     padding: 0;
     overflow: hidden;
     font-family: inherit;
@@ -69,10 +70,16 @@
     padding: 24px;
     overflow-y: auto;
     max-height: 60vh;
-    min-height: 40px;
+    min-height: 0;
     /* If body has a list, let it scroll inside */
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
+  }
+
+  .compose-modal-body > * {
+    flex-shrink: 0;
+    min-height: 0;
   }
   /* Helper: scrollable container list inside modal body */
   .compose-modal-list {
@@ -412,6 +419,7 @@
     border-radius: 8px;
     margin-bottom: 16px;
     overflow: hidden;
+    flex-shrink: 0;
   }
 
   .import-service-card-header {
@@ -465,6 +473,7 @@
   .import-service-card-body {
     padding: 18px;
     display: none;
+    min-height: 0;
   }
 
   .import-service-card.expanded .import-service-card-body {
@@ -913,10 +922,12 @@
   .compose-modal.import-wizard-modal {
     max-width: 880px;
     width: 95%;
+    max-height: calc(100vh - 120px);
   }
 
   .compose-modal.import-wizard-modal .compose-modal-body {
-    max-height: calc(100vh - 200px);
+    max-height: calc(100vh - 260px);
+    min-height: 0;
     overflow-y: auto;
   }
 
