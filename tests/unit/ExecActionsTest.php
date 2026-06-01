@@ -16,6 +16,7 @@ namespace ComposeManager\Tests;
 
 use PluginTests\TestCase;
 use PluginTests\Mocks\FunctionMocks;
+use PluginTests\StreamWrapper\UnraidStreamWrapper;
 
 
 require_once '/usr/local/emhttp/plugins/compose.manager/include/Util.php';
@@ -1055,6 +1056,88 @@ class ExecActionsTest extends TestCase
             $this->assertEquals('error', $result['result']);
             $this->assertStringContainsString('Invalid icon', $result['message']);
         }
+    }
+
+    // ===========================================
+    // getSavedUpdateStatus Action Tests
+    // ===========================================
+
+    /**
+     * Returns dockerVersionsInstalled=false when the plugin directory is absent.
+     */
+    public function testGetSavedUpdateStatusDockerVersionsNotInstalled(): void
+    {
+        @unlink(COMPOSE_UPDATE_STATUS_FILE);
+
+        $output = $this->executeAction('getSavedUpdateStatus');
+        $result = json_decode($output, true);
+
+        $this->assertIsArray($result);
+        $this->assertEquals('success', $result['result']);
+        $this->assertSame([], $result['stacks']);
+        $this->assertFalse($result['dockerVersionsInstalled']);
+    }
+
+    /**
+     * Returns dockerVersionsInstalled=true when the plugin directory exists.
+     */
+    public function testGetSavedUpdateStatusDockerVersionsInstalled(): void
+    {
+        @unlink(COMPOSE_UPDATE_STATUS_FILE);
+
+        $fakeDir = sys_get_temp_dir() . '/fake_docker_versions_' . getmypid();
+        mkdir($fakeDir, 0755, true);
+        $this->externalCleanupPaths[] = $fakeDir;
+        UnraidStreamWrapper::addMapping('/usr/local/emhttp/plugins/docker.versions', $fakeDir);
+
+        $output = $this->executeAction('getSavedUpdateStatus');
+        $result = json_decode($output, true);
+
+        $this->assertIsArray($result);
+        $this->assertEquals('success', $result['result']);
+        $this->assertSame([], $result['stacks']);
+        $this->assertTrue($result['dockerVersionsInstalled']);
+    }
+
+    /**
+     * Returns saved stacks alongside dockerVersionsInstalled when a status file exists.
+     */
+    public function testGetSavedUpdateStatusIncludesSavedStacks(): void
+    {
+        $savedStatus = ['my-stack' => ['hasUpdate' => true, 'containers' => []]];
+        file_put_contents(COMPOSE_UPDATE_STATUS_FILE, json_encode($savedStatus));
+
+        $fakeDir = sys_get_temp_dir() . '/fake_docker_versions_' . getmypid();
+        mkdir($fakeDir, 0755, true);
+        $this->externalCleanupPaths[] = $fakeDir;
+        UnraidStreamWrapper::addMapping('/usr/local/emhttp/plugins/docker.versions', $fakeDir);
+
+        $output = $this->executeAction('getSavedUpdateStatus');
+        $result = json_decode($output, true);
+
+        $this->assertIsArray($result);
+        $this->assertEquals('success', $result['result']);
+        $this->assertEquals($savedStatus, $result['stacks']);
+        $this->assertTrue($result['dockerVersionsInstalled']);
+
+        @unlink(COMPOSE_UPDATE_STATUS_FILE);
+    }
+
+    /**
+     * Falls back to empty stacks when the status file contains invalid JSON.
+     */
+    public function testGetSavedUpdateStatusHandlesInvalidStatusFile(): void
+    {
+        file_put_contents(COMPOSE_UPDATE_STATUS_FILE, 'not-valid-json');
+
+        $output = $this->executeAction('getSavedUpdateStatus');
+        $result = json_decode($output, true);
+
+        $this->assertIsArray($result);
+        $this->assertEquals('success', $result['result']);
+        $this->assertSame([], $result['stacks']);
+
+        @unlink(COMPOSE_UPDATE_STATUS_FILE);
     }
 
     // ===========================================
