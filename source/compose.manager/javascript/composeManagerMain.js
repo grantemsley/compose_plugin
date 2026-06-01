@@ -3565,7 +3565,7 @@ function composeInlineMd(t) {
 // Coupling points with docker.versions (update here if that plugin changes them):
 //   - Nchan topic:  /sub/changelog
 //   - PHP endpoint: /plugins/docker.versions/server/GetChangelog.php
-function showComposeChangelog(containerName) {
+function showComposeChangelog(containerName, path, profile) {
     if (typeof NchanSubscriber === 'undefined') return;
 
     var nchan = new NchanSubscriber('/sub/changelog');
@@ -3598,6 +3598,7 @@ function showComposeChangelog(containerName) {
         clearTimeout(timeoutId);
         nchan.stop();
         swal.close();
+        if (path) showStackActionDialog('update', path, profile || '');
     });
 
     // Size the dialog to match docker.versions' changelog modal without borrowing
@@ -3874,7 +3875,7 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
                     html += '<span class="compose-status-success" title="' + composeEscapeAttr(remoteSha) + '">' + composeEscapeHtml(remoteSha.substring(0, 8)) + '</span>';
                     html += '</div>';
                     if (dockerVersionsInstalled) {
-                        html += '<div style="margin-top:4px;"><a href="#" data-changelog-container="' + composeEscapeAttr(containerName) + '" onclick="showComposeChangelog(this.dataset.changelogContainer);return false;" style="font-size:0.85em;"><i class="fa fa-list" style="margin-right:3px;"></i>Changelog</a></div>';
+                        html += '<div style="margin-top:4px;"><a href="#" data-changelog-container="' + composeEscapeAttr(containerName) + '" data-changelog-path="' + composeEscapeAttr(path) + '" data-changelog-profile="' + composeEscapeAttr(profile || '') + '" onclick="showComposeChangelog(this.dataset.changelogContainer,this.dataset.changelogPath,this.dataset.changelogProfile);return false;" style="font-size:0.85em;"><i class="fa fa-list" style="margin-right:3px;"></i>Changelog</a></div>';
                     }
                 } else if (localSha) {
                     // No update - just show current SHA (greyed)
