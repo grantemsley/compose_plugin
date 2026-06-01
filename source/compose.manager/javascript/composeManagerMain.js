@@ -3582,8 +3582,9 @@ function showComposeChangelog(containerName, path, profile) {
     // GetChangelog.php always publishes <h3 class='loading'> as its very first
     // message.  We use that as a start-of-stream marker: discard everything that
     // arrives before it, clear the iframe when it arrives, then display from there.
-    // loadingInfo progress messages are also suppressed — they're informational
-    // noise that clutters the changelog view.
+    // After the start marker, only release entries (class='releasesInfo') and
+    // the version-summary h3 with '---->' are displayed; everything else
+    // (warnings, Container: header, URL links, progress) is filtered out.
     var started = false;
     nchan.on('message', function(data) {
         if (data.includes("class='loading'") && !data.includes("class='loadingInfo'")) {
@@ -3602,7 +3603,16 @@ function showComposeChangelog(containerName, path, profile) {
             return;
         }
         if (!started) return;
-        if (data.includes("class='loadingInfo'")) return;
+
+        // Whitelist: only the two message types that are useful in this context.
+        //   class='releasesInfo'  — the <details> block for each release entry
+        //   <h3> with '---->'     — the "current tag → latest tag" version summary
+        // Everything else (Container: header, URL links, warnings, empty <pre>
+        // container, loadingInfo progress) is informational scaffolding for
+        // docker.versions' own full-page view and is noise here.
+        var isReleaseEntry = data.includes("class='releasesInfo'");
+        var isVersionSummary = /^<h3[\s>]/.test(data.trim()) && data.includes('---->');
+        if (!isReleaseEntry && !isVersionSummary) return;
 
         var iframeDoc = $('#myIframe')[0] && $('#myIframe')[0].contentDocument;
         if (!iframeDoc) return;
