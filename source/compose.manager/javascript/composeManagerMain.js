@@ -3571,9 +3571,39 @@ function showComposeChangelog(containerName, path, profile) {
     var nchan = new NchanSubscriber('/sub/changelog');
     var timeoutId = null;
 
-    // Append Nchan messages to the iframe body.  docker.versions publishes raw
-    // Markdown inside bare <div> elements; render those before inserting.
+    // /sub/changelog is a shared Nchan channel used by docker.versions for all
+    // changelog requests.  Two problems arise if we naively append all messages:
+    //
+    //  1. Stale buffer: Nchan delivers the last buffered message to every new
+    //     subscriber, so we may immediately receive output from a prior request.
+    //  2. Concurrent contamination: docker.versions' own subscriber may be actively
+    //     receiving changelog output for a different container at the same time.
+    //
+    // GetChangelog.php always publishes <h3 class='loading'> as its very first
+    // message.  We use that as a start-of-stream marker: discard everything that
+    // arrives before it, clear the iframe when it arrives, then display from there.
+    // loadingInfo progress messages are also suppressed — they're informational
+    // noise that clutters the changelog view.
+    var started = false;
     nchan.on('message', function(data) {
+        if (data.includes("class='loading'") && !data.includes("class='loadingInfo'")) {
+            started = true;
+            clearTimeout(timeoutId);
+            var iframeDoc = $('#myIframe')[0] && $('#myIframe')[0].contentDocument;
+            if (iframeDoc) $(iframeDoc).find('body').empty().css('background-color', 'white');
+            timeoutId = setTimeout(function() {
+                var iframeDoc = $('#myIframe')[0] && $('#myIframe')[0].contentDocument;
+                if (iframeDoc && !$(iframeDoc).find('body').children().length) {
+                    $(iframeDoc).find('body').html(
+                        '<p style="padding:16px;color:#888;">Changelog unavailable — no data received from docker.versions.</p>'
+                    );
+                }
+            }, 10000);
+            return;
+        }
+        if (!started) return;
+        if (data.includes("class='loadingInfo'")) return;
+
         var iframeDoc = $('#myIframe')[0] && $('#myIframe')[0].contentDocument;
         if (!iframeDoc) return;
         var tmp = document.createElement('div');
@@ -3583,7 +3613,7 @@ function showComposeChangelog(containerName, path, profile) {
                 div.innerHTML = composeRenderMarkdown(div.textContent);
             }
         });
-        $(iframeDoc).find('body').css('background-color', 'white').append(tmp.innerHTML);
+        $(iframeDoc).find('body').append(tmp.innerHTML);
     });
     nchan.start();
 
@@ -3608,11 +3638,12 @@ function showComposeChangelog(containerName, path, profile) {
     $('#myIframe').parent().css('height', '80%');
     $('#myIframe').css('height', '75vh');
 
-    // Show a fallback if docker.versions sends nothing (endpoint moved, Nchan topic
-    // changed, or container not found by docker.versions).
+    // Fallback shown only if the start marker never arrives (docker.versions
+    // endpoint moved, Nchan topic changed, or container not found).
     timeoutId = setTimeout(function() {
+        if (started) return;
         var iframeDoc = $('#myIframe')[0] && $('#myIframe')[0].contentDocument;
-        if (iframeDoc && !$(iframeDoc).find('body').children().length) {
+        if (iframeDoc) {
             $(iframeDoc).find('body').html(
                 '<p style="padding:16px;color:#888;">Changelog unavailable — no data received from docker.versions.</p>'
             );
