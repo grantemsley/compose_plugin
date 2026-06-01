@@ -41,6 +41,16 @@ Each stack supports the following actions:
 | **Edit Stack** | Open the stack editor |
 | **Remove Stack** | Delete the stack configuration |
 
+### Checking for Updates
+
+Use **Check Updates** on a stack to query the registry for newer image versions. Results are cached until the next manual or scheduled check (see [Update Checking settings](configuration.md#update-checking)).
+
+When updates are available, clicking **Update Stack** opens a confirmation dialog listing each container alongside its current and incoming image digest. Containers that are already up to date are dimmed.
+
+#### Changelogs
+
+If the [docker.versions](https://github.com/phyzical/docker.versions) Unraid plugin is installed, a **Changelog** link appears below the digest for each container with a pending update. Clicking it opens the release notes for that image in a modal. No configuration is required — Compose Manager detects docker.versions automatically.
+
 ## Autostart
 
 Enable autostart to have stacks start automatically when the Unraid array starts.

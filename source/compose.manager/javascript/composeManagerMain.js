@@ -3505,6 +3505,59 @@ function mergeUpdateStatus(containers, project) {
     return containers;
 }
 
+// Minimal markdown renderer for docker.versions release bodies.
+// docker.versions publishes the raw GitHub API `body` field (Markdown) inside
+// plain <div> elements.  This converts the common patterns found in release
+// notes to HTML; no external library required.
+function composeRenderMarkdown(md) {
+    if (!md || !md.trim()) return '';
+    var blocks = [];
+    md = md.replace(/```(?:[^\n]*)?\n([\s\S]*?)```/g, function(_, code) {
+        blocks.push('<pre style="background:#f6f8fa;padding:8px;border-radius:4px;overflow-x:auto;white-space:pre;"><code>' +
+            code.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</code></pre>');
+        return '\x00' + (blocks.length - 1) + '\x00';
+    });
+    md = md.replace(/`([^`\n]+)`/g, function(_, c) {
+        return '<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:0.9em;">' +
+            c.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</code>';
+    });
+    var out = '';
+    var inUL = false;
+    md.split('\n').forEach(function(line) {
+        var h = line.match(/^(#{1,6})\s+(.*)/);
+        if (h) {
+            if (inUL) { out += '</ul>'; inUL = false; }
+            var n = h[1].length;
+            out += '<h' + n + ' style="margin:8px 0 4px;">' + composeInlineMd(h[2]) + '</h' + n + '>';
+            return;
+        }
+        var li = line.match(/^\s*[-*+]\s+(.*)/);
+        if (li) {
+            if (!inUL) { out += '<ul style="margin:4px 0;padding-left:20px;">'; inUL = true; }
+            out += '<li>' + composeInlineMd(li[1]) + '</li>';
+            return;
+        }
+        if (!line.trim()) {
+            if (inUL) { out += '</ul>'; inUL = false; }
+            out += '<br>';
+            return;
+        }
+        if (inUL) { out += '</ul>'; inUL = false; }
+        out += '<p style="margin:4px 0;">' + composeInlineMd(line) + '</p>';
+    });
+    if (inUL) out += '</ul>';
+    return out.replace(/\x00(\d+)\x00/g, function(_, i) { return blocks[i]; });
+}
+
+function composeInlineMd(t) {
+    t = t.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    t = t.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    t = t.replace(/~~(.+?)~~/g, '<del>$1</del>');
+    t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    return t;
+}
+
 // Show docker.versions changelog for a single container in a modal.
 // Only called when dockerVersionsInstalled is true; guards against NchanSubscriber
 // being unavailable (e.g. docker.versions removed without page reload).
@@ -3518,12 +3571,19 @@ function showComposeChangelog(containerName) {
     var nchan = new NchanSubscriber('/sub/changelog');
     var timeoutId = null;
 
-    // Append all Nchan messages directly to the iframe body.  Avoids depending on
-    // docker.versions' internal HTML class names to route content to sub-elements.
+    // Append Nchan messages to the iframe body.  docker.versions publishes raw
+    // Markdown inside bare <div> elements; render those before inserting.
     nchan.on('message', function(data) {
         var iframeDoc = $('#myIframe')[0] && $('#myIframe')[0].contentDocument;
         if (!iframeDoc) return;
-        $(iframeDoc).find('body').css('background-color', 'white').append(data);
+        var tmp = document.createElement('div');
+        tmp.innerHTML = data;
+        tmp.querySelectorAll('div').forEach(function(div) {
+            if (div.children.length === 0 && div.textContent.trim()) {
+                div.innerHTML = composeRenderMarkdown(div.textContent);
+            }
+        });
+        $(iframeDoc).find('body').css('background-color', 'white').append(tmp.innerHTML);
     });
     nchan.start();
 
