@@ -3521,11 +3521,23 @@ function showComposeChangelog(containerName, path, profile) {
     if (!path) return;
     // Reopen the Update Stack dialog when the changelog dialog closes.
     // SweetAlert 1.x has no close event; poll the showSweetAlert class instead.
+    // Cap at 300 ticks (30 s) so the interval self-cleans if the dialog never opens.
     var appeared = false;
+    var ticks = 0;
     var poll = setInterval(function() {
+        if (++ticks > 300) { clearInterval(poll); return; }
         var open = $('.sweet-alert').hasClass('showSweetAlert');
         if (!appeared) { if (open) appeared = true; return; }
-        if (!open) { clearInterval(poll); showStackActionDialog('update', path, profile || ''); }
+        if (!open) {
+            clearInterval(poll);
+            // Skip reopening when DISABLE_ACTION_WARNINGS is true: renderStackActionDialog
+            // has a fast-path that calls UpdateStackConfirmed directly in that mode,
+            // so reopening would trigger an immediate update rather than a dialog.
+            getConfig().then(function(cfg) {
+                if (cfg && cfg.DISABLE_ACTION_WARNINGS === 'true') return;
+                showStackActionDialog('update', path, profile || '');
+            });
+        }
     }, 100);
 }
 
