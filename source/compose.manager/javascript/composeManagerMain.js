@@ -3505,162 +3505,28 @@ function mergeUpdateStatus(containers, project) {
     return containers;
 }
 
-// Minimal markdown renderer for docker.versions release bodies.
-// docker.versions publishes the raw GitHub API `body` field (Markdown) inside
-// plain <div> elements.  This converts the common patterns found in release
-// notes to HTML; no external library required.
-function composeRenderMarkdown(md) {
-    if (!md || !md.trim()) return '';
-    var blocks = [];
-    md = md.replace(/```(?:[^\n]*)?\n([\s\S]*?)```/g, function(_, code) {
-        blocks.push('<pre style="background:#f6f8fa;padding:8px;border-radius:4px;overflow-x:auto;white-space:pre;"><code>' +
-            code.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</code></pre>');
-        return '\x00' + (blocks.length - 1) + '\x00';
-    });
-    md = md.replace(/`([^`\n]+)`/g, function(_, c) {
-        return '<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:0.9em;">' +
-            c.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</code>';
-    });
-    var out = '';
-    var inUL = false;
-    md.split('\n').forEach(function(line) {
-        var h = line.match(/^(#{1,6})\s+(.*)/);
-        if (h) {
-            if (inUL) { out += '</ul>'; inUL = false; }
-            var n = h[1].length;
-            out += '<h' + n + ' style="margin:8px 0 4px;">' + composeInlineMd(h[2]) + '</h' + n + '>';
-            return;
-        }
-        var li = line.match(/^\s*[-*+]\s+(.*)/);
-        if (li) {
-            if (!inUL) { out += '<ul style="margin:4px 0;padding-left:20px;">'; inUL = true; }
-            out += '<li>' + composeInlineMd(li[1]) + '</li>';
-            return;
-        }
-        if (!line.trim()) {
-            if (inUL) { out += '</ul>'; inUL = false; }
-            out += '<br>';
-            return;
-        }
-        if (inUL) { out += '</ul>'; inUL = false; }
-        out += '<p style="margin:4px 0;">' + composeInlineMd(line) + '</p>';
-    });
-    if (inUL) out += '</ul>';
-    return out.replace(/\x00(\d+)\x00/g, function(_, i) { return blocks[i]; });
-}
-
-function composeInlineMd(t) {
-    t = t.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-    t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    t = t.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    t = t.replace(/~~(.+?)~~/g, '<del>$1</del>');
-    t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-    return t;
-}
-
-// Show docker.versions changelog for a single container in a modal.
-// Only called when dockerVersionsInstalled is true; guards against NchanSubscriber
-// being unavailable (e.g. docker.versions removed without page reload).
+// Show docker.versions changelog for a single container.
+// Delegates entirely to docker.versions' own showChangeLog() so that display
+// logic, Nchan subscription management, and message routing stay in one place.
 //
-// Coupling points with docker.versions (update here if that plugin changes them):
-//   - Nchan topic:  /sub/changelog
-//   - PHP endpoint: /plugins/docker.versions/server/GetChangelog.php
+// Coupling point: showChangeLog(containerName) — global function from
+// docker.versions/scripts/changelog.js.  If that function is renamed or
+// removed, this feature silently does nothing.
 function showComposeChangelog(containerName, path, profile) {
-    if (typeof NchanSubscriber === 'undefined') return;
-
-    var nchan = new NchanSubscriber('/sub/changelog');
-    var timeoutId = null;
-
-    // /sub/changelog is a shared Nchan channel used by docker.versions for all
-    // changelog requests.  Two problems arise if we naively append all messages:
-    //
-    //  1. Stale buffer: Nchan delivers the last buffered message to every new
-    //     subscriber, so we may immediately receive output from a prior request.
-    //  2. Concurrent contamination: docker.versions' own subscriber may be actively
-    //     receiving changelog output for a different container at the same time.
-    //
-    // GetChangelog.php always publishes <h3 class='loading'> as its very first
-    // message.  We use that as a start-of-stream marker: discard everything that
-    // arrives before it, clear the iframe when it arrives, then display from there.
-    // After the start marker, only release entries (class='releasesInfo') and
-    // the version-summary h3 with '---->' are displayed; everything else
-    // (warnings, Container: header, URL links, progress) is filtered out.
-    var started = false;
-    nchan.on('message', function(data) {
-        if (data.includes("class='loading'") && !data.includes("class='loadingInfo'")) {
-            started = true;
-            clearTimeout(timeoutId);
-            var iframeDoc = $('#myIframe')[0] && $('#myIframe')[0].contentDocument;
-            if (iframeDoc) $(iframeDoc).find('body').empty().css('background-color', 'white');
-            timeoutId = setTimeout(function() {
-                var iframeDoc = $('#myIframe')[0] && $('#myIframe')[0].contentDocument;
-                if (iframeDoc && !$(iframeDoc).find('body').children().length) {
-                    $(iframeDoc).find('body').html(
-                        '<p style="padding:16px;color:#888;">Changelog unavailable — no data received from docker.versions.</p>'
-                    );
-                }
-            }, 10000);
-            return;
-        }
-        if (!started) return;
-
-        // Whitelist: only the two message types that are useful in this context.
-        //   class='releasesInfo'  — the <details> block for each release entry
-        //   <h3> with '---->'     — the "current tag → latest tag" version summary
-        // Everything else (Container: header, URL links, warnings, empty <pre>
-        // container, loadingInfo progress) is informational scaffolding for
-        // docker.versions' own full-page view and is noise here.
-        var isReleaseEntry = data.includes("class='releasesInfo'");
-        var isVersionSummary = /^<h3[\s>]/.test(data.trim()) && data.includes('---->');
-        if (!isReleaseEntry && !isVersionSummary) return;
-
-        var iframeDoc = $('#myIframe')[0] && $('#myIframe')[0].contentDocument;
-        if (!iframeDoc) return;
-        var tmp = document.createElement('div');
-        tmp.innerHTML = data;
-        tmp.querySelectorAll('div').forEach(function(div) {
-            if (div.children.length === 0 && div.textContent.trim()) {
-                div.innerHTML = composeRenderMarkdown(div.textContent);
-            }
-        });
-        $(iframeDoc).find('body').append(tmp.innerHTML);
-    });
-    nchan.start();
-
-    swal({
-        title: 'Changelog: ' + containerName,
-        text: '<iframe id="myIframe" frameborder="0" scrolling="yes" width="100%" height="99%"></iframe>',
-        html: true,
-        closeOnConfirm: true,
-        showCancelButton: false,
-        allowOutsideClick: true,
-    }, function() {
-        clearTimeout(timeoutId);
-        nchan.stop();
-        swal.close();
-        if (path) showStackActionDialog('update', path, profile || '');
-    });
-
-    // Size the dialog to match docker.versions' changelog modal without borrowing
-    // its CSS classes (avoids depending on its stylesheet being loaded).
-    // Equivalent to: .sweet-alert.change-log-summary + .change-log-iframe-container + #myIframe
-    $('.sweet-alert').css({ width: '75%', maxWidth: '75%' });
-    $('#myIframe').parent().css('height', '80%');
-    $('#myIframe').css('height', '75vh');
-
-    // Fallback shown only if the start marker never arrives (docker.versions
-    // endpoint moved, Nchan topic changed, or container not found).
-    timeoutId = setTimeout(function() {
-        if (started) return;
-        var iframeDoc = $('#myIframe')[0] && $('#myIframe')[0].contentDocument;
-        if (iframeDoc) {
-            $(iframeDoc).find('body').html(
-                '<p style="padding:16px;color:#888;">Changelog unavailable — no data received from docker.versions.</p>'
-            );
-        }
-    }, 10000);
-
-    $.get('/plugins/docker.versions/server/GetChangelog.php', { 'cts[]': containerName });
+    if (typeof showChangeLog !== 'function') return;
+    showChangeLog(containerName);
+    // docker.versions' OK button calls updateContainer(), which bypasses
+    // compose_plugin's update mechanism.  Hide it so the only exit is Cancel.
+    setTimeout(function() { $('.sweet-alert .confirm').hide(); }, 0);
+    if (!path) return;
+    // Reopen the Update Stack dialog when the changelog dialog closes.
+    // SweetAlert 1.x has no close event; poll the showSweetAlert class instead.
+    var appeared = false;
+    var poll = setInterval(function() {
+        var open = $('.sweet-alert').hasClass('showSweetAlert');
+        if (!appeared) { if (open) appeared = true; return; }
+        if (!open) { clearInterval(poll); showStackActionDialog('update', path, profile || ''); }
+    }, 100);
 }
 
 // Unified stack action dialog - handles up, down, and update actions
