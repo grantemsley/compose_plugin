@@ -966,6 +966,9 @@ function updateTabModifiedState() {
 // Update status cache per stack
 var stackUpdateStatus = {};
 
+// Set to true when docker.versions plugin is detected (populated from getSavedUpdateStatus response)
+var dockerVersionsInstalled = false;
+
 // Load saved update status from server (called on page load)
 // If auto-check is enabled and interval has elapsed, trigger a fresh check
 // Also checks for pending rechecks from recent update operations
@@ -978,6 +981,7 @@ function loadSavedUpdateStatus() {
                 var response = JSON.parse(data);
                 if (response.result === 'success' && response.stacks) {
                     stackUpdateStatus = response.stacks;
+                    if (response.dockerVersionsInstalled) dockerVersionsInstalled = true;
 
                     // Update the UI for each stack with saved status
                     for (var stackName in response.stacks) {
@@ -3501,6 +3505,42 @@ function mergeUpdateStatus(containers, project) {
     return containers;
 }
 
+// Show docker.versions changelog for a single container.
+// Delegates entirely to docker.versions' own showChangeLog() so that display
+// logic, Nchan subscription management, and message routing stay in one place.
+//
+// Coupling point: showChangeLog(containerName) — global function from
+// docker.versions/scripts/changelog.js.  If that function is renamed or
+// removed, this feature silently does nothing.
+function showComposeChangelog(containerName, path, profile) {
+    if (typeof showChangeLog !== 'function') return;
+    showChangeLog(containerName);
+    // docker.versions' OK button calls updateContainer(), which bypasses
+    // compose_plugin's update mechanism.  Hide it so the only exit is Cancel.
+    setTimeout(function() { $('.sweet-alert .confirm').hide(); }, 0);
+    if (!path) return;
+    // Reopen the Update Stack dialog when the changelog dialog closes.
+    // SweetAlert 1.x has no close event; poll the showSweetAlert class instead.
+    // Cap at 300 ticks (30 s) so the interval self-cleans if the dialog never opens.
+    var appeared = false;
+    var ticks = 0;
+    var poll = setInterval(function() {
+        if (++ticks > 300) { clearInterval(poll); return; }
+        var open = $('.sweet-alert').hasClass('showSweetAlert');
+        if (!appeared) { if (open) appeared = true; return; }
+        if (!open) {
+            clearInterval(poll);
+            // Skip reopening when DISABLE_ACTION_WARNINGS is true: renderStackActionDialog
+            // has a fast-path that calls UpdateStackConfirmed directly in that mode,
+            // so reopening would trigger an immediate update rather than a dialog.
+            getConfig().then(function(cfg) {
+                if (cfg && cfg.DISABLE_ACTION_WARNINGS === 'true') return;
+                showStackActionDialog('update', path, profile || '');
+            });
+        }
+    }, 100);
+}
+
 // Unified stack action dialog - handles up, down, and update actions
 function showStackActionDialog(action, path, profile) {
     var stackName = basename(path);
@@ -3753,6 +3793,9 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
                     html += ' <i class="fa fa-arrow-right compose-status-success" style="margin:0 4px;"></i> ';
                     html += '<span class="compose-status-success" title="' + composeEscapeAttr(remoteSha) + '">' + composeEscapeHtml(remoteSha.substring(0, 8)) + '</span>';
                     html += '</div>';
+                    if (dockerVersionsInstalled) {
+                        html += '<div style="margin-top:4px;"><a href="#" data-changelog-container="' + composeEscapeAttr(containerName) + '" data-changelog-path="' + composeEscapeAttr(path) + '" data-changelog-profile="' + composeEscapeAttr(profile || '') + '" onclick="showComposeChangelog(this.dataset.changelogContainer,this.dataset.changelogPath,this.dataset.changelogProfile);return false;" style="font-size:0.85em;"><i class="fa fa-list" style="margin-right:3px;"></i>Changelog</a></div>';
+                    }
                 } else if (localSha) {
                     // No update - just show current SHA (greyed)
                     html += '<div style="font-family:var(--font-bitstream);font-size:0.9em;margin-top:2px;" title="' + composeEscapeAttr(localSha) + '"><span class="compose-text-muted">' + composeEscapeHtml(localSha.substring(0, 8)) + '</span></div>';
