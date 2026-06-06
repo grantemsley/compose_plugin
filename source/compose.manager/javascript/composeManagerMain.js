@@ -1488,10 +1488,10 @@ function isValidIconSrc(src) {
 
 function loadPersistentContainerCache() {
     return new Promise(function(resolve) {
-        $.get('/plugins/compose.manager/containers.cache.json')
+        $.get('/plugins/compose.manager/include/ContainerCache.php')
             .done(function(data) {
                 try {
-                    persistentContainerCache = JSON.parse(data) || {};
+                    persistentContainerCache = (typeof data === 'string' ? JSON.parse(data) : data) || {};
                 } catch (e) {
                     persistentContainerCache = {};
                     composeLogger('Failed to parse persistent container cache', {
