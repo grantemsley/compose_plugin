@@ -74,6 +74,16 @@ foreach (StackInfo::allFromRoot($compose_root) as $stackInfo) {
     $profiles = $stackInfo->getProfiles();
     $profilesJson = htmlspecialchars(json_encode($profiles ?: []), ENT_QUOTES, 'UTF-8');
 
+    // Get default profiles for actions like force update
+    $defaultProfiles = $stackInfo->getDefaultProfiles();
+    $defaultProfilesStr = implode(',', $defaultProfiles);
+    $defaultProfilesHtml = htmlspecialchars($defaultProfilesStr, ENT_QUOTES, 'UTF-8');
+
+    // Get running profiles so UI can prioritize current runtime selection
+    $runningProfiles = $stackInfo->getRunningProfiles();
+    $runningProfilesStr = implode(',', $runningProfiles);
+    $runningProfilesHtml = htmlspecialchars($runningProfilesStr, ENT_QUOTES, 'UTF-8');
+
     // Determine status text and class for badge
     $statusText = "Stopped";
     $statusClass = "status-stopped";
@@ -160,7 +170,7 @@ foreach (StackInfo::allFromRoot($compose_root) as $stackInfo) {
     $hasBuild = $stackInfo->hasBuildConfig() ? '1' : '0';
 
     // Main row - Docker tab structure with expand arrow on left
-    $o .= "<tr class='compose-sortable' id='stack-row-$id' data-project='$projectHtml' data-projectname='$projectNameHtml' data-path='$pathHtml' data-isup='$isup' data-profiles='$profilesJson' data-webui='$webuiUrlHtml' data-containers='$containerNamesAttr' data-ctids='$containerIdsAttr' data-hasbuild='$hasBuild' data-invalid-indirect='" . ($hasInvalidIndirect ? '1' : '0') . "' data-invalid-indirect-path='$invalidIndirectPathHtml'>";
+    $o .= "<tr class='compose-sortable' id='stack-row-$id' data-project='$projectHtml' data-projectname='$projectNameHtml' data-path='$pathHtml' data-isup='$isup' data-profiles='$profilesJson' data-running-profile='$runningProfilesHtml' data-default-profile='$defaultProfilesHtml' data-webui='$webuiUrlHtml' data-containers='$containerNamesAttr' data-ctids='$containerIdsAttr' data-hasbuild='$hasBuild' data-invalid-indirect='" . ($hasInvalidIndirect ? '1' : '0') . "' data-invalid-indirect-path='$invalidIndirectPathHtml'>";
 
     // Arrow column
     $o .= "<td class='col-arrow'>";

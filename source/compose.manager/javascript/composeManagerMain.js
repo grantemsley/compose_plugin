@@ -2584,8 +2584,23 @@ function editStackSettings(myID) {
 // Unified update warning dialog - called from stack row and container table
 function showUpdateWarning(project, stackId) {
     var path = compose_root + '/' + project;
-    // Use the existing UpdateStack function which already has the warning dialog
-    UpdateStack(path, "");
+    // Use row metadata so force-update from status column behaves like context menu.
+    var $stackRow = $('#compose_stacks tr.compose-sortable[data-project="' + project + '"]');
+    var profiles = [];
+    var runningProfile = '';
+    var defaultProfile = '';
+
+    if ($stackRow.length > 0) {
+        profiles = $stackRow.data('profiles') || [];
+        runningProfile = $stackRow.attr('data-running-profile') || '';
+        defaultProfile = $stackRow.attr('data-default-profile') || '';
+    }
+
+    if (profiles.length > 0) {
+        showProfileSelector('forceUpdate', path, profiles, runningProfile, defaultProfile);
+    } else {
+        ForceUpdateStack(path);
+    }
 }
 
 // Show a brief swal when a background command is dispatched
@@ -3999,6 +4014,8 @@ function executeStackAction(action) {
     var projectName = $row.data('projectname');
     var path = $row.data('path');
     var profiles = $row.data('profiles') || [];
+    var runningProfile = $row.data('running-profile') || '';
+    var defaultProfile = $row.data('default-profile') || '';
     var isUp = $row.data('isup') == "1";
 
     closeStackActionsMenu();
@@ -4006,7 +4023,7 @@ function executeStackAction(action) {
     // Handle profile selection if profiles exist and action supports it
     var profileSupportedActions = ['up', 'down', 'update', 'pull', 'logs'];
     if (profiles.length > 0 && profileSupportedActions.includes(action)) {
-        showProfileSelector(action, path, profiles);
+        showProfileSelector(action, path, profiles, runningProfile, defaultProfile);
         return;
     }
 
@@ -4040,7 +4057,13 @@ function executeStackAction(action) {
     }
 }
 
-function showProfileSelector(action, path, profiles) {
+function showProfileSelector(action, path, profiles, runningProfile, defaultProfile) {
+    if (typeof runningProfile === 'undefined') {
+        runningProfile = '';
+    }
+    if (typeof defaultProfile === 'undefined') {
+        defaultProfile = '';
+    }
     var actionNames = {
         'up': 'Compose Up',
         'down': 'Compose Down',
@@ -4060,12 +4083,42 @@ function showProfileSelector(action, path, profiles) {
     profileHtml += '<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--dynamix-box-inner-div-border-color);">';
     profileHtml += '<label style="font-weight:bold;"><input type="checkbox" id="profile_default" checked disabled> Default services (no profile)</label>';
     profileHtml += '</div>';
+    
+    function parseProfileList(rawValue) {
+        if (!rawValue) return [];
+        return rawValue.split(',').map(function(p) {
+            return p.trim();
+        }).filter(function(p) {
+            return p !== '';
+        });
+    }
+
+    // Selection priority: running profiles -> default profiles -> all (*)
+    var runningProfileSet = parseProfileList(runningProfile);
+    var defaultProfileSet = parseProfileList(defaultProfile);
+    var preselectedProfiles = [];
+    var showAllProfilesChecked = false;
+
+    if (runningProfileSet.indexOf('*') !== -1) {
+        showAllProfilesChecked = true;
+    } else if (runningProfileSet.length > 0) {
+        preselectedProfiles = runningProfileSet;
+    } else if (defaultProfileSet.indexOf('*') !== -1) {
+        showAllProfilesChecked = true;
+    } else if (defaultProfileSet.length > 0) {
+        preselectedProfiles = defaultProfileSet;
+    } else {
+        showAllProfilesChecked = true;
+    }
+    var profileCheckboxDisabled = showAllProfilesChecked ? 'disabled' : '';
+    
     profileHtml += '<div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--dynamix-box-inner-div-border-color);">';
-    profileHtml += '<label style="font-weight:bold;"><input type="checkbox" id="profile_all_profiles" checked onchange="toggleAllProfiles(this)"> All profile-based services (*)</label>';
+    profileHtml += '<label style="font-weight:bold;"><input type="checkbox" id="profile_all_profiles" ' + (showAllProfilesChecked ? 'checked' : '') + ' onchange="toggleAllProfiles(this)"> All profile-based services (*)</label>';
     profileHtml += '</div>';
     profileHtml += '<div id="profile_list">';
     profiles.forEach(function(profile) {
-        profileHtml += '<label style="display:block;margin:5px 0;"><input type="checkbox" class="profile_checkbox" value="' + composeEscapeHtml(profile) + '" disabled> ' + composeEscapeHtml(profile) + '</label>';
+        var isChecked = !showAllProfilesChecked && preselectedProfiles.indexOf(profile) >= 0;
+        profileHtml += '<label style="display:block;margin:5px 0;"><input type="checkbox" class="profile_checkbox" value="' + composeEscapeHtml(profile) + '" ' + profileCheckboxDisabled + ' ' + (isChecked ? 'checked' : '') + ' onchange="updateProfileCheckboxes()"> ' + composeEscapeHtml(profile) + '</label>';
     });
     profileHtml += '</div>';
     profileHtml += '<div class="compose-text-muted" style="margin-top:10px;font-size:0.9em;"><i class="fa fa-info-circle"></i> Default services are always included. Select multiple profiles to include profile-based services.</div>';
@@ -4123,6 +4176,14 @@ function showProfileSelector(action, path, profiles) {
 function toggleAllProfiles(checkbox) {
     var disabled = checkbox.checked;
     $('.profile_checkbox').prop('disabled', disabled).prop('checked', false);
+}
+
+function updateProfileCheckboxes() {
+    // If any individual profile is checked, uncheck "all profiles"
+    var anyIndividualChecked = $('.profile_checkbox:checked').length > 0;
+    if (anyIndividualChecked) {
+        $('#profile_all_profiles').prop('checked', false);
+    }
 }
 
 function openEditorModalByProject(project, projectName, initialTab) {
@@ -6575,6 +6636,8 @@ function addComposeStackContext(elementId) {
     var $row = $('#stack-row-' + stackId);
     var path = $row.data('path');
     var profiles = $row.data('profiles') || [];
+    var runningProfile = $row.data('running-profile') || '';
+    var defaultProfile = $row.data('default-profile') || '';
     var webuiUrl = $row.data('webui') || '';
     var hasBuild = $row.data('hasbuild') == "1";
     var hasExistingContainers = false;
@@ -6646,7 +6709,7 @@ function addComposeStackContext(elementId) {
             action: function(e) {
                 e.preventDefault();
                 if (profiles.length > 0) {
-                    showProfileSelector('up', path, profiles);
+                    showProfileSelector('up', path, profiles, runningProfile, defaultProfile);
                 } else {
                     ComposeUp(path);
                 }
@@ -6660,7 +6723,7 @@ function addComposeStackContext(elementId) {
             action: function(e) {
                 e.preventDefault();
                 if (profiles.length > 0) {
-                    showProfileSelector('down', path, profiles);
+                    showProfileSelector('down', path, profiles, runningProfile, defaultProfile);
                 } else {
                     ComposeDown(path);
                 }
@@ -6674,7 +6737,7 @@ function addComposeStackContext(elementId) {
             action: function(e) {
                 e.preventDefault();
                 if (profiles.length > 0) {
-                    showProfileSelector('stop', path, profiles);
+                    showProfileSelector('stop', path, profiles, runningProfile, defaultProfile);
                 } else {
                     ComposeStop(path);
                 }
@@ -6688,7 +6751,7 @@ function addComposeStackContext(elementId) {
             action: function(e) {
                 e.preventDefault();
                 if (profiles.length > 0) {
-                    showProfileSelector('restart', path, profiles);
+                    showProfileSelector('restart', path, profiles, runningProfile, defaultProfile);
                 } else {
                     ComposeRestart(path);
                 }
@@ -6709,7 +6772,7 @@ function addComposeStackContext(elementId) {
                 action: function(e) {
                     e.preventDefault();
                     if (profiles.length > 0) {
-                        showProfileSelector('update', path, profiles);
+                        showProfileSelector('update', path, profiles, runningProfile, defaultProfile);
                     } else {
                         UpdateStack(path);
                     }
@@ -6724,7 +6787,7 @@ function addComposeStackContext(elementId) {
                 action: function(e) {
                     e.preventDefault();
                     if (profiles.length > 0) {
-                        showProfileSelector('forceUpdate', path, profiles);
+                        showProfileSelector('forceUpdate', path, profiles, runningProfile, defaultProfile);
                     } else {
                         ForceUpdateStack(path);
                     }
@@ -6741,7 +6804,7 @@ function addComposeStackContext(elementId) {
             action: function(e) {
                 e.preventDefault();
                 if (profiles.length > 0) {
-                    showProfileSelector('up', path, profiles);
+                    showProfileSelector('up', path, profiles, runningProfile, defaultProfile);
                 } else {
                     ComposeUp(path);
                 }
@@ -6756,7 +6819,7 @@ function addComposeStackContext(elementId) {
                 action: function(e) {
                     e.preventDefault();
                     if (profiles.length > 0) {
-                        showProfileSelector('down', path, profiles);
+                        showProfileSelector('down', path, profiles, runningProfile, defaultProfile);
                     } else {
                         ComposeDown(path);
                     }
@@ -6776,7 +6839,7 @@ function addComposeStackContext(elementId) {
             action: function(e) {
                 e.preventDefault();
                 if (profiles.length > 0) {
-                    showProfileSelector('pull', path, profiles);
+                    showProfileSelector('pull', path, profiles, runningProfile, defaultProfile);
                 } else {
                     ComposePull(path);
                 }
@@ -6791,7 +6854,7 @@ function addComposeStackContext(elementId) {
             action: function(e) {
                 e.preventDefault();
                 if (profiles.length > 0) {
-                    showProfileSelector('update', path, profiles);
+                    showProfileSelector('update', path, profiles, runningProfile, defaultProfile);
                 } else {
                     UpdateStack(path);
                 }
