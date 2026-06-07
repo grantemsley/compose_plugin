@@ -112,24 +112,43 @@ function initComposeSortable() {
         items: '> tr.compose-sortable',
         cursor: 'grab',
         axis: 'y',
-        containment: 'parent',
+        // No containment — 'parent' clamps the helper's Y to the container edge,
+        // which makes jQuery UI compare positions using the clipped offset instead
+        // of the true mouse position.  That means dragging above the first row
+        // never triggers a swap (can't reach position 0).  axis:'y' already
+        // prevents horizontal drift, so containment is not needed.
         cancel: '[data-stackid], .compose-updatecolumn a, .compose-updatecolumn .exec, .auto_start, .switchButton, a, button, input',
         delay: 100,
         opacity: 0.5,
         zIndex: 9999,
         forcePlaceholderSize: true,
         start: function (event, ui) {
-            var $detailsRow = getComposeDetailsRowForItem(ui.item);
-            if ($detailsRow.length) {
-                ui.item.data('compose-details-row', $detailsRow.detach());
-            }
+            // Detach ALL non-sortable rows (details/expand rows) for the duration
+            // of the drag.  jQuery UI measures each item's offset().top to decide
+            // where the placeholder goes; interspersed non-sortable rows shift those
+            // offsets and cause erratic placeholder jumps.  Store each detached row
+            // on its sibling stack-row so we can reattach it cleanly in stop().
+            $tbody.children('tr:not(.compose-sortable)').each(function () {
+                var $dr = $(this);
+                var $stackRow = $dr.prev('tr.compose-sortable');
+                if ($stackRow.length) {
+                    $stackRow.data('_detached-details', $dr.detach());
+                }
+            });
         },
         update: function () {
             saveComposeSortOrder();
         },
         stop: function (event, ui) {
-            reattachComposeDetailsRow(ui.item);
-            normalizeComposeDetailsRowOrder($tbody);
+            // Reattach all details rows in the new (post-drop) order.
+            $tbody.children('tr.compose-sortable').each(function () {
+                var $stackRow = $(this);
+                var $dr = $stackRow.data('_detached-details');
+                if ($dr && $dr.length) {
+                    $dr.insertAfter($stackRow);
+                    $stackRow.removeData('_detached-details');
+                }
+            });
         }
     });
 }
