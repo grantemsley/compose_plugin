@@ -123,15 +123,19 @@ function initComposeSortable() {
         zIndex: 9999,
         forcePlaceholderSize: true,
         start: function (event, ui) {
-            // Detach ALL non-sortable rows (details/expand rows) for the duration
-            // of the drag.  jQuery UI measures each item's offset().top to decide
-            // where the placeholder goes; interspersed non-sortable rows shift those
-            // offsets and cause erratic placeholder jumps.  Store each detached row
-            // on its sibling stack-row so we can reattach it cleanly in stop().
-            $tbody.children('tr:not(.compose-sortable)').each(function () {
-                var $dr = $(this);
-                var $stackRow = $dr.prev('tr.compose-sortable');
-                if ($stackRow.length) {
+            // Detach each stack row's details row by explicit ID lookup rather than
+            // DOM adjacency.  When jQuery UI fires 'start' it has already inserted
+            // the ui-sortable-placeholder <tr> into the tbody, and it lands between
+            // ui.item and that row's details row.  A prev('tr.compose-sortable')
+            // traversal would then find the placeholder instead of the stack row,
+            // returning an empty set — leaving the expanded details row un-stored
+            // and therefore orphaned in the DOM after the drop.
+            $tbody.children('tr.compose-sortable').each(function () {
+                var $stackRow = $(this);
+                var rowId = $stackRow.attr('id') || '';
+                if (rowId.indexOf('stack-row-') !== 0) { return; }
+                var $dr = $('#details-row-' + rowId.replace('stack-row-', ''));
+                if ($dr.length) {
                     $stackRow.data('_detached-details', $dr.detach());
                 }
             });
