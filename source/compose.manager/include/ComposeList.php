@@ -10,10 +10,37 @@ require_once("/usr/local/emhttp/plugins/compose.manager/include/Util.php");
 
 $cfg = parse_plugin_cfg($sName);
 
+$mode = isset($_GET['mode']) ? trim((string)$_GET['mode']) : 'html';
+if ($mode === 'list') {
+    $projects = StackInfo::listProjectFolders($compose_root);
+    echo json_encode([
+        'result' => 'success',
+        'projects' => array_values($projects),
+    ]);
+    exit;
+}
+
 $o = "";
 $stackCount = 0;
 
-foreach (StackInfo::allFromRoot($compose_root) as $stackInfo) {
+$stackInfos = [];
+if ($mode === 'row') {
+    $project = isset($_GET['project']) ? basename(trim((string)$_GET['project'])) : '';
+    if ($project === '') {
+        echo json_encode(['result' => 'error', 'message' => 'Project not specified.']);
+        exit;
+    }
+    try {
+        $stackInfos = [StackInfo::fromProject($compose_root, $project)];
+    } catch (\Throwable $e) {
+        echo json_encode(['result' => 'error', 'message' => 'Project not found.']);
+        exit;
+    }
+} else {
+    $stackInfos = StackInfo::allFromRoot($compose_root);
+}
+
+foreach ($stackInfos as $stackInfo) {
     $stackCount++;
 
     $projectName = $stackInfo->getName();
@@ -260,9 +287,16 @@ foreach (StackInfo::allFromRoot($compose_root) as $stackInfo) {
 }
 
 // If no stacks found, show a message
-if ($stackCount === 0) {
+if ($mode !== 'row' && $stackCount === 0) {
     $o = "<tr><td colspan='10' style='text-align:center;padding:20px;color:var(--alt-text-color);'>No Docker Compose stacks found. Click 'Add New Stack' to create one.</td></tr>";
 }
 
 // Output the HTML
-echo $o;
+if ($mode === 'row') {
+    echo json_encode([
+        'result' => 'success',
+        'html' => $o,
+    ]);
+} else {
+    echo $o;
+}
