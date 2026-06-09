@@ -1331,7 +1331,7 @@ function updateStackUpdateUI(stackName, stackInfo) {
     // Update the stack row's update column (match Docker tab style)
     if (updateCount > 0) {
         // Updates available - orange "update ready" style with clickable link and SHA info
-        var updateHtml = '<a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(stackName) + '\', \'' + composeEscapeAttr(stackId) + '\');">';
+        var updateHtml = '<a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(stackName) + '\', \'' + composeEscapeAttr(stackId) + '\', \'update\');">';
         updateHtml += '<span class="orange-text" style="white-space:nowrap;"><i class="fa fa-flash fa-fw"></i> ' + updateCount + ' update' + (updateCount > 1 ? 's' : '') + '</span>';
         updateHtml += '</a>';
 
@@ -1369,14 +1369,14 @@ function updateStackUpdateUI(stackName, stackInfo) {
             // Some containers pinned, rest up-to-date
             var html = '<span class="green-text" style="white-space:nowrap;"><i class="fa fa-check fa-fw"></i> up-to-date</span>';
             html += '<div class="cm-advanced compose-status-info" style="font-size:0.8em;margin-top:2px;"><i class="fa fa-thumb-tack fa-fw"></i> ' + pinnedCount + ' pinned</div>';
-            html += '<div class="cm-advanced"><a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(stackName) + '\', \'' + composeEscapeAttr(stackId) + '\');"><span style="white-space:nowrap;"><i class="fa fa-cloud-download fa-fw"></i> force update</span></a></div>';
+            html += '<div class="cm-advanced"><a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(stackName) + '\', \'' + composeEscapeAttr(stackId) + '\', \'forceUpdate\');"><span style="white-space:nowrap;"><i class="fa fa-cloud-download fa-fw"></i> force update</span></a></div>';
             $updateCell.html(html);
         } else {
             // No updates, no pinned - green "up-to-date" style (like Docker tab)
             // Basic view: just shows up-to-date
             // Advanced view: shows force update link
             var html = '<span class="green-text" style="white-space:nowrap;"><i class="fa fa-check fa-fw"></i> up-to-date</span>';
-            html += '<div class="cm-advanced"><a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(stackName) + '\', \'' + composeEscapeAttr(stackId) + '\');"><span style="white-space:nowrap;"><i class="fa fa-cloud-download fa-fw"></i> force update</span></a></div>';
+            html += '<div class="cm-advanced"><a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(stackName) + '\', \'' + composeEscapeAttr(stackId) + '\', \'forceUpdate\');"><span style="white-space:nowrap;"><i class="fa fa-cloud-download fa-fw"></i> force update</span></a></div>';
             $updateCell.html(html);
         }
     } else {
@@ -2582,13 +2582,14 @@ function editStackSettings(myID) {
 }
 
 // Unified update warning dialog - called from stack row and container table
-function showUpdateWarning(project, stackId) {
+function showUpdateWarning(project, stackId, updateAction) {
     var path = compose_root + '/' + project;
-    // Use row metadata so force-update from status column behaves like context menu.
+    // Use row metadata so profile selection behavior matches context menu actions.
     var $stackRow = $('#compose_stacks tr.compose-sortable[data-project="' + project + '"]');
     var profiles = [];
     var runningProfile = '';
     var defaultProfile = '';
+    updateAction = updateAction || 'update';
 
     if ($stackRow.length > 0) {
         profiles = $stackRow.data('profiles') || [];
@@ -2597,9 +2598,11 @@ function showUpdateWarning(project, stackId) {
     }
 
     if (profiles.length > 0) {
-        showProfileSelector('forceUpdate', path, profiles, runningProfile, defaultProfile);
-    } else {
+        showProfileSelector(updateAction, path, profiles, runningProfile, defaultProfile);
+    } else if (updateAction === 'forceUpdate') {
         ForceUpdateStack(path);
+    } else {
+        UpdateStack(path);
     }
 }
 
@@ -6045,7 +6048,7 @@ function renderContainerDetails(stackId, containers, project) {
             }
         } else if (ctHasUpdate) {
             // Update available - orange "update ready" style with SHA diff
-            html += '<a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(project) + '\', \'' + composeEscapeAttr(stackId) + '\');">';
+            html += '<a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(project) + '\', \'' + composeEscapeAttr(stackId) + '\', \'update\');">';
             html += '<span class="orange-text" style="white-space:nowrap;"><i class="fa fa-flash fa-fw"></i> update ready</span>';
             html += '</a>';
             if (ctLocalSha && ctRemoteSha) {
