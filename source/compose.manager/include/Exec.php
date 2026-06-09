@@ -63,6 +63,66 @@ if (!function_exists('rejectStaleClientPath')) {
     }
 }
 
+if (!function_exists('composeLoadPersistentContainerCache')) {
+    function composeLoadPersistentContainerCache(): array
+    {
+        $cacheFile = '/boot/config/plugins/compose.manager/containers.cache.json';
+        if (!is_file($cacheFile)) {
+            return [];
+        }
+        $decoded = json_decode(file_get_contents($cacheFile), true);
+        return is_array($decoded) ? $decoded : [];
+    }
+}
+
+if (!function_exists('composeSavePersistentContainerCache')) {
+    function composeSavePersistentContainerCache(array $cache): void
+    {
+        $cacheFile = '/boot/config/plugins/compose.manager/containers.cache.json';
+        file_put_contents($cacheFile, json_encode($cache, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+}
+
+if (!function_exists('composeResolveContainerIcon')) {
+    /**
+     * Resolve container icon using stack cache first, then docker inspect fallback.
+     *
+     * @param string $containerName
+     * @param string $service
+     * @param array<string,string> $iconByService
+     * @param array<string,string> $iconByName
+     * @param array<string,string> $inspectIconCache Per-request inspect memoization by container name
+     */
+    function composeResolveContainerIcon(string $containerName, string $service, array $iconByService, array $iconByName, array &$inspectIconCache): string
+    {
+        if ($service !== '' && isset($iconByService[$service]) && $iconByService[$service] !== '') {
+            return $iconByService[$service];
+        }
+
+        if ($containerName !== '' && isset($iconByName[$containerName]) && $iconByName[$containerName] !== '') {
+            return $iconByName[$containerName];
+        }
+
+        if ($containerName === '') {
+            return '';
+        }
+
+        if (isset($inspectIconCache[$containerName])) {
+            return $inspectIconCache[$containerName];
+        }
+
+        global $docker_label_icon;
+        $labelTemplate = '{{ index .Config.Labels "' . $docker_label_icon . '" }}';
+        $cmd = 'docker inspect ' . escapeshellarg($containerName) . ' --format ' . escapeshellarg($labelTemplate) . ' 2>/dev/null';
+        $icon = trim((string) shell_exec($cmd));
+        if ($icon === '<no value>') {
+            $icon = '';
+        }
+        $inspectIconCache[$containerName] = $icon;
+        return $icon;
+    }
+}
+
 switch ($_POST['action']) {
     case 'composeLogger':
         $message = $_POST['msg'] ?? '';
@@ -1290,6 +1350,25 @@ switch ($_POST['action']) {
 
         $updateResults = [];
         $DockerUpdate = new DockerUpdate();
+        $persistentContainerCache = composeLoadPersistentContainerCache();
+        $stackContainerCache = $persistentContainerCache[$script] ?? [];
+        $iconByService = [];
+        $iconByName = [];
+        foreach ($stackContainerCache as $cachedService => $cachedContainer) {
+            if (!is_array($cachedContainer)) {
+                continue;
+            }
+            $cachedIcon = trim((string) ($cachedContainer['icon'] ?? ''));
+            if ($cachedIcon !== '') {
+                $iconByService[(string) $cachedService] = $cachedIcon;
+            }
+            $cachedName = trim((string) ($cachedContainer['name'] ?? ''));
+            if ($cachedName !== '' && $cachedIcon !== '') {
+                $iconByName[$cachedName] = $cachedIcon;
+            }
+        }
+        $inspectIconCache = [];
+        $stackCacheDirty = false;
 
         // Load the update status file to get SHA values
         $dockerManPaths = [
@@ -1320,10 +1399,32 @@ switch ($_POST['action']) {
 
             // Second pass: check updates and collect results
             foreach ($rows as $container) {
-                $containerName = $container['Name'] ?? '';
-                $image = $container['Image'] ?? '';
+                $containerLower = array_change_key_case($container, CASE_LOWER);
+                $containerName = trim((string) ($containerLower['name'] ?? $containerLower['names'] ?? ''));
+                $service = trim((string) ($containerLower['service'] ?? ''));
+                $image = trim((string) ($containerLower['image'] ?? ''));
 
                 if ($containerName && $image) {
+                    $icon = composeResolveContainerIcon($containerName, $service, $iconByService, $iconByName, $inspectIconCache);
+
+                    if ($service !== '' && $icon !== '') {
+                        if (!isset($stackContainerCache[$service]) || !is_array($stackContainerCache[$service])) {
+                            $stackContainerCache[$service] = [];
+                        }
+                        if (($stackContainerCache[$service]['icon'] ?? '') !== $icon) {
+                            $stackContainerCache[$service]['icon'] = $icon;
+                            $stackCacheDirty = true;
+                        }
+                        if (($stackContainerCache[$service]['name'] ?? '') === '') {
+                            $stackContainerCache[$service]['name'] = $containerName;
+                            $stackCacheDirty = true;
+                        }
+                        if (($stackContainerCache[$service]['service'] ?? '') === '') {
+                            $stackContainerCache[$service]['service'] = $service;
+                            $stackCacheDirty = true;
+                        }
+                    }
+
                     // Normalize image name (strip docker.io/ prefix, @sha256: digest, add library/ for official images)
                     $image = ContainerInfo::normalizeImageForUpdateCheck($image);
 
@@ -1354,13 +1455,20 @@ switch ($_POST['action']) {
 
                     $updateResults[] = ContainerInfo::fromUpdateResponse([
                         'container' => $containerName,
+                        'service' => $service,
                         'image' => $image,
+                        'icon' => $icon,
                         'hasUpdate' => $hasUpdate,
                         'status' => $statusText,
                         'localSha' => $localSha,
                         'remoteSha' => $remoteSha
                     ])->toUpdateArray();
                 }
+            }
+
+            if ($stackCacheDirty) {
+                $persistentContainerCache[$script] = $stackContainerCache;
+                composeSavePersistentContainerCache($persistentContainerCache);
             }
         }
 
@@ -1390,6 +1498,9 @@ switch ($_POST['action']) {
 
         $allUpdates = [];
         $DockerUpdate = new DockerUpdate();
+        $persistentContainerCache = composeLoadPersistentContainerCache();
+        $persistentCacheDirty = false;
+        $inspectIconCache = [];
 
         // Path to update status file
         $dockerManPaths = [
@@ -1399,6 +1510,23 @@ switch ($_POST['action']) {
         foreach (StackInfo::allFromRoot($compose_root) as $stackInfoItem) {
             $stackName = $stackInfoItem->projectFolder;
             $projectName = $stackInfoItem->projectFolder;
+            $stackContainerCache = $persistentContainerCache[$stackName] ?? [];
+            $iconByService = [];
+            $iconByName = [];
+            foreach ($stackContainerCache as $cachedService => $cachedContainer) {
+                if (!is_array($cachedContainer)) {
+                    continue;
+                }
+                $cachedIcon = trim((string) ($cachedContainer['icon'] ?? ''));
+                if ($cachedIcon !== '') {
+                    $iconByService[(string) $cachedService] = $cachedIcon;
+                }
+                $cachedName = trim((string) ($cachedContainer['name'] ?? ''));
+                if ($cachedName !== '' && $cachedIcon !== '') {
+                    $iconByName[$cachedName] = $cachedIcon;
+                }
+            }
+            $stackCacheDirty = false;
 
             $rows = $stackInfoItem->getContainerList();
 
@@ -1434,11 +1562,32 @@ switch ($_POST['action']) {
                 foreach ($rows as $container) {
                     $containerLower = array_change_key_case($container, CASE_LOWER);
                     $containerName = trim($containerLower['name'] ?? $containerLower['names'] ?? '');
+                    $service = trim((string) ($containerLower['service'] ?? ''));
                     $image = trim($containerLower['image'] ?? '');
                     $state = strtolower(trim($containerLower['state'] ?? ''));
 
                     // Only check updates for running containers
                     if ($containerName && $image && $state === 'running') {
+                        $icon = composeResolveContainerIcon($containerName, $service, $iconByService, $iconByName, $inspectIconCache);
+
+                        if ($service !== '' && $icon !== '') {
+                            if (!isset($stackContainerCache[$service]) || !is_array($stackContainerCache[$service])) {
+                                $stackContainerCache[$service] = [];
+                            }
+                            if (($stackContainerCache[$service]['icon'] ?? '') !== $icon) {
+                                $stackContainerCache[$service]['icon'] = $icon;
+                                $stackCacheDirty = true;
+                            }
+                            if (($stackContainerCache[$service]['name'] ?? '') === '') {
+                                $stackContainerCache[$service]['name'] = $containerName;
+                                $stackCacheDirty = true;
+                            }
+                            if (($stackContainerCache[$service]['service'] ?? '') === '') {
+                                $stackContainerCache[$service]['service'] = $service;
+                                $stackCacheDirty = true;
+                            }
+                        }
+
                         $image = ContainerInfo::normalizeImageForUpdateCheck($image);
 
                         $DockerUpdate->reloadUpdateStatus($image);
@@ -1467,13 +1616,20 @@ switch ($_POST['action']) {
 
                         $stackUpdates[] = ContainerInfo::fromUpdateResponse([
                             'container' => $containerName,
+                            'service' => $service,
                             'image' => $image,
+                            'icon' => $icon,
                             'hasUpdate' => $hasUpdate,
                             'status' => ($updateStatus === null) ? 'unknown' : ($updateStatus ? 'up-to-date' : 'update-available'),
                             'localSha' => $localSha,
                             'remoteSha' => $remoteSha
                         ])->toUpdateArray();
                     }
+                }
+
+                if ($stackCacheDirty) {
+                    $persistentContainerCache[$stackName] = $stackContainerCache;
+                    $persistentCacheDirty = true;
                 }
             }
 
@@ -1482,6 +1638,10 @@ switch ($_POST['action']) {
                 'hasUpdate' => $hasStackUpdate,
                 'containers' => $stackUpdates
             ];
+        }
+
+        if ($persistentCacheDirty) {
+            composeSavePersistentContainerCache($persistentContainerCache);
         }
 
         // Save the update status for all stacks

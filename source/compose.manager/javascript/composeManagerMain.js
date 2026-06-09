@@ -3512,11 +3512,16 @@ function mergeUpdateStatus(containers, project) {
         var cInfo = createContainerInfo(container);
         stackUpdateStatus[project].containers.forEach(function(update) {
             var uInfo = createContainerInfo(update);
-            if (cInfo.name === uInfo.name) {
+            var sameName = cInfo.name && uInfo.name && cInfo.name === uInfo.name;
+            var sameService = cInfo.service && uInfo.service && cInfo.service === uInfo.service;
+            if (sameName || sameService) {
                 container.hasUpdate = uInfo.hasUpdate;
                 container.updateStatus = uInfo.updateStatus;
                 container.localSha = uInfo.localSha;
                 container.remoteSha = uInfo.remoteSha;
+                if ((!container.icon || !isValidIconSrc(container.icon)) && uInfo.icon) {
+                    container.icon = uInfo.icon;
+                }
             }
         });
     });

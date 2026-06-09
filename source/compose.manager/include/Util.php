@@ -1163,6 +1163,7 @@ class ContainerInfo
         $info->id = $raw['ID'] ?? $raw['Id'] ?? $raw['id'] ?? '';
         $info->service = $raw['service'] ?? $raw['Service'] ?? '';
         $info->image = $raw['image'] ?? $raw['Image'] ?? '';
+        $info->icon = $raw['icon'] ?? $raw['Icon'] ?? '';
         $info->hasUpdate = $raw['hasUpdate'] ?? false;
         $info->updateStatus = $raw['status'] ?? $raw['updateStatus'] ?? 'unknown';
         $info->localSha = $raw['localSha'] ?? '';
@@ -1239,7 +1240,9 @@ class ContainerInfo
     {
         return [
             'name' => $this->name,
+            'service' => $this->service,
             'image' => $this->image,
+            'icon' => $this->icon,
             'hasUpdate' => $this->hasUpdate,
             'updateStatus' => $this->updateStatus,
             'localSha' => $this->localSha,
