@@ -441,6 +441,7 @@ function composeLoadlist() {
 
                 var completed = 0;
                 var queueIndex = 0;
+                var stackLoadTimers = {};
 
                 function updateProgress() {
                     $('#compose-load-progress-count').text(completed + '/' + projects.length);
@@ -457,6 +458,13 @@ function composeLoadlist() {
 
                     var project = projects[queueIndex];
                     queueIndex++;
+                    stackLoadTimers[project] = Date.now();
+
+                    composeLogger('progressive stack load start', {
+                        project: project,
+                        position: queueIndex,
+                        total: projects.length
+                    }, 'user', 'debug', 'composeLoadlist');
 
                     $.get('/plugins/compose.manager/include/ComposeList.php', {
                             mode: 'row',
@@ -466,22 +474,46 @@ function composeLoadlist() {
                             var waitForExpansion = Promise.resolve();
                             var rowResp = tryParseJson(rowRaw);
                             if (rowResp && rowResp.result === 'success' && rowResp.html) {
+                                var elapsedMs = Date.now() - (stackLoadTimers[project] || Date.now());
+                                composeLogger('progressive stack load success', {
+                                    project: project,
+                                    position: queueIndex,
+                                    total: projects.length,
+                                    elapsedMs: elapsedMs
+                                }, 'user', 'debug', 'composeLoadlist');
                                 var $rowChunk = $(rowResp.html);
                                 $('#compose-load-progress-row').before($rowChunk);
                                 initializeProgressiveLoadedRows($rowChunk);
                                 // Enforce top-down UX: wait for this stack's expansion/details work before next stack.
                                 waitForExpansion = composeDefaultExpandQueue;
                             } else {
+                                var badRespElapsedMs = Date.now() - (stackLoadTimers[project] || Date.now());
+                                composeLogger('progressive stack load invalid response', {
+                                    project: project,
+                                    position: queueIndex,
+                                    total: projects.length,
+                                    elapsedMs: badRespElapsedMs,
+                                    response: rowResp
+                                }, 'user', 'warn', 'composeLoadlist');
                                 $('#compose-load-progress-row').before('<tr><td colspan="10" class="compose-status-danger" style="padding:8px 12px;">Failed to load ' + composeEscapeHtml(project) + '.</td></tr>');
                             }
 
                             waitForExpansion.finally(function() {
+                                delete stackLoadTimers[project];
                                 completed++;
                                 updateProgress();
                                 loadNextProjectSequentially();
                             });
                         })
                         .fail(function() {
+                            var failElapsedMs = Date.now() - (stackLoadTimers[project] || Date.now());
+                            composeLogger('progressive stack load failed', {
+                                project: project,
+                                position: queueIndex,
+                                total: projects.length,
+                                elapsedMs: failElapsedMs
+                            }, 'user', 'warn', 'composeLoadlist');
+                            delete stackLoadTimers[project];
                             $('#compose-load-progress-row').before('<tr><td colspan="10" class="compose-status-danger" style="padding:8px 12px;">Failed to load ' + composeEscapeHtml(project) + '.</td></tr>');
                             completed++;
                             updateProgress();
@@ -1953,13 +1985,20 @@ $(function() {
 
     // Gate dockerload socket start until the stack list DOM is ready.
     var composeListReady = false;
+    var composeListLoadStartedAt = Date.now();
 
     // Load the persistent container cache before the stack list.
     // This ensures dialog merge logic can use last-known container metadata.
     loadPersistentContainerCache().then(function() {
-        composeLoadlist().then(function() {
+        composeListLoadStartedAt = Date.now();
+        composeLoadlist().then(function(loadMode) {
             composeListReady = true;
-            composeLogger('composeListReady=true, rows=' + $('#compose_stacks tr.compose-sortable').length, null, 'user', 'debug', 'dockerload');
+            composeLogger('compose list finished loading', {
+                rows: $('#compose_stacks tr.compose-sortable').length,
+                elapsedMs: Date.now() - composeListLoadStartedAt,
+                mode: loadMode || 'standard',
+                composeListReady: true
+            }, 'user', 'debug', 'dockerload');
 
             // Start the dockerload socket now that the DOM has rows with data-ctids.
             if (typeof window.composeDockerLoadToggle === 'function') {
@@ -2094,6 +2133,7 @@ $(function() {
             // composeLoadlist() and reused until the row count changes.
             // Avoids O(stacks) DOM traversal + string splits on every stats tick.
             var composeStackIndex = null;
+            var composeStackSignature = '';
             var composeLoadById = {};
             var composeLoadStaleMs = 15000;
 
@@ -2113,6 +2153,32 @@ $(function() {
                 $('.compose-mem-' + shortId).hide();
             }
 
+            // Build a lightweight fingerprint of stack rows + their container ids.
+            // Used to avoid invalidating caches when composeListRefreshed fires but
+            // the actual stack structure did not change.
+            function getComposeStackSignatureFromDom() {
+                var parts = [];
+                $('#compose_stacks tr.compose-sortable').each(function() {
+                    var stackId = ($(this).attr('id') || '').replace('stack-row-', '');
+                    if (!stackId) return;
+                    var ctidsAttr = $(this).attr('data-ctids') || '';
+                    parts.push(stackId + ':' + ctidsAttr);
+                });
+                return parts.join('|');
+            }
+
+            function getComposeContainerIdSetFromDom() {
+                var idSet = {};
+                $('#compose_stacks tr.compose-sortable').each(function() {
+                    var ctidsAttr = $(this).attr('data-ctids') || '';
+                    if (!ctidsAttr) return;
+                    ctidsAttr.split(',').forEach(function(id) {
+                        if (id) idSet[id] = true;
+                    });
+                });
+                return idSet;
+            }
+
             function buildComposeStackIndex() {
                 composeStackIndex = [];
                 $('#compose_stacks tr.compose-sortable').each(function() {
@@ -2124,15 +2190,46 @@ $(function() {
                         containerIds: ctidsAttr ? ctidsAttr.split(',') : []
                     });
                 });
-                composeLogger('buildComposeStackIndex complete, stacks=' + composeStackIndex.length, null, 'user', 'debug', 'dockerload');
+                composeStackSignature = getComposeStackSignatureFromDom();
+                // During progressive initial load, row count changes rapidly.
+                // Avoid flooding debug logs until composeListReady is true.
+                if (composeListReady) {
+                    composeLogger('buildComposeStackIndex complete, stacks=' + composeStackIndex.length, null, 'user', 'debug', 'dockerload');
+                }
             }
 
-            // Invalidate the cache when the list refreshes so that added/removed
-            // stacks are picked up on the next stats tick.
+            // Invalidate only when stack/container structure changed.
+            // composeListRefreshed may fire for UI-only updates where cache can be reused.
             $(document).on('composeListRefreshed.dockerload', function() {
-                composeLogger('composeListRefreshed — invalidating stack index and load cache', null, 'user', 'debug', 'dockerload');
+                var newSignature = getComposeStackSignatureFromDom();
+                var structureChanged = (newSignature !== composeStackSignature);
+
+                // No structural change: keep index/cache intact.
+                if (!structureChanged) {
+                    if (composeListReady && composeStackIndex) {
+                        composeLogger('composeListRefreshed — structure unchanged, keeping cache', null, 'user', 'debug', 'dockerload');
+                    }
+                    return;
+                }
+
+                var hadIndex = !!composeStackIndex;
+                var hadLoadCache = Object.keys(composeLoadById).length > 0;
+                if (composeListReady && (hadIndex || hadLoadCache)) {
+                    composeLogger('composeListRefreshed — structure changed, invalidating stack index', null, 'user', 'debug', 'dockerload');
+                }
+
+                // Rebuild index lazily on next render tick.
                 composeStackIndex = null;
-                composeLoadById = {};
+                composeStackSignature = newSignature;
+
+                // Keep live load values for unchanged containers; drop removed ids.
+                var currentIds = getComposeContainerIdSetFromDom();
+                Object.keys(composeLoadById).forEach(function(id) {
+                    if (!currentIds[id]) {
+                        delete composeLoadById[id];
+                        clearContainerLoad(id);
+                    }
+                });
             });
 
             window.composeDockerLoadToggle = function(enable) {
