@@ -1065,16 +1065,16 @@ class ExecActionsTest extends TestCase
     /**
      * Returns dockerVersionsInstalled=false when the plugin directory is absent.
      */
-public function testGetSavedUpdateStatusDockerVersionsNotInstalled(): void
-{
-    @unlink(COMPOSE_UPDATE_STATUS_FILE);
+    public function testGetSavedUpdateStatusDockerVersionsNotInstalled(): void
+    {
+        @unlink(COMPOSE_UPDATE_STATUS_FILE);
 
-    // Make the test deterministic even when running on a host that has docker.versions installed.
-    $fakeDir = sys_get_temp_dir() . '/fake_docker_versions_absent_' . getmypid();
-    UnraidStreamWrapper::addMapping('/usr/local/emhttp/plugins/docker.versions', $fakeDir);
+        // Make the test deterministic even when running on a host that has docker.versions installed.
+        $fakeDir = sys_get_temp_dir() . '/fake_docker_versions_absent_' . getmypid();
+        UnraidStreamWrapper::addMapping('/usr/local/emhttp/plugins/docker.versions', $fakeDir);
 
-    $output = $this->executeAction('getSavedUpdateStatus');
-    $result = json_decode($output, true);
+        $output = $this->executeAction('getSavedUpdateStatus');
+        $result = json_decode($output, true);
 
         $this->assertIsArray($result);
         $this->assertEquals('success', $result['result']);
