@@ -1664,7 +1664,9 @@ switch ($_POST['action']) {
     case 'getSavedUpdateStatus':
         // Load saved update status from file
         $composeUpdateStatusFile = COMPOSE_UPDATE_STATUS_FILE;
-        $dockerVersionsInstalled = is_dir('/usr/local/emhttp/plugins/docker.versions');
+        // Check for actual changelog assets rather than just directory presence
+        $dockerVersionsInstalled = file_exists('/usr/local/emhttp/plugins/docker.versions/scripts/changelog.js')
+            && file_exists('/usr/local/emhttp/plugins/docker.versions/styles/styles.css');
         if (is_file($composeUpdateStatusFile)) {
             $savedStatus = json_decode(file_get_contents($composeUpdateStatusFile), true);
             if ($savedStatus) {
