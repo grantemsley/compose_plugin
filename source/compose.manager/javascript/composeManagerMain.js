@@ -279,6 +279,18 @@ function hideComposeSpinner() {
 function composeLoadlist() {
     // Return a Promise so callers can reliably .then() / .catch() on completion
     return new Promise(function(resolve, reject) {
+        // Bind autostart change handler early, before any rows are rendered or become interactive
+        // during progressive loading. Use delegated event handler so it works for dynamically added rows.
+        $('#compose_list').off('change', '.auto_start').on('change', '.auto_start', function() {
+            var script = $(this).attr("data-scriptname");
+            var auto = $(this).prop('checked');
+            $.post(caURL, {
+                action: 'updateAutostart',
+                script: script,
+                autostart: auto
+            });
+        });
+
         composeTimers.load = setTimeout(function() {
             showComposeSpinner('Loading stack list...');
         }, 500);
@@ -563,16 +575,8 @@ function initStackListUI() {
         });
         $el.data('switchbutton-initialized', true);
     });
-    // Ensure change handler is bound only once
-    $('#compose_list').off('change', '.auto_start').on('change', '.auto_start', function() {
-        var script = $(this).attr("data-scriptname");
-        var auto = $(this).prop('checked');
-        $.post(caURL, {
-            action: 'updateAutostart',
-            script: script,
-            autostart: auto
-        });
-    });
+    // Note: change handler for .auto_start is now bound early in composeLoadlist()
+    // before any rows are added, so it's ready for both progressive and final renders.
 
     // Initialize context menus for stack icons
     $('[id^="stack-"][data-stackid]').each(function() {
@@ -1253,7 +1257,6 @@ var dockerVersionsInstalled = false;
 // If auto-check is enabled and interval has elapsed, trigger a fresh check
 // Also checks for pending rechecks from recent update operations
 function loadSavedUpdateStatus() {
-    savedUpdateStatusLoaded = true;
     $.post(caURL, {
         action: 'getSavedUpdateStatus'
     }, function(data) {
@@ -1263,6 +1266,9 @@ function loadSavedUpdateStatus() {
                 if (response.result === 'success' && response.stacks) {
                     stackUpdateStatus = response.stacks;
                     if (response.dockerVersionsInstalled) dockerVersionsInstalled = true;
+
+                    // Mark as loaded only after successful callback
+                    savedUpdateStatusLoaded = true;
 
                     // Update the UI for each stack with saved status
                     for (var stackName in response.stacks) {
@@ -1307,6 +1313,10 @@ function loadSavedUpdateStatus() {
                 }
             });
         }
+    }).fail(function(xhr, status, error) {
+        // Reset flag on transport failure so retries can work
+        savedUpdateStatusLoaded = false;
+        composeLogger('Failed to load saved update status', { status: status, error: error }, 'user', 'error', 'update-check');
     });
 }
 
