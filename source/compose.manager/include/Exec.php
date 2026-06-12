@@ -63,6 +63,29 @@ if (!function_exists('rejectStaleClientPath')) {
     }
 }
 
+if (!function_exists('resolveRequestedComposeFile')) {
+    /**
+     * Resolve an explicitly requested compose file (`file` POST param)
+     * against the stack's editable compose files.
+     *
+     * @return string|false|null Matched path, false when the request is
+     *                           invalid, or null when no file was requested.
+     */
+    function resolveRequestedComposeFile(StackInfo $stackInfo)
+    {
+        $requested = isset($_POST['file']) ? trim((string) $_POST['file']) : '';
+        if ($requested === '') {
+            return null;
+        }
+        foreach ($stackInfo->getEditableComposeFiles() as $candidate) {
+            if (Path::refersToSamePath($candidate, $requested)) {
+                return $candidate;
+            }
+        }
+        return false;
+    }
+}
+
 switch ($_POST['action']) {
     case 'composeLogger':
         $message = $_POST['msg'] ?? '';
@@ -279,6 +302,16 @@ switch ($_POST['action']) {
         $stackInfo = StackInfo::fromProject($compose_root, $script);
         $composeFilePath = $stackInfo->composeFilePath ?? ($stackInfo->composeSource . '/compose.yaml');
 
+        // Optional explicit file selection (e.g. additional compose files)
+        $requestedFile = resolveRequestedComposeFile($stackInfo);
+        if ($requestedFile === false) {
+            echo json_encode(['result' => 'error', 'message' => 'Requested file is not part of this stack.']);
+            break;
+        }
+        if ($requestedFile !== null) {
+            $composeFilePath = $requestedFile;
+        }
+
         // Check file existence consistently regardless of how path was resolved
         if (is_file($composeFilePath)) {
             $scriptContents = file_get_contents($composeFilePath);
@@ -431,12 +464,24 @@ switch ($_POST['action']) {
         $stackInfo = StackInfo::fromProject($compose_root, $script);
         $composeFilePath = $stackInfo->composeFilePath ?? ($stackInfo->composeSource . '/' . COMPOSE_FILE_NAMES[0]);
 
+        // Optional explicit file selection (e.g. additional compose files)
+        $requestedFile = resolveRequestedComposeFile($stackInfo);
+        if ($requestedFile === false) {
+            echo json_encode(['result' => 'error', 'message' => 'Requested file is not part of this stack.']);
+            break;
+        }
+        $isMainComposeFile = $requestedFile === null || Path::refersToSamePath($requestedFile, $composeFilePath);
+        if ($requestedFile !== null) {
+            $composeFilePath = $requestedFile;
+        }
+
         if (rejectStaleClientPath($composeFilePath, 'compose file')) {
             break;
         }
 
-        // Before saving, detect service renames and migrate override entries in the project override only
-        if (is_file($composeFilePath)) {
+        // Before saving, detect service renames and migrate override entries in the project override only.
+        // Rename migration only applies to the main compose file.
+        if ($isMainComposeFile && is_file($composeFilePath)) {
             $oldContent = file_get_contents($composeFilePath);
             $stackInfo->overrideInfo->migrateOnRename($oldContent, $scriptContents);
         }
@@ -701,6 +746,31 @@ switch ($_POST['action']) {
         $defaultProfileFile = "$compose_root/$script/default_profile";
         $defaultProfile = is_file($defaultProfileFile) ? trim(file_get_contents($defaultProfileFile)) : "";
 
+        // Get additional compose files (one path per line)
+        $extraComposeFilesFile = "$compose_root/$script/extra_compose_files";
+        $extraComposeFiles = is_file($extraComposeFilesFile) ? trim(file_get_contents($extraComposeFilesFile)) : "";
+
+        // Candidate compose files in the compose source folder for the
+        // Additional Compose Files selector (*compose*.y(a)ml, excluding the
+        // main compose file and override files)
+        $composeFileCandidates = [];
+        $mainComposeBase = $stackInfo->composeFilePath !== null ? basename($stackInfo->composeFilePath) : '';
+        $candidateGlob = glob($stackInfo->composeSource . '/*.{yml,yaml}', GLOB_BRACE) ?: [];
+        foreach ($candidateGlob as $candidatePath) {
+            $candidateBase = basename($candidatePath);
+            if (stripos($candidateBase, 'compose') === false) {
+                continue;
+            }
+            if ($candidateBase === $mainComposeBase) {
+                continue;
+            }
+            if (stripos($candidateBase, '.override.') !== false) {
+                continue;
+            }
+            $composeFileCandidates[] = $candidateBase;
+        }
+        sort($composeFileCandidates);
+
         // Get labels tab view mode (per-stack)
         $labelsViewModeFile = "$compose_root/$script/labels_view_mode";
         $labelsViewMode = is_file($labelsViewModeFile) ? strtolower(trim(file_get_contents($labelsViewModeFile))) : 'basic';
@@ -763,6 +833,9 @@ switch ($_POST['action']) {
             'iconUrl' => $iconUrl,
             'webuiUrl' => $webuiUrl,
             'defaultProfile' => $defaultProfile,
+            'extraComposeFiles' => $extraComposeFiles,
+            'composeFileCandidates' => $composeFileCandidates,
+            'editableComposeFiles' => $stackInfo->getEditableComposeFiles(),
             'labelsViewMode' => $labelsViewMode,
             'useDefaultComposeFiles' => $useDefaultComposeFiles,
             'indirectMode' => $stackInfo->indirectMode,
@@ -896,6 +969,43 @@ switch ($_POST['action']) {
             }
         }
 
+        // Additional compose files (one path per line, absolute or relative to compose source).
+        // Only processed when the client sends the field: a stale UI session
+        // that predates this setting must not silently clear it.
+        $extraComposeFilesProvided = isset($_POST['extraComposeFiles']);
+        $extraComposeFiles = $extraComposeFilesProvided ? trim($_POST['extraComposeFiles']) : "";
+        $extraComposeFilesNormalized = [];
+        $extraComposeFilesError = '';
+        foreach (preg_split('/\R/', $extraComposeFiles) as $extraLine) {
+            $extraLine = trim($extraLine);
+            if ($extraLine === '' || strpos($extraLine, '#') === 0) {
+                continue;
+            }
+            if (preg_match('/\.ya?ml$/i', $extraLine) !== 1) {
+                $extraComposeFilesError = 'Additional compose file must be a .yml or .yaml file: ' . $extraLine;
+                break;
+            }
+            if (Path::isAbsolutePath($extraLine)) {
+                $realExtra = realpath($extraLine);
+                if ($realExtra === false || !is_file($realExtra)) {
+                    $extraComposeFilesError = 'Additional compose file does not exist: ' . $extraLine;
+                    break;
+                }
+                if (!Path::isAllowedPath($realExtra, ['/mnt', '/boot/config'])) {
+                    $extraComposeFilesError = 'Additional compose files must be under /mnt/ or /boot/config/.';
+                    break;
+                }
+            } elseif (strpos($extraLine, '..') !== false) {
+                $extraComposeFilesError = 'Relative additional compose file paths must not contain "..": ' . $extraLine;
+                break;
+            }
+            $extraComposeFilesNormalized[] = $extraLine;
+        }
+        if ($extraComposeFilesError !== '') {
+            echo json_encode(['result' => 'error', 'message' => $extraComposeFilesError]);
+            break;
+        }
+
         // --- All validation passed, now write everything ---
 
         // Set env path
@@ -932,6 +1042,17 @@ switch ($_POST['action']) {
                 @unlink($defaultProfileFile);
         } else {
             file_put_contents($defaultProfileFile, $defaultProfile);
+        }
+
+        // Set additional compose files (skipped entirely when the field was not sent)
+        if ($extraComposeFilesProvided) {
+            $extraComposeFilesFile = "$compose_root/$script/extra_compose_files";
+            if (empty($extraComposeFilesNormalized)) {
+                if (is_file($extraComposeFilesFile))
+                    @unlink($extraComposeFilesFile);
+            } else {
+                file_put_contents($extraComposeFilesFile, implode("\n", $extraComposeFilesNormalized) . "\n");
+            }
         }
 
         // Set compose file discovery mode
