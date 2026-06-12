@@ -1783,16 +1783,16 @@ function isValidIconSrc(src) {
 
 function loadPersistentContainerCache() {
     return new Promise(function(resolve) {
-        $.get('/plugins/compose.manager/containers.cache.json')
-            .done(function(data) {
-                try {
-                    persistentContainerCache = JSON.parse(data) || {};
-                } catch (e) {
-                    persistentContainerCache = {};
-                    composeLogger('Failed to parse persistent container cache', {
-                        error: e && e.toString()
-                    }, 'user', 'warn', 'loadPersistentContainerCache');
-                }
+        $.ajax({
+            url: caURL,
+            method: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'getPersistentContainerCache'
+            }
+        })
+            .done(function(response) {
+                persistentContainerCache = (response && response.cache) ? response.cache : {};
                 resolve(persistentContainerCache);
             })
             .fail(function() {
