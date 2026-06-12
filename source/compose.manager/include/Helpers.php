@@ -132,8 +132,9 @@ function appendComposeEnvFileArg(array &$composeCommand, array $args): void
  * @param string $action The compose action (up, down, update, pull, stop, logs)
  * @param bool $recreate Whether to force recreate containers (adds --force-recreate flag)
  * @param bool $background Whether to run in the background (no terminal window; sends notification on finish)
+ * @param bool $removeOrphans Whether to pass --remove-orphans for up/down actions
  */
-function echoComposeCommand($action, $recreate = false, $background = false)
+function echoComposeCommand($action, $recreate = false, $background = false, $removeOrphans = false)
 {
     /**
      * Note: This function is called from an AJAX endpoint and must be careful to only echo the intended command or JSON response.
@@ -152,12 +153,13 @@ function echoComposeCommand($action, $recreate = false, $background = false)
     $debug = $cfg['DEBUG_TO_LOG'] == "true";
     $path = isset($_POST['path']) ? trim($_POST['path']) : "";
     $profile = isset($_POST['profile']) ? trim($_POST['profile']) : "";
+    $removeOrphans = !empty($_POST['removeOrphans']) && $_POST['removeOrphans'] !== 'false';
     $unRaidVars = parse_ini_file("/var/local/emhttp/var.ini");
     if ($unRaidVars['mdState'] != "STARTED") {
         echo $plugin_root . "/scripts/arrayNotStarted.sh";
         composeLogger("Cannot perform action: array not started", ['action' => $action, 'path' => $path], 'user', 'debug', 'compose');
     } else {
-        composeLogger("Preparing compose command", ['action' => $action, 'path' => $path, 'profile' => $profile, 'recreate' => $recreate, 'background' => $background], 'user', 'debug', 'compose');
+        composeLogger("Preparing compose command", ['action' => $action, 'path' => $path, 'profile' => $profile, 'recreate' => $recreate, 'background' => $background, 'removeOrphans' => $removeOrphans], 'user', 'debug', 'compose');
         $composeCommand = array($plugin_root . "scripts/compose.sh");
 
         // Resolve stack identity via StackInfo
@@ -177,6 +179,10 @@ function echoComposeCommand($action, $recreate = false, $background = false)
         // Prune orphaned services from override before compose up
         if ($action === 'up') {
             $stackInfo->pruneOrphanOverrideServices();
+        }
+
+        if ($removeOrphans && ($action === 'up' || $action === 'down')) {
+            $composeCommand[] = '--remove-orphans';
         }
 
         appendComposeEnvFileArg($composeCommand, $args);
@@ -259,7 +265,7 @@ function echoComposeCommand($action, $recreate = false, $background = false)
  * @param array $paths Array of stack paths
  * @param bool $background Whether to run in the background (no terminal window; sends notification on finish)
  */
-function echoComposeCommandMultiple($action, $paths, $background = false)
+function echoComposeCommandMultiple($action, $paths, $background = false, $removeOrphans = false)
 {
     global $plugin_root;
     global $sName;
@@ -301,6 +307,10 @@ function echoComposeCommandMultiple($action, $paths, $background = false)
         // Prune orphaned services from override before compose up
         if ($action === 'up') {
             $stackInfo->pruneOrphanOverrideServices();
+        }
+
+        if ($removeOrphans && ($action === 'up' || $action === 'down')) {
+            $composeCommand[] = '--remove-orphans';
         }
 
         appendComposeEnvFileArg($composeCommand, $args);

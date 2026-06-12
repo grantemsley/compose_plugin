@@ -16,6 +16,8 @@ class ComposeManagerMainSourceTest extends TestCase
 {
     private string $mainPagePath;
     private string $mainScriptPath;
+    private string $helpersPath;
+    private string $composeUtilPath;
     private string $dockerStartedEventPath;
 
     protected function setUp(): void
@@ -23,9 +25,13 @@ class ComposeManagerMainSourceTest extends TestCase
         parent::setUp();
         $this->mainPagePath = __DIR__ . '/../../source/compose.manager/include/ComposeManager.php';
         $this->mainScriptPath = __DIR__ . '/../../source/compose.manager/javascript/composeManagerMain.js';
+        $this->helpersPath = __DIR__ . '/../../source/compose.manager/include/Helpers.php';
+        $this->composeUtilPath = __DIR__ . '/../../source/compose.manager/include/ComposeUtil.php';
         $this->dockerStartedEventPath = __DIR__ . '/../../source/compose.manager/event/docker_started';
         $this->assertFileExists($this->mainPagePath, 'ComposeManager.php must exist');
         $this->assertFileExists($this->mainScriptPath, 'composeManagerMain.js must exist');
+        $this->assertFileExists($this->helpersPath, 'Helpers.php must exist');
+        $this->assertFileExists($this->composeUtilPath, 'ComposeUtil.php must exist');
         $this->assertFileExists($this->dockerStartedEventPath, 'event/docker_started must exist');
     }
 
@@ -37,6 +43,16 @@ class ComposeManagerMainSourceTest extends TestCase
     private function getJsSource(): string
     {
         return file_get_contents($this->mainScriptPath);
+    }
+
+    private function getHelpersSource(): string
+    {
+        return file_get_contents($this->helpersPath);
+    }
+
+    private function getComposeUtilSource(): string
+    {
+        return file_get_contents($this->composeUtilPath);
     }
 
     public function testCpuSpecCountHelperExists(): void
@@ -143,6 +159,58 @@ class ComposeManagerMainSourceTest extends TestCase
         $this->assertStringContainsString("$('#editor-btn-apply').prop('disabled', !hasChanges);", $jsSource);
         $this->assertStringContainsString("$('#editor-change-count').text(totalChanges + (totalChanges === 1 ? ' change' : ' changes'));", $jsSource);
         $this->assertStringContainsString("promptRecreateContainers(closeAfterSave);", $jsSource);
+    }
+
+    public function testRunningComposeSaveWarnsOnRemovedServices(): void
+    {
+        $source = $this->getJsSource();
+        $this->assertStringContainsString('function getRemovedComposeServices()', $source);
+        $this->assertStringContainsString('function isStackRunning(project)', $source);
+        $this->assertStringContainsString('Running Stack Changed', $source);
+        $this->assertStringContainsString('Remove orphans from the Compose Up/Down dialog', $source);
+    }
+
+    public function testComposeActionDialogOffersRemoveOrphansToggle(): void
+    {
+        $source = $this->getJsSource();
+        $this->assertStringContainsString('showRemoveOrphans: true', $source);
+        $this->assertStringContainsString('swal-remove-orphans-checkbox', $source);
+        $this->assertStringContainsString('removeOrphans = $(\'#swal-remove-orphans-checkbox\').is(\':checked\')', $source);
+        $this->assertStringContainsString('removeOrphans: removeOrphans', $source);
+    }
+
+    public function testBulkActionsOfferRemoveOrphansToggle(): void
+    {
+        $source = $this->getJsSource();
+        $this->assertStringContainsString('function executeStartAllStacks(stacks, background, suppressBackgroundNotification = false, removeOrphans = false)', $source);
+        $this->assertStringContainsString('function executeStopAllStacks(stacks, background, suppressBackgroundNotification = false, removeOrphans = false)', $source);
+        $this->assertStringContainsString('swal-remove-orphans-startall', $source);
+        $this->assertStringContainsString('swal-remove-orphans-stopall', $source);
+        $this->assertStringContainsString("removeOrphans: removeOrphans ? 1 : 0", $source);
+    }
+
+    public function testBackendPassesRemoveOrphansThroughComposeCommand(): void
+    {
+        $source = $this->getHelpersSource();
+        $this->assertStringContainsString('$removeOrphans = !empty($_POST[\'removeOrphans\'])', $source);
+        $this->assertStringContainsString('removeOrphans', $source);
+        $this->assertStringContainsString('--remove-orphans', $source);
+    }
+
+    public function testComposeUtilRoutesRemoveOrphansFlag(): void
+    {
+        $source = $this->getComposeUtilSource();
+        $this->assertStringContainsString("\$removeOrphans = isset(\$_POST['removeOrphans']) && \$_POST['removeOrphans'] == '1';", $source);
+        $this->assertStringContainsString("echoComposeCommand('up', false, \$background, \$removeOrphans);", $source);
+        $this->assertStringContainsString("echoComposeCommandMultiple('up', \$paths, \$background, \$removeOrphans);", $source);
+    }
+
+    public function testSettingsIncludeRemoveOrphansDefaultToggle(): void
+    {
+        $phpSource = $this->getPhpSource();
+        $this->assertStringContainsString('id="REMOVE_ORPHANS_DEFAULT"', $phpSource);
+        $this->assertStringContainsString('Remove Orphans by Default', $phpSource);
+        $this->assertStringContainsString('Enable <code>--remove-orphans</code> by default for Compose Up/Down actions', $phpSource);
     }
 
     public function testSaveAllChangesDefaultsToApplyMode(): void

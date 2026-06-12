@@ -2797,6 +2797,57 @@ function loadComposeYaml(content) {
     return yamlLib.load(input);
 }
 
+function getComposeServiceNamesFromContent(content) {
+    if (!content || !content.trim()) {
+        return [];
+    }
+
+    try {
+        var doc = loadComposeYaml(content) || {};
+        var services = doc.services || {};
+        return Object.keys(services);
+    } catch (e) {
+        return [];
+    }
+}
+
+function getRemovedComposeServices() {
+    var originalContent = editorModal.originalContent['compose'] || '';
+    var currentEditor = editorModal.editors['compose'];
+
+    if (!originalContent || !currentEditor) {
+        return [];
+    }
+
+    var originalServices = getComposeServiceNamesFromContent(originalContent);
+    var currentServices = getComposeServiceNamesFromContent(currentEditor.getValue());
+
+    if (originalServices.length === 0 || currentServices.length === 0) {
+        return [];
+    }
+
+    var currentServiceSet = {};
+    currentServices.forEach(function(serviceName) {
+        currentServiceSet[serviceName] = true;
+    });
+
+    return originalServices.filter(function(serviceName) {
+        return !currentServiceSet[serviceName];
+    });
+}
+
+function isStackRunning(project) {
+    var $stackRow = $('#compose_stacks tr.compose-sortable[data-project="' + project + '"]');
+    return $stackRow.length > 0 && $stackRow.data('isup') == '1';
+}
+
+function buildRemoveOrphansCheckboxHtml(checkboxId) {
+    return '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--dynamix-box-inner-div-border-color);display:flex;align-items:center;gap:8px;">' +
+        '<input type="checkbox" id="' + checkboxId + '" style="width:16px;height:16px;cursor:pointer;">' +
+        '<label for="' + checkboxId + '" style="cursor:pointer;user-select:none;margin:0;font-size:0.95em;">Remove orphans</label>' +
+        '</div>';
+}
+
 function applyDesc(myID) {
     var newDesc = $("#newDesc" + myID).val();
     var project = $("#" + myID).attr("data-scriptname");
@@ -3136,7 +3187,7 @@ function confirmedComposeAction(path, opts) {
 }
 
 // Confirmed action handlers (no dialog, just execute)
-function ComposeUpConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false) {
+function ComposeUpConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false, removeOrphans = false) {
     confirmedComposeAction(path, {
         actionName: 'up',
         titlePrefix: 'Compose Up',
@@ -3144,7 +3195,8 @@ function ComposeUpConfirmed(path, profile = "", background = false, suppressBack
         payload: {
             action: 'composeUp',
             path: path,
-            profile: profile
+            profile: profile,
+            removeOrphans: removeOrphans
         },
         background: background,
         suppressBackgroundNotification: suppressBackgroundNotification,
@@ -3172,7 +3224,7 @@ function ComposeUp(path, profile = "") {
     showStackActionDialog('up', path, profile);
 }
 
-function ComposeDownConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false) {
+function ComposeDownConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false, removeOrphans = false) {
     confirmedComposeAction(path, {
         actionName: 'down',
         titlePrefix: 'Compose Down',
@@ -3180,7 +3232,8 @@ function ComposeDownConfirmed(path, profile = "", background = false, suppressBa
         payload: {
             action: 'composeDown',
             path: path,
-            profile: profile
+            profile: profile,
+            removeOrphans: removeOrphans
         },
         background: background,
         suppressBackgroundNotification: suppressBackgroundNotification,
@@ -3660,20 +3713,22 @@ function startAllStacks() {
         '<input type="checkbox" id="swal-run-bg-startall" style="width:16px;height:16px;cursor:pointer;">' +
         '<label for="swal-run-bg-startall" style="cursor:pointer;user-select:none;margin:0;font-size:0.95em;">Run in background</label>' +
         '</div>';
+    var removeOrphansHtml = buildRemoveOrphansCheckboxHtml('swal-remove-orphans-startall');
 
     getConfig().then(function(pluginCfg) {
         var bgDefault = pluginCfg && pluginCfg.RUN_IN_BACKGROUND_DEFAULT === 'true';
+        var removeOrphansDefault = pluginCfg && pluginCfg.REMOVE_ORPHANS_DEFAULT === 'true';
         var disableWarnings = pluginCfg && pluginCfg.DISABLE_ACTION_WARNINGS === 'true';
 
         if (disableWarnings) {
-            executeStartAllStacks(stacks, bgDefault, bgDefault);
+            executeStartAllStacks(stacks, bgDefault, bgDefault, removeOrphansDefault);
             return;
         }
 
         swal({
             title: title,
             html: true,
-            text: '<div style="background:var(--alt-background-color);text-align:left;max-width:400px;margin:0 auto;"><p>The following stacks will be started:</p><div style="background:var(--background-color);padding:10px;border-radius:4px;max-height:200px;overflow-y:auto;margin:10px 0;">' + stackNames + '</div>' + bgCheckboxHtml + '</div>',
+            text: '<div style="background:var(--alt-background-color);text-align:left;max-width:400px;margin:0 auto;"><p>The following stacks will be started:</p><div style="background:var(--background-color);padding:10px;border-radius:4px;max-height:200px;overflow-y:auto;margin:10px 0;">' + stackNames + '</div>' + removeOrphansHtml + bgCheckboxHtml + '</div>',
             type: 'warning',
             showCancelButton: true,
             confirmButtonText: confirmText,
@@ -3681,18 +3736,21 @@ function startAllStacks() {
         }, function(confirmed) {
             if (confirmed) {
                 var runInBackground = $('#swal-run-bg-startall').is(':checked');
-                executeStartAllStacks(stacks, runInBackground);
+                var removeOrphans = $('#swal-remove-orphans-startall').is(':checked');
+                executeStartAllStacks(stacks, runInBackground, false, removeOrphans);
             }
         });
 
         setTimeout(function() {
             var $cb = $('#swal-run-bg-startall');
             if ($cb.length) $cb.prop('checked', bgDefault);
+            var $removeCb = $('#swal-remove-orphans-startall');
+            if ($removeCb.length) $removeCb.prop('checked', removeOrphansDefault);
         }, 50);
     });
 }
 
-function executeStartAllStacks(stacks, background, suppressBackgroundNotification = false) {
+function executeStartAllStacks(stacks, background, suppressBackgroundNotification = false, removeOrphans = false) {
     var height = 800;
     var width = 1200;
 
@@ -3715,7 +3773,8 @@ function executeStartAllStacks(stacks, background, suppressBackgroundNotificatio
     $.post(compURL, {
         action: 'composeUpMultiple',
         paths: JSON.stringify(paths),
-        background: background ? 1 : 0
+        background: background ? 1 : 0,
+        removeOrphans: removeOrphans ? 1 : 0
     }, function(data) {
         var parsed = tryParseJson(data);
         if (parsed && parsed.background) {
@@ -3777,20 +3836,22 @@ function stopAllStacks() {
         '<input type="checkbox" id="swal-run-bg-stopall" style="width:16px;height:16px;cursor:pointer;">' +
         '<label for="swal-run-bg-stopall" style="cursor:pointer;user-select:none;margin:0;font-size:0.95em;">Run in background</label>' +
         '</div>';
+    var removeOrphansHtml = buildRemoveOrphansCheckboxHtml('swal-remove-orphans-stopall');
 
     getConfig().then(function(pluginCfg) {
         var bgDefault = pluginCfg && pluginCfg.RUN_IN_BACKGROUND_DEFAULT === 'true';
+        var removeOrphansDefault = pluginCfg && pluginCfg.REMOVE_ORPHANS_DEFAULT === 'true';
         var disableWarnings = pluginCfg && pluginCfg.DISABLE_ACTION_WARNINGS === 'true';
 
         if (disableWarnings) {
-            executeStopAllStacks(stacks, bgDefault, bgDefault);
+            executeStopAllStacks(stacks, bgDefault, bgDefault, removeOrphansDefault);
             return;
         }
 
         swal({
             title: title,
             html: true,
-            text: '<div style="background:var(--alt-background-color);text-align:left;max-width:400px;margin:0 auto;"><p>The following stacks will be stopped:</p><div style="background:var(--background-color);padding:10px;border-radius:4px;max-height:200px;overflow-y:auto;margin:10px 0;">' + stackNames + '</div><p class="compose-status-warning" style="margin-top:10px;"><i class="fa fa-exclamation-triangle"></i> Containers will be stopped and removed. Data in volumes will be preserved.</p>' + bgCheckboxHtml + '</div>',
+            text: '<div style="background:var(--alt-background-color);text-align:left;max-width:400px;margin:0 auto;"><p>The following stacks will be stopped:</p><div style="background:var(--background-color);padding:10px;border-radius:4px;max-height:200px;overflow-y:auto;margin:10px 0;">' + stackNames + '</div><p class="compose-status-warning" style="margin-top:10px;"><i class="fa fa-exclamation-triangle"></i> Containers will be stopped and removed. Data in volumes will be preserved.</p>' + removeOrphansHtml + bgCheckboxHtml + '</div>',
             type: 'warning',
             showCancelButton: true,
             confirmButtonText: confirmText,
@@ -3798,18 +3859,21 @@ function stopAllStacks() {
         }, function(confirmed) {
             if (confirmed) {
                 var runInBackground = $('#swal-run-bg-stopall').is(':checked');
-                executeStopAllStacks(stacks, runInBackground);
+                var removeOrphans = $('#swal-remove-orphans-stopall').is(':checked');
+                executeStopAllStacks(stacks, runInBackground, false, removeOrphans);
             }
         });
 
         setTimeout(function() {
             var $cb = $('#swal-run-bg-stopall');
             if ($cb.length) $cb.prop('checked', bgDefault);
+            var $removeCb = $('#swal-remove-orphans-stopall');
+            if ($removeCb.length) $removeCb.prop('checked', removeOrphansDefault);
         }, 50);
     });
 }
 
-function executeStopAllStacks(stacks, background, suppressBackgroundNotification = false) {
+function executeStopAllStacks(stacks, background, suppressBackgroundNotification = false, removeOrphans = false) {
     var height = 800;
     var width = 1200;
 
@@ -3832,7 +3896,8 @@ function executeStopAllStacks(stacks, background, suppressBackgroundNotification
     $.post(compURL, {
         action: 'composeDownMultiple',
         paths: JSON.stringify(paths),
-        background: background ? 1 : 0
+        background: background ? 1 : 0,
+        removeOrphans: removeOrphans ? 1 : 0
     }, function(data) {
         var parsed = tryParseJson(data);
         if (parsed && parsed.background) {
@@ -3986,13 +4051,16 @@ function showStackActionDialog(action, path, profile) {
             containers.push(container);
         });
 
+        var detectedMismatch = cachedContainers.length !== profileServices.length;
+
         composeLogger('profile/unified AJAX done', {
             profileServices,
             containers,
-            cachedContainers
+            cachedContainers,
+            detectedMismatch
         }, 'user', 'debug', 'showStackActionDialog');
         containers = mergeUpdateStatus(containers, project);
-        renderStackActionDialog(action, displayName, path, profile, containers, hasBuild);
+        renderStackActionDialog(action, displayName, path, profile, containers, hasBuild, detectedMismatch);
     }).fail(function(xhr, status, error) {
         // Fallback: if profile resolution fails, show cached container metadata
         composeLogger('getProfileServices AJAX fail', {
@@ -4010,12 +4078,12 @@ function showStackActionDialog(action, path, profile) {
             });
             containers = mergeUpdateStatus(containers, project);
         }
-        renderStackActionDialog(action, displayName, path, profile, containers, hasBuild);
+        renderStackActionDialog(action, displayName, path, profile, containers, hasBuild, cachedContainers.length > 0);
     });
     return;
 }
 
-function renderStackActionDialog(action, displayName, path, profile, containers, hasBuild) {
+function renderStackActionDialog(action, displayName, path, profile, containers, hasBuild, showRemoveOrphans) {
     hasBuild = hasBuild || false;
     // Action-specific configuration
     var pullLabel = hasBuild ? 'Build' : 'Pull';
@@ -4029,6 +4097,7 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
             warningColor: window.getComputedStyle(document.documentElement).getPropertyValue('--dynamix-ui-dropdownchecklist-color'),
             confirmText: 'Compose Up',
             showVersionArrow: false,
+            showRemoveOrphans: true,
             confirmedFn: ComposeUpConfirmed
         },
         'down': {
@@ -4040,6 +4109,7 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
             warningColor: window.getComputedStyle(document.documentElement).getPropertyValue('--dynamix-sb-message-link-color'),
             confirmText: 'Compose Down',
             showVersionArrow: false,
+            showRemoveOrphans: true,
             confirmedFn: ComposeDownConfirmed
         },
         'stop': {
@@ -4177,6 +4247,15 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
     // Warning/info text
     html += '<div style="color:' + cfg.warningColor + ';margin-top:14px;font-size:0.9em;"><i class="fa fa-' + cfg.warningIcon + '"></i> ' + cfg.warning + '</div>';
 
+    var removeOrphansDefault = false;
+
+    if (cfg.showRemoveOrphans) {
+        html += '<div id="swal-remove-orphans-wrap" style="display:none;">' +
+            buildRemoveOrphansCheckboxHtml('swal-remove-orphans-checkbox') +
+            '<div class="compose-text-muted" style="margin-top:6px;font-size:0.85em;margin-left:24px;">Adds --remove-orphans to the compose command.</div>' +
+            '</div>';
+    }
+
     // Run-in-background checkbox (appended after config is fetched below)
     var bgCheckboxHtml = '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--dynamix-box-inner-div-border-color);display:flex;align-items:center;gap:8px;">' +
         '<input type="checkbox" id="swal-run-bg-checkbox" style="width:16px;height:16px;cursor:pointer;">' +
@@ -4188,13 +4267,17 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
     // Fetch config to determine default checkbox state, then show swal (or skip warnings)
     getConfig().then(function(pluginCfg) {
         var bgDefault = pluginCfg && pluginCfg.RUN_IN_BACKGROUND_DEFAULT === 'true';
+        removeOrphansDefault = pluginCfg && pluginCfg.REMOVE_ORPHANS_DEFAULT === 'true';
         var disableWarnings = pluginCfg && pluginCfg.DISABLE_ACTION_WARNINGS === 'true';
 
         if (disableWarnings) {
             // In default background mode (warnings disabled and background enabled), don't show toast if background is used
-            cfg.confirmedFn(path, profile, bgDefault, bgDefault);
+            cfg.confirmedFn(path, profile, bgDefault, bgDefault, removeOrphansDefault);
             return;
         }
+
+        var removeOrphansChecked = removeOrphansDefault || showRemoveOrphans;
+        var showRemoveOrphansOption = cfg.showRemoveOrphans && (removeOrphansChecked || showRemoveOrphans);
 
         // Use native swal (SweetAlert 1.x) with callback style
         swal({
@@ -4209,8 +4292,9 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
             if (confirmed) {
                 // Capture checkbox state before swal destroys the DOM
                 var runInBackground = $('#swal-run-bg-checkbox').is(':checked');
+                var removeOrphans = $('#swal-remove-orphans-checkbox').is(':checked');
                 // when running in background, suppress the extra notifyBackgroundStarted popup
-                cfg.confirmedFn(path, profile, runInBackground, runInBackground);
+                cfg.confirmedFn(path, profile, runInBackground, runInBackground, removeOrphans);
             }
         });
 
@@ -4219,6 +4303,11 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
             var $cb = $('#swal-run-bg-checkbox');
             if ($cb.length) {
                 $cb.prop('checked', bgDefault);
+            }
+            var $orphanCb = $('#swal-remove-orphans-checkbox');
+            if ($orphanCb.length) {
+                $orphanCb.prop('checked', removeOrphansChecked);
+                $('#swal-remove-orphans-wrap').toggle(showRemoveOrphansOption);
             }
         }, 50);
     });
@@ -5670,9 +5759,93 @@ function saveAllChanges(closeAfterSave) {
     var totalChanges = editorModal.modifiedTabs.size + editorModal.modifiedSettings.size + editorModal.modifiedLabels.size;
     var pathSensitiveSettingsChanged = hasPathSensitiveSettingsChanges();
     var pathDependentEdits = hasPathDependentEdits();
+    var project = editorModal.currentProject;
+    var removedServices = [];
 
     if (totalChanges === 0) {
         return;
+    }
+
+    if (project && editorModal.modifiedTabs.has('compose') && isStackRunning(project)) {
+        removedServices = getRemovedComposeServices();
+    }
+
+    function continueSave() {
+        // Track if labels are being modified in Automatic mode (need to offer recreate)
+        var labelsWereModified = editorModal.labelsViewMode === 'basic' && editorModal.modifiedLabels.size > 0;
+
+        // Save modified file tabs (compose, env, and override editor)
+        editorModal.modifiedTabs.forEach(function(tabName) {
+            savePromises.push(saveTab(tabName, saveErrors));
+        });
+
+        // Save settings if modified
+        if (editorModal.modifiedSettings.size > 0) {
+            savePromises.push(saveSettings(saveErrors));
+        }
+
+        // Save labels only in Automatic mode.
+        if (editorModal.modifiedLabels.size > 0) {
+            if (editorModal.labelsViewMode === 'basic') {
+                savePromises.push(saveLabels(saveErrors));
+            } else {
+                skippedManualLabels = true;
+            }
+        }
+
+        $.when.apply($, savePromises).then(function() {
+            var results = Array.prototype.slice.call(arguments);
+            var allSucceeded = results.every(function(result) {
+                return result === true;
+            });
+
+            if (allSucceeded) {
+                if (skippedManualLabels) {
+                    swal({
+                        title: "Partially Saved",
+                        text: "Non-label changes were saved. WebUI label form edits were not saved because Override File Management is set to Manual. Switch to Automatic to save Labels form changes.",
+                        type: "warning"
+                    });
+                    updateTabModifiedState();
+                    updateSaveButtonState();
+                    return;
+                }
+
+                // Check if we should offer to recreate containers
+                if (labelsWereModified) {
+                    promptRecreateContainers(closeAfterSave);
+                } else {
+                    var saveProject = editorModal.currentProject;
+                    if (closeAfterSave) {
+                        doCloseEditorModal();
+                    }
+                    swal({
+                        title: "Saved!",
+                        text: "All changes have been saved.",
+                        type: "success",
+                        timer: 1500,
+                        showConfirmButton: false
+                    });
+                    setTimeout(function() {
+                        if (saveProject) {
+                            refreshStackByProject(saveProject);
+                        }
+                    }, 1600);
+                }
+            } else {
+                var filteredErrors = saveErrors.filter(function(message) {
+                    return message !== '__STALE_PATH__';
+                });
+                if (filteredErrors.length === 0 && saveErrors.indexOf('__STALE_PATH__') !== -1) {
+                    return;
+                }
+                swal({
+                    title: 'Save Failed',
+                    text: filteredErrors.join('\n') || 'An unknown error occurred while saving.',
+                    type: 'error'
+                });
+            }
+        });
     }
 
     if (pathSensitiveSettingsChanged && pathDependentEdits) {
@@ -5711,82 +5884,24 @@ function saveAllChanges(closeAfterSave) {
 
     // Save labels only in Automatic mode.
     if (editorModal.modifiedLabels.size > 0) {
-        if (editorModal.labelsViewMode === 'basic') {
-            savePromises.push(saveLabels(saveErrors));
-        } else {
-            skippedManualLabels = true;
-        }
+
+    if (removedServices.length > 0) {
+        swal({
+            title: 'Running Stack Changed',
+            text: 'This stack is running and the compose file no longer defines: ' + removedServices.join(', ') + '. Saving now can leave orphaned containers behind. Stop the stack first, or use Remove orphans from the Compose Up/Down dialog to clean them up.',
+            type: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Save Anyway',
+            cancelButtonText: 'Cancel'
+        }, function(confirmed) {
+            if (confirmed) {
+                continueSave();
+            }
+        });
+        return;
     }
 
-    $.when.apply($, savePromises).then(function() {
-        var results = Array.prototype.slice.call(arguments);
-        var allSucceeded = results.every(function(result) {
-            return result === true;
-        });
-
-        if (allSucceeded) {
-            if (skippedManualLabels) {
-                swal({
-                    title: "Partially Saved",
-                    text: "Non-label changes were saved. WebUI label form edits were not saved because Override File Management is set to Manual. Switch to Automatic to save Labels form changes.",
-                    type: "warning"
-                });
-                updateTabModifiedState();
-                updateSaveButtonState();
-                return;
-            }
-
-            // Check if we should offer to recreate containers
-            if (labelsWereModified) {
-                promptRecreateContainers(closeAfterSave);
-            } else {
-                var project = editorModal.currentProject;
-                if (closeAfterSave) {
-                    doCloseEditorModal();
-                }
-                swal({
-                    title: "Saved!",
-                    text: "All changes have been saved.",
-                    type: "success",
-                    timer: 1500,
-                    showConfirmButton: false
-                });
-                setTimeout(function() {
-                    if (project) {
-                        refreshStackByProject(project);
-                    }
-                }, 1600);
-            }
-        } else {
-            var filteredErrors = saveErrors.filter(function(message) {
-                return message !== '__STALE_PATH__';
-            });
-            if (filteredErrors.length === 0 && saveErrors.indexOf('__STALE_PATH__') !== -1) {
-                return;
-            }
-            var errorText = filteredErrors.length > 0 ?
-                filteredErrors.join('\n') :
-                'Some items could not be saved. Please try again.';
-            swal({
-                title: "Save Failed",
-                text: errorText,
-                type: "error"
-            });
-        }
-    }).fail(function() {
-        swal({
-            title: "Save Failed",
-            text: "An error occurred while saving. Please try again.",
-            type: "error"
-        });
-    });
-}
-
-// Save settings
-function saveSettings(saveErrors) {
-    var project = editorModal.currentProject;
-    var savePromises = [];
-
+    continueSave();
     // Save name if modified
     if (editorModal.modifiedSettings.has('name')) {
         var newName = $('#settings-name').val();

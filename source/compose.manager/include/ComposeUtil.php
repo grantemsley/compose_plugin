@@ -10,16 +10,17 @@
 require_once("/usr/local/emhttp/plugins/compose.manager/include/Helpers.php");
 
 $background = isset($_POST['background']) && $_POST['background'] == '1';
+$removeOrphans = isset($_POST['removeOrphans']) && $_POST['removeOrphans'] == '1';
 
 switch ($_POST['action']) {
     case 'composeUp':
-        echoComposeCommand('up', false, $background);
+        echoComposeCommand('up', false, $background, $removeOrphans);
         break;
     case 'composeUpRecreate':
-        echoComposeCommand('up', true, $background);
+        echoComposeCommand('up', true, $background, $removeOrphans);
         break;
     case 'composeDown':
-        echoComposeCommand('down', false, $background);
+        echoComposeCommand('down', false, $background, $removeOrphans);
         break;
     case 'composeUpPullBuild':
         echoComposeCommand('update', false, $background);
@@ -36,19 +37,19 @@ switch ($_POST['action']) {
     case 'composeUpMultiple':
         $paths = isset($_POST['paths']) ? json_decode($_POST['paths'], true) : array();
         if (!empty($paths)) {
-            echoComposeCommandMultiple('up', $paths, $background);
+            echoComposeCommandMultiple('up', $paths, $background, $removeOrphans);
         }
         break;
     case 'composeDownMultiple':
         $paths = isset($_POST['paths']) ? json_decode($_POST['paths'], true) : array();
         if (!empty($paths)) {
-            echoComposeCommandMultiple('down', $paths, $background);
+            echoComposeCommandMultiple('down', $paths, $background, $removeOrphans);
         }
         break;
     case 'composeUpdateMultiple':
         $paths = isset($_POST['paths']) ? json_decode($_POST['paths'], true) : array();
         if (!empty($paths)) {
-            echoComposeCommandMultiple('update', $paths, $background);
+            echoComposeCommandMultiple('update', $paths, $background, $removeOrphans);
         }
         break;
     case 'containerConsole':
