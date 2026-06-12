@@ -236,10 +236,11 @@ if ($cpuCount <= 0) {
         z-index: 100 !important;
     }
 
-    /* Keep long context menus visible above fixed bottom UI bars */
+    /* Keep context menus above the fixed footer (z-index must out-rank the
+       .dropdown-menu !important rule above); the scroll spacer appended in
+       fixContextDropdownOverflow() keeps them reachable (unraid/webgui#2639) */
     .dropdown-context:not(.dropdown-context-sub) {
-        max-height: calc(100vh - 72px);
-        overflow-y: auto;
+        z-index: 10001 !important;
     }
 
     /* CPU & Memory load display (matches Docker manager usage-disk style) */
