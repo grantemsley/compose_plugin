@@ -175,15 +175,15 @@ class ComposeManagerMainSourceTest extends TestCase
         $source = $this->getJsSource();
         $this->assertStringContainsString('showRemoveOrphans: true', $source);
         $this->assertStringContainsString('swal-remove-orphans-checkbox', $source);
-        $this->assertStringContainsString('removeOrphans = $(\'#swal-remove-orphans-checkbox\').is(\':checked\')', $source);
+        $this->assertStringContainsString('cfg.confirmedFn(path, {', $source);
         $this->assertStringContainsString('removeOrphans: removeOrphans', $source);
     }
 
     public function testBulkActionsOfferRemoveOrphansToggle(): void
     {
         $source = $this->getJsSource();
-        $this->assertStringContainsString('function executeStartAllStacks(stacks, background, suppressBackgroundNotification = false, removeOrphans = false)', $source);
-        $this->assertStringContainsString('function executeStopAllStacks(stacks, background, suppressBackgroundNotification = false, removeOrphans = false)', $source);
+        $this->assertStringContainsString('function executeStartAllStacks(opts)', $source);
+        $this->assertStringContainsString('function executeStopAllStacks(opts)', $source);
         $this->assertStringContainsString('swal-remove-orphans-startall', $source);
         $this->assertStringContainsString('swal-remove-orphans-stopall', $source);
         $this->assertStringContainsString("removeOrphans: removeOrphans ? 1 : 0", $source);
@@ -192,7 +192,8 @@ class ComposeManagerMainSourceTest extends TestCase
     public function testBackendPassesRemoveOrphansThroughComposeCommand(): void
     {
         $source = $this->getHelpersSource();
-        $this->assertStringContainsString('$removeOrphans = !empty($_POST[\'removeOrphans\'])', $source);
+        $this->assertStringContainsString('function echoComposeCommand($action, array $options = [])', $source);
+        $this->assertStringContainsString('$removeOrphans = !empty($options[\'removeOrphans\']);', $source);
         $this->assertStringContainsString('removeOrphans', $source);
         $this->assertStringContainsString('--remove-orphans', $source);
     }
@@ -201,8 +202,10 @@ class ComposeManagerMainSourceTest extends TestCase
     {
         $source = $this->getComposeUtilSource();
         $this->assertStringContainsString("\$removeOrphans = isset(\$_POST['removeOrphans']) && \$_POST['removeOrphans'] == '1';", $source);
-        $this->assertStringContainsString("echoComposeCommand('up', false, \$background, \$removeOrphans);", $source);
-        $this->assertStringContainsString("echoComposeCommandMultiple('up', \$paths, \$background, \$removeOrphans);", $source);
+        $this->assertStringContainsString("echoComposeCommand('up', [", $source);
+        $this->assertStringContainsString("'removeOrphans' => \$removeOrphans", $source);
+        $this->assertStringContainsString("echoComposeCommandMultiple('up', [", $source);
+        $this->assertStringContainsString("'paths' => \$paths", $source);
     }
 
     public function testSettingsIncludeRemoveOrphansDefaultToggle(): void

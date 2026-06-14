@@ -130,11 +130,9 @@ function appendComposeEnvFileArg(array &$composeCommand, array $args): void
  * Build and echo a compose command for a single stack.
  *
  * @param string $action The compose action (up, down, update, pull, stop, logs)
- * @param bool $recreate Whether to force recreate containers (adds --force-recreate flag)
- * @param bool $background Whether to run in the background (no terminal window; sends notification on finish)
- * @param bool $removeOrphans Whether to pass --remove-orphans for up/down actions
+ * @param array<string, mixed> $options Command options: recreate, background, removeOrphans
  */
-function echoComposeCommand($action, $recreate = false, $background = false, $removeOrphans = false)
+function echoComposeCommand($action, array $options = [])
 {
     /**
      * Note: This function is called from an AJAX endpoint and must be careful to only echo the intended command or JSON response.
@@ -153,7 +151,9 @@ function echoComposeCommand($action, $recreate = false, $background = false, $re
     $debug = $cfg['DEBUG_TO_LOG'] == "true";
     $path = isset($_POST['path']) ? trim($_POST['path']) : "";
     $profile = isset($_POST['profile']) ? trim($_POST['profile']) : "";
-    $removeOrphans = !empty($_POST['removeOrphans']) && $_POST['removeOrphans'] !== 'false';
+    $recreate = !empty($options['recreate']);
+    $background = !empty($options['background']);
+    $removeOrphans = !empty($options['removeOrphans']);
     $unRaidVars = parse_ini_file("/var/local/emhttp/var.ini");
     if ($unRaidVars['mdState'] != "STARTED") {
         echo $plugin_root . "/scripts/arrayNotStarted.sh";
@@ -262,10 +262,9 @@ function echoComposeCommand($action, $recreate = false, $background = false, $re
  * Build and echo a compose command for multiple stacks.
  *
  * @param string $action The compose action (up, down, update)
- * @param array $paths Array of stack paths
- * @param bool $background Whether to run in the background (no terminal window; sends notification on finish)
+ * @param array<string, mixed> $options Command options: paths, background, removeOrphans
  */
-function echoComposeCommandMultiple($action, $paths, $background = false, $removeOrphans = false)
+function echoComposeCommandMultiple($action, array $options = [])
 {
     global $plugin_root;
     global $sName;
@@ -273,6 +272,9 @@ function echoComposeCommandMultiple($action, $paths, $background = false, $remov
     $cfg = parse_plugin_cfg($sName);
     $debug = $cfg['DEBUG_TO_LOG'] == "true";
     $unRaidVars = parse_ini_file("/var/local/emhttp/var.ini");
+    $paths = $options['paths'] ?? [];
+    $background = !empty($options['background']);
+    $removeOrphans = !empty($options['removeOrphans']);
 
     if ($unRaidVars['mdState'] != "STARTED") {
         echo $plugin_root . "/scripts/arrayNotStarted.sh";

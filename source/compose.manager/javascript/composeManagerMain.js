@@ -3187,7 +3187,8 @@ function confirmedComposeAction(path, opts) {
 }
 
 // Confirmed action handlers (no dialog, just execute)
-function ComposeUpConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false, removeOrphans = false) {
+function ComposeUpConfirmed(path, opts) {
+    opts = opts || {};
     confirmedComposeAction(path, {
         actionName: 'up',
         titlePrefix: 'Compose Up',
@@ -3195,11 +3196,11 @@ function ComposeUpConfirmed(path, profile = "", background = false, suppressBack
         payload: {
             action: 'composeUp',
             path: path,
-            profile: profile,
-            removeOrphans: removeOrphans
+            profile: opts.profile || '',
+            removeOrphans: !!opts.removeOrphans
         },
-        background: background,
-        suppressBackgroundNotification: suppressBackgroundNotification,
+        background: !!opts.background,
+        suppressBackgroundNotification: !!opts.suppressBackgroundNotification,
         pendingReload: true
     });
 }
@@ -3224,7 +3225,8 @@ function ComposeUp(path, profile = "") {
     showStackActionDialog('up', path, profile);
 }
 
-function ComposeDownConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false, removeOrphans = false) {
+function ComposeDownConfirmed(path, opts) {
+    opts = opts || {};
     confirmedComposeAction(path, {
         actionName: 'down',
         titlePrefix: 'Compose Down',
@@ -3232,11 +3234,11 @@ function ComposeDownConfirmed(path, profile = "", background = false, suppressBa
         payload: {
             action: 'composeDown',
             path: path,
-            profile: profile,
-            removeOrphans: removeOrphans
+            profile: opts.profile || '',
+            removeOrphans: !!opts.removeOrphans
         },
-        background: background,
-        suppressBackgroundNotification: suppressBackgroundNotification,
+        background: !!opts.background,
+        suppressBackgroundNotification: !!opts.suppressBackgroundNotification,
         pendingReload: true
     });
 }
@@ -3246,7 +3248,8 @@ function ComposeDown(path, profile = "") {
 }
 
 // Stop stack without removing containers
-function ComposeStopConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false) {
+function ComposeStopConfirmed(path, opts) {
+    opts = opts || {};
     confirmedComposeAction(path, {
         actionName: 'stop',
         titlePrefix: 'Compose Stop',
@@ -3254,10 +3257,10 @@ function ComposeStopConfirmed(path, profile = "", background = false, suppressBa
         payload: {
             action: 'composeStop',
             path: path,
-            profile: profile
+            profile: opts.profile || ''
         },
-        background: background,
-        suppressBackgroundNotification: suppressBackgroundNotification,
+        background: !!opts.background,
+        suppressBackgroundNotification: !!opts.suppressBackgroundNotification,
         pendingReload: true
     });
 }
@@ -3267,7 +3270,8 @@ function ComposeStop(path, profile = "") {
 }
 
 // Restart stack (recreate containers without pulling)
-function ComposeRestartConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false) {
+function ComposeRestartConfirmed(path, opts) {
+    opts = opts || {};
     confirmedComposeAction(path, {
         actionName: 'restart',
         titlePrefix: 'Compose Restart',
@@ -3275,10 +3279,10 @@ function ComposeRestartConfirmed(path, profile = "", background = false, suppres
         payload: {
             action: 'composeUpRecreate',
             path: path,
-            profile: profile
+            profile: opts.profile || ''
         },
-        background: background,
-        suppressBackgroundNotification: suppressBackgroundNotification,
+        background: !!opts.background,
+        suppressBackgroundNotification: !!opts.suppressBackgroundNotification,
         pendingReload: true,
         refreshDelayMs: 1000
     });
@@ -3289,7 +3293,8 @@ function ComposeRestart(path, profile = "") {
 }
 
 // Force update stack (pull and rebuild even without detected updates)
-function ForceUpdateStackConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false) {
+function ForceUpdateStackConfirmed(path, opts) {
+    opts = opts || {};
     var stackName = basename(path);
     if (pendingUpdateCheckStacks.indexOf(stackName) === -1) {
         pendingUpdateCheckStacks.push(stackName);
@@ -3308,10 +3313,10 @@ function ForceUpdateStackConfirmed(path, profile = "", background = false, suppr
         payload: {
             action: 'composeUpPullBuild',
             path: path,
-            profile: profile
+            profile: opts.profile || ''
         },
-        background: background,
-        suppressBackgroundNotification: suppressBackgroundNotification,
+        background: !!opts.background,
+        suppressBackgroundNotification: !!opts.suppressBackgroundNotification,
         pendingReload: true
     });
 }
@@ -3634,7 +3639,8 @@ function setStackActionInProgress(stackName, inProgress, text) {
     }
 }
 
-function UpdateStackConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false) {
+function UpdateStackConfirmed(path, opts) {
+    opts = opts || {};
     var stackName = basename(path);
     if (pendingUpdateCheckStacks.indexOf(stackName) === -1) {
         pendingUpdateCheckStacks.push(stackName);
@@ -3653,10 +3659,10 @@ function UpdateStackConfirmed(path, profile = "", background = false, suppressBa
         payload: {
             action: 'composeUpPullBuild',
             path: path,
-            profile: profile
+            profile: opts.profile || ''
         },
-        background: background,
-        suppressBackgroundNotification: suppressBackgroundNotification,
+        background: !!opts.background,
+        suppressBackgroundNotification: !!opts.suppressBackgroundNotification,
         pendingReload: true
     });
 }
@@ -3721,7 +3727,12 @@ function startAllStacks() {
         var disableWarnings = pluginCfg && pluginCfg.DISABLE_ACTION_WARNINGS === 'true';
 
         if (disableWarnings) {
-            executeStartAllStacks(stacks, bgDefault, bgDefault, removeOrphansDefault);
+            executeStartAllStacks({
+                stacks: stacks,
+                background: bgDefault,
+                suppressBackgroundNotification: bgDefault,
+                removeOrphans: removeOrphansDefault
+            });
             return;
         }
 
@@ -3737,7 +3748,12 @@ function startAllStacks() {
             if (confirmed) {
                 var runInBackground = $('#swal-run-bg-startall').is(':checked');
                 var removeOrphans = $('#swal-remove-orphans-startall').is(':checked');
-                executeStartAllStacks(stacks, runInBackground, false, removeOrphans);
+                executeStartAllStacks({
+                    stacks: stacks,
+                    background: runInBackground,
+                    suppressBackgroundNotification: false,
+                    removeOrphans: removeOrphans
+                });
             }
         });
 
@@ -3750,7 +3766,12 @@ function startAllStacks() {
     });
 }
 
-function executeStartAllStacks(stacks, background, suppressBackgroundNotification = false, removeOrphans = false) {
+function executeStartAllStacks(opts) {
+    opts = opts || {};
+    var stacks = opts.stacks || [];
+    var background = !!opts.background;
+    var suppressBackgroundNotification = !!opts.suppressBackgroundNotification;
+    var removeOrphans = !!opts.removeOrphans;
     var height = 800;
     var width = 1200;
 
@@ -3844,7 +3865,12 @@ function stopAllStacks() {
         var disableWarnings = pluginCfg && pluginCfg.DISABLE_ACTION_WARNINGS === 'true';
 
         if (disableWarnings) {
-            executeStopAllStacks(stacks, bgDefault, bgDefault, removeOrphansDefault);
+            executeStopAllStacks({
+                stacks: stacks,
+                background: bgDefault,
+                suppressBackgroundNotification: bgDefault,
+                removeOrphans: removeOrphansDefault
+            });
             return;
         }
 
@@ -3860,7 +3886,12 @@ function stopAllStacks() {
             if (confirmed) {
                 var runInBackground = $('#swal-run-bg-stopall').is(':checked');
                 var removeOrphans = $('#swal-remove-orphans-stopall').is(':checked');
-                executeStopAllStacks(stacks, runInBackground, false, removeOrphans);
+                executeStopAllStacks({
+                    stacks: stacks,
+                    background: runInBackground,
+                    suppressBackgroundNotification: false,
+                    removeOrphans: removeOrphans
+                });
             }
         });
 
@@ -3873,7 +3904,12 @@ function stopAllStacks() {
     });
 }
 
-function executeStopAllStacks(stacks, background, suppressBackgroundNotification = false, removeOrphans = false) {
+function executeStopAllStacks(opts) {
+    opts = opts || {};
+    var stacks = opts.stacks || [];
+    var background = !!opts.background;
+    var suppressBackgroundNotification = !!opts.suppressBackgroundNotification;
+    var removeOrphans = !!opts.removeOrphans;
     var height = 800;
     var width = 1200;
 
@@ -4272,7 +4308,12 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
 
         if (disableWarnings) {
             // In default background mode (warnings disabled and background enabled), don't show toast if background is used
-            cfg.confirmedFn(path, profile, bgDefault, bgDefault, removeOrphansDefault);
+            cfg.confirmedFn(path, {
+                profile: profile,
+                background: bgDefault,
+                suppressBackgroundNotification: bgDefault,
+                removeOrphans: removeOrphansDefault
+            });
             return;
         }
 
@@ -4294,7 +4335,12 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
                 var runInBackground = $('#swal-run-bg-checkbox').is(':checked');
                 var removeOrphans = $('#swal-remove-orphans-checkbox').is(':checked');
                 // when running in background, suppress the extra notifyBackgroundStarted popup
-                cfg.confirmedFn(path, profile, runInBackground, runInBackground, removeOrphans);
+                cfg.confirmedFn(path, {
+                    profile: profile,
+                    background: runInBackground,
+                    suppressBackgroundNotification: runInBackground,
+                    removeOrphans: removeOrphans
+                });
             }
         });
 
@@ -5747,6 +5793,184 @@ function saveTab(tabName, saveErrors) {
     });
 }
 
+function saveSettings(saveErrors) {
+    var project = editorModal.currentProject;
+    var savePromises = [];
+
+    // Save name if modified
+    if (editorModal.modifiedSettings.has('name')) {
+        var newName = $('#settings-name').val();
+        savePromises.push(
+            $.post(caURL, {
+                action: 'changeName',
+                script: project,
+                newName: newName
+            }).then(function() {
+                editorModal.currentProjectName = newName || project;
+                editorModal.originalSettings['name'] = newName;
+                editorModal.modifiedSettings.delete('name');
+                return true;
+            }).fail(function() {
+                if (saveErrors) saveErrors.push('Failed to save stack name.');
+                return false;
+            })
+        );
+    }
+
+    // Save description if modified
+    if (editorModal.modifiedSettings.has('description')) {
+        var newDesc = $('#settings-description').val().replace(/\n/g, '<br>');
+        savePromises.push(
+            $.post(caURL, {
+                action: 'changeDesc',
+                script: project,
+                newDesc: newDesc
+            }).then(function() {
+                editorModal.originalSettings['description'] = $('#settings-description').val();
+                editorModal.modifiedSettings.delete('description');
+                return true;
+            }).fail(function() {
+                if (saveErrors) saveErrors.push('Failed to save description.');
+                return false;
+            })
+        );
+    }
+
+    // Save icon URL, webui URL, env path, default profile, and external compose settings if any are modified
+    if (editorModal.modifiedSettings.has('icon-url') || editorModal.modifiedSettings.has('webui-url') || editorModal.modifiedSettings.has('env-path') || editorModal.modifiedSettings.has('default-profile') || editorModal.modifiedSettings.has('external-compose-path') || editorModal.modifiedSettings.has('external-compose-file') || editorModal.modifiedSettings.has('use-default-compose-files')) {
+        var iconUrl = $('#settings-icon-url').val();
+        var webuiUrl = $('#settings-webui-url').val();
+        if (webuiUrl && !isValidWebUIUrl(webuiUrl)) {
+            swal({
+                type: 'error',
+                title: 'Save Failed',
+                text: 'Invalid WebUI URL. Must be http:// or https:// (supports [IP] and [PORT:xxxx] placeholders).'
+            });
+            return $.Deferred().resolve(false).promise();
+        }
+        if (webuiUrl && /\[PORT\]/i.test(webuiUrl)) {
+            swal({
+                type: 'error',
+                title: 'Save Failed',
+                text: 'Bare [PORT] placeholder is not supported at stack level. Use [PORT:xxxx] with a default port instead (e.g. [PORT:8080]).'
+            });
+            return $.Deferred().resolve(false).promise();
+        }
+        var envPath = $('#settings-env-path').val();
+        var defaultProfile = $('#settings-default-profile').val();
+        var externalComposePath = $('#settings-external-compose-path').val();
+        var externalComposeFilePath = $('#settings-external-compose-file').val();
+        if (externalComposePath && externalComposeFilePath) {
+            swal({
+                type: 'error',
+                title: 'Save Failed',
+                text: 'Set either External Compose Path or External Compose File, not both.'
+            });
+            return $.Deferred().resolve(false).promise();
+        }
+        var stackPath = (editorModal.filePaths.stackMeta || '').replace(/\/$/, '');
+        if (externalComposeFilePath && stackPath && externalComposeFilePath.startsWith(stackPath + '/')) {
+            swal({
+                type: 'error',
+                title: 'Save Failed',
+                text: 'External Compose File cannot be inside the stack project folder. Use a path that is external to this stack.'
+            });
+            return $.Deferred().resolve(false).promise();
+        }
+        var useDefaultComposeFiles = $('#settings-use-default-compose-files').is(':checked') ? 'true' : 'false';
+        savePromises.push(
+            $.post(caURL, {
+                action: 'setStackSettings',
+                script: project,
+                iconUrl: iconUrl,
+                webuiUrl: webuiUrl,
+                envPath: envPath,
+                defaultProfile: defaultProfile,
+                externalComposePath: externalComposePath,
+                externalComposeFilePath: externalComposeFilePath,
+                useDefaultComposeFiles: useDefaultComposeFiles
+            }).then(function(data) {
+                if (data) {
+                    try {
+                        var response = JSON.parse(data);
+                    } catch (e) {
+                        if (saveErrors) saveErrors.push('Invalid server response when saving settings.');
+                        return false;
+                    }
+                    if (response.result === 'success') {
+                        editorModal.originalSettings['icon-url'] = iconUrl;
+                        editorModal.originalSettings['webui-url'] = webuiUrl;
+                        editorModal.originalSettings['env-path'] = envPath;
+                        editorModal.originalSettings['default-profile'] = defaultProfile;
+                        editorModal.originalSettings['external-compose-path'] = externalComposePath;
+                        editorModal.originalSettings['external-compose-file'] = externalComposeFilePath;
+                        editorModal.originalSettings['use-default-compose-files'] = useDefaultComposeFiles;
+                        editorModal.modifiedSettings.delete('icon-url');
+                        editorModal.modifiedSettings.delete('webui-url');
+                        editorModal.modifiedSettings.delete('env-path');
+                        editorModal.modifiedSettings.delete('default-profile');
+                        editorModal.modifiedSettings.delete('external-compose-path');
+                        editorModal.modifiedSettings.delete('external-compose-file');
+                        editorModal.modifiedSettings.delete('use-default-compose-files');
+                        return true;
+                    }
+                    if (saveErrors) saveErrors.push(response.message || 'Failed to save stack settings.');
+                }
+                return false;
+            }).fail(function() {
+                if (saveErrors) saveErrors.push('Failed to save stack settings (network error).');
+                return false;
+            })
+        );
+    }
+
+    // Save labels view mode if modified
+    if (editorModal.modifiedSettings.has('labels-view-mode')) {
+        var labelsViewMode = editorModal.pendingLabelsViewMode === 'advanced' ? 'advanced' : 'basic';
+        savePromises.push(
+            $.post(caURL, {
+                action: 'setLabelsViewMode',
+                script: project,
+                labelsViewMode: labelsViewMode
+            }).then(function(data) {
+                if (data) {
+                    try {
+                        var response = JSON.parse(data);
+                    } catch (e) {
+                        if (saveErrors) saveErrors.push('Invalid server response when saving override management mode.');
+                        return false;
+                    }
+                    if (response.result === 'success') {
+                        editorModal.originalSettings['labels-view-mode'] = labelsViewMode;
+                        editorModal.pendingLabelsViewMode = labelsViewMode;
+                        editorModal.modifiedSettings.delete('labels-view-mode');
+                        toggleLabelsViewMode(labelsViewMode === 'advanced', true);
+                        return true;
+                    }
+                    if (saveErrors) saveErrors.push(response.message || 'Failed to save override management mode.');
+                    return false;
+                }
+                if (saveErrors) saveErrors.push('Failed to save override management mode. Empty server response.');
+                return false;
+            }).fail(function() {
+                if (saveErrors) saveErrors.push('Failed to save override management mode (network error).');
+                return false;
+            })
+        );
+    }
+
+    return $.when.apply($, savePromises).then(function() {
+        var results = Array.prototype.slice.call(arguments);
+        var allSucceeded = savePromises.length === 0 || results.every(function(result) {
+            return result === true;
+        });
+
+        updateTabModifiedState();
+        updateSaveButtonState();
+        return allSucceeded;
+    });
+}
+
 // Save all modified changes (files, settings, and labels)
 function saveAllChanges(closeAfterSave) {
     if (typeof closeAfterSave === 'undefined') {
@@ -5869,22 +6093,6 @@ function saveAllChanges(closeAfterSave) {
         return;
     }
 
-    // Track if labels are being modified in Automatic mode (need to offer recreate)
-    var labelsWereModified = editorModal.labelsViewMode === 'basic' && editorModal.modifiedLabels.size > 0;
-
-    // Save modified file tabs (compose, env, and override editor)
-    editorModal.modifiedTabs.forEach(function(tabName) {
-        savePromises.push(saveTab(tabName, saveErrors));
-    });
-
-    // Save settings if modified
-    if (editorModal.modifiedSettings.size > 0) {
-        savePromises.push(saveSettings(saveErrors));
-    }
-
-    // Save labels only in Automatic mode.
-    if (editorModal.modifiedLabels.size > 0) {
-
     if (removedServices.length > 0) {
         swal({
             title: 'Running Stack Changed',
@@ -5902,180 +6110,6 @@ function saveAllChanges(closeAfterSave) {
     }
 
     continueSave();
-    // Save name if modified
-    if (editorModal.modifiedSettings.has('name')) {
-        var newName = $('#settings-name').val();
-        savePromises.push(
-            $.post(caURL, {
-                action: 'changeName',
-                script: project,
-                newName: newName
-            }).then(function() {
-                editorModal.currentProjectName = newName || project;
-                editorModal.originalSettings['name'] = newName;
-                editorModal.modifiedSettings.delete('name');
-                return true;
-            }).fail(function() {
-                if (saveErrors) saveErrors.push('Failed to save stack name.');
-                return false;
-            })
-        );
-    }
-
-    // Save description if modified
-    if (editorModal.modifiedSettings.has('description')) {
-        var newDesc = $('#settings-description').val().replace(/\n/g, '<br>');
-        savePromises.push(
-            $.post(caURL, {
-                action: 'changeDesc',
-                script: project,
-                newDesc: newDesc
-            }).then(function() {
-                editorModal.originalSettings['description'] = $('#settings-description').val();
-                editorModal.modifiedSettings.delete('description');
-                return true;
-            }).fail(function() {
-                if (saveErrors) saveErrors.push('Failed to save description.');
-                return false;
-            })
-        );
-    }
-
-    // Save icon URL, webui URL, env path, default profile, and external compose settings if any are modified
-    if (editorModal.modifiedSettings.has('icon-url') || editorModal.modifiedSettings.has('webui-url') || editorModal.modifiedSettings.has('env-path') || editorModal.modifiedSettings.has('default-profile') || editorModal.modifiedSettings.has('external-compose-path') || editorModal.modifiedSettings.has('external-compose-file') || editorModal.modifiedSettings.has('use-default-compose-files')) {
-        var iconUrl = $('#settings-icon-url').val();
-        var webuiUrl = $('#settings-webui-url').val();
-        if (webuiUrl && !isValidWebUIUrl(webuiUrl)) {
-            swal({
-                type: 'error',
-                title: 'Save Failed',
-                text: 'Invalid WebUI URL. Must be http:// or https:// (supports [IP] and [PORT:xxxx] placeholders).'
-            });
-            return $.Deferred().resolve(false).promise();
-        }
-        if (webuiUrl && /\[PORT\]/i.test(webuiUrl)) {
-            swal({
-                type: 'error',
-                title: 'Save Failed',
-                text: 'Bare [PORT] placeholder is not supported at stack level. Use [PORT:xxxx] with a default port instead (e.g. [PORT:8080]).'
-            });
-            return $.Deferred().resolve(false).promise();
-        }
-        var envPath = $('#settings-env-path').val();
-        var defaultProfile = $('#settings-default-profile').val();
-        var externalComposePath = $('#settings-external-compose-path').val();
-        var externalComposeFilePath = $('#settings-external-compose-file').val();
-        if (externalComposePath && externalComposeFilePath) {
-            swal({
-                type: 'error',
-                title: 'Save Failed',
-                text: 'Set either External Compose Path or External Compose File, not both.'
-            });
-            return $.Deferred().resolve(false).promise();
-        }
-        var stackPath = (editorModal.filePaths.stackMeta || '').replace(/\/$/, '');
-        if (externalComposeFilePath && stackPath && externalComposeFilePath.startsWith(stackPath + '/')) {
-            swal({
-                type: 'error',
-                title: 'Save Failed',
-                text: 'External Compose File cannot be inside the stack project folder. Use a path that is external to this stack.'
-            });
-            return $.Deferred().resolve(false).promise();
-        }
-        var useDefaultComposeFiles = $('#settings-use-default-compose-files').is(':checked') ? 'true' : 'false';
-        savePromises.push(
-            $.post(caURL, {
-                action: 'setStackSettings',
-                script: project,
-                iconUrl: iconUrl,
-                webuiUrl: webuiUrl,
-                envPath: envPath,
-                defaultProfile: defaultProfile,
-                externalComposePath: externalComposePath,
-                externalComposeFilePath: externalComposeFilePath,
-                useDefaultComposeFiles: useDefaultComposeFiles
-            }).then(function(data) {
-                if (data) {
-                    try {
-                        var response = JSON.parse(data);
-                    } catch (e) {
-                        if (saveErrors) saveErrors.push('Invalid server response when saving settings.');
-                        return false;
-                    }
-                    if (response.result === 'success') {
-                        editorModal.originalSettings['icon-url'] = iconUrl;
-                        editorModal.originalSettings['webui-url'] = webuiUrl;
-                        editorModal.originalSettings['env-path'] = envPath;
-                        editorModal.originalSettings['default-profile'] = defaultProfile;
-                        editorModal.originalSettings['external-compose-path'] = externalComposePath;
-                        editorModal.originalSettings['external-compose-file'] = externalComposeFilePath;
-                        editorModal.originalSettings['use-default-compose-files'] = useDefaultComposeFiles;
-                        editorModal.modifiedSettings.delete('icon-url');
-                        editorModal.modifiedSettings.delete('webui-url');
-                        editorModal.modifiedSettings.delete('env-path');
-                        editorModal.modifiedSettings.delete('default-profile');
-                        editorModal.modifiedSettings.delete('external-compose-path');
-                        editorModal.modifiedSettings.delete('external-compose-file');
-                        editorModal.modifiedSettings.delete('use-default-compose-files');
-                        return true;
-                    } else {
-                        // Collect error message from server
-                        if (saveErrors) saveErrors.push(response.message || 'Failed to save stack settings.');
-                    }
-                }
-                return false;
-            }).fail(function() {
-                if (saveErrors) saveErrors.push('Failed to save stack settings (network error).');
-                return false;
-            })
-        );
-    }
-
-    // Save labels view mode if modified
-    if (editorModal.modifiedSettings.has('labels-view-mode')) {
-        var labelsViewMode = editorModal.pendingLabelsViewMode === 'advanced' ? 'advanced' : 'basic';
-        savePromises.push(
-            $.post(caURL, {
-                action: 'setLabelsViewMode',
-                script: project,
-                labelsViewMode: labelsViewMode
-            }).then(function(data) {
-                if (data) {
-                    try {
-                        var response = JSON.parse(data);
-                    } catch (e) {
-                        if (saveErrors) saveErrors.push('Invalid server response when saving override management mode.');
-                        return false;
-                    }
-                    if (response.result === 'success') {
-                        editorModal.originalSettings['labels-view-mode'] = labelsViewMode;
-                        editorModal.pendingLabelsViewMode = labelsViewMode;
-                        editorModal.modifiedSettings.delete('labels-view-mode');
-                        toggleLabelsViewMode(labelsViewMode === 'advanced', true);
-                        return true;
-                    }
-                    if (saveErrors) saveErrors.push(response.message || 'Failed to save override management mode.');
-                    return false;
-                }
-                if (saveErrors) saveErrors.push('Failed to save override management mode. Empty server response.');
-                return false;
-            }).fail(function() {
-                if (saveErrors) saveErrors.push('Failed to save override management mode (network error).');
-                return false;
-            })
-        );
-    }
-
-    return $.when.apply($, savePromises).then(function() {
-        var results = Array.prototype.slice.call(arguments);
-        var allSucceeded = savePromises.length === 0 || results.every(function(result) {
-            return result === true;
-        });
-
-        updateTabModifiedState();
-        updateSaveButtonState();
-        return allSucceeded;
-    });
 }
 
 // Save labels to override file
