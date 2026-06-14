@@ -1410,13 +1410,13 @@ function checkPendingRechecks(callback) {
                         hadPendingRechecks = true;
                         composeLogger('checkPendingRechecks:found', {
                             pendingStacks: pendingStacks
-                        }, 'user', 'info', 'update-check');
+                        }, 'user', 'debug', 'update-check');
 
                         // Check each pending stack
                         pendingStacks.forEach(function(stackName) {
                             composeLogger('Running recheck for recently updated stack', {
                                 stackName: stackName
-                            }, 'user', 'info', 'update-check');
+                            }, 'user', 'debug', 'update-check');
                             checkStackUpdates(stackName);
                         });
                     }
@@ -1450,11 +1450,11 @@ function checkAutoUpdateIfNeeded(stacks) {
     // If we have a lastChecked time and it's within the interval, don't check
     if (latestCheck > 0 && (now - latestCheck) < intervalSeconds) {
         needsCheck = false;
-        composeLogger('Last check was ' + Math.round((now - latestCheck) / 60) + ' minutes ago, interval is ' + Math.round(intervalSeconds / 60) + ' minutes. Skipping.', null, 'user', 'info', 'update-check');
+        composeLogger('Last check was ' + Math.round((now - latestCheck) / 60) + ' minutes ago, interval is ' + Math.round(intervalSeconds / 60) + ' minutes. Skipping.', null, 'user', 'debug', 'update-check');
     }
 
     if (needsCheck) {
-        composeLogger('Running automatic update check...', null, 'user', 'info', 'update-check');
+        composeLogger('Running automatic update check...', null, 'user', 'debug', 'update-check');
         checkAllUpdates();
     }
 }
@@ -1786,7 +1786,7 @@ function updateStackUpdateUI(stackName, stackInfo) {
                 stackName: stackName,
                 loading: !!stackDetailsLoading[stackId],
                 justRendered: !!stackDetailsJustRendered[stackId]
-            }, 'user', 'info', 'update-check');
+            }, 'user', 'debug', 'update-check');
         } else {
             loadStackContainerDetails(stackId, stackName);
         }
@@ -1857,16 +1857,16 @@ function isValidIconSrc(src) {
 
 function loadPersistentContainerCache() {
     return new Promise(function(resolve) {
-        $.get('/plugins/compose.manager/include/ContainerCache.php')
-            .done(function(data) {
-                try {
-                    persistentContainerCache = (typeof data === 'string' ? JSON.parse(data) : data) || {};
-                } catch (e) {
-                    persistentContainerCache = {};
-                    composeLogger('Failed to parse persistent container cache', {
-                        error: e && e.toString()
-                    }, 'user', 'warn', 'loadPersistentContainerCache');
-                }
+        $.ajax({
+            url: caURL,
+            method: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'getPersistentContainerCache'
+            }
+        })
+            .done(function(response) {
+                persistentContainerCache = (response && response.cache) ? response.cache : {};
                 resolve(persistentContainerCache);
             })
             .fail(function() {
@@ -2077,12 +2077,12 @@ $(function() {
         composeListLoadStartedAt = Date.now();
         composeLoadlist().then(function(loadMode) {
             composeListReady = true;
-            composeLogger('compose list finished loading', {
+            composeLogger('compose list ready', {
                 rows: $('#compose_stacks tr.compose-sortable').length,
                 elapsedMs: Date.now() - composeListLoadStartedAt,
                 mode: loadMode || 'standard',
                 composeListReady: true
-            }, 'user', 'debug', 'dockerload');
+            }, 'user', 'info', 'dockerload');
 
             // Start the dockerload socket now that the DOM has rows with data-ctids.
             if (typeof window.composeDockerLoadToggle === 'function') {
@@ -2139,7 +2139,7 @@ $(function() {
                         }
                     };
                     window.loadlist._composeTabHooked = true;
-                    composeLogger('hooked loadlist() for cross-widget sync, tabbed=' + isTabbed, null, 'user', 'info', 'hookLoadlist');
+                    composeLogger('hooked loadlist() for cross-widget sync, tabbed=' + isTabbed, null, 'user', 'debug', 'hookLoadlist');
                     return true;
                 }
                 return false;
@@ -2187,7 +2187,7 @@ $(function() {
             // AJAX navigation preserves window globals but old closures/sockets
             // become stale).  Always create a fresh subscriber.
             if (window._composeDockerLoad) {
-                composeLogger('tearing down previous subscriber', null, 'user', 'info', 'dockerload');
+                composeLogger('tearing down previous subscriber', null, 'user', 'debug', 'dockerload');
                 try {
                     window._composeDockerLoad.stop();
                 } catch (e) {}
@@ -2203,7 +2203,7 @@ $(function() {
             }
             $(document).off('composeListRefreshed.dockerload');
 
-            composeLogger('initializing subscriber, composeListReady=' + composeListReady, null, 'user', 'info', 'dockerload');
+            composeLogger('initializing subscriber, composeListReady=' + composeListReady, null, 'user', 'debug', 'dockerload');
 
             var composeDockerLoad = new NchanSubscriber('/sub/dockerload', {
                 subscriber: 'websocket',
@@ -2318,11 +2318,11 @@ $(function() {
 
             window.composeDockerLoadToggle = function(enable) {
                 if (enable && !composeDockerLoadRunning) {
-                    composeLogger('starting WebSocket', null, 'user', 'info', 'dockerload');
+                    composeLogger('starting WebSocket', null, 'user', 'debug', 'dockerload');
                     composeDockerLoad.start();
                     composeDockerLoadRunning = true;
                 } else if (!enable && composeDockerLoadRunning) {
-                    composeLogger('stopping WebSocket', null, 'user', 'info', 'dockerload');
+                    composeLogger('stopping WebSocket', null, 'user', 'debug', 'dockerload');
                     composeDockerLoad.stop();
                     composeDockerLoadRunning = false;
                 }
@@ -2523,7 +2523,7 @@ $(function() {
                 composeLogger('auto-starting socket', {
                     'listReady': composeListReady,
                     'advanced': isComposeAdvancedMode()
-                }, 'user', 'info', 'dockerload');
+                }, 'user', 'debug', 'dockerload');
                 composeDockerLoad.start();
                 composeDockerLoadRunning = true;
             } else {
@@ -2543,7 +2543,7 @@ $(function() {
             var composeDockerLoadInitTimer = setInterval(function() {
                 composeDockerLoadInitAttempts++;
                 if (initComposeDockerLoadSubscriber()) {
-                    composeLogger('subscriber initialized on retry #' + composeDockerLoadInitAttempts, null, 'user', 'info', 'dockerload');
+                    composeLogger('subscriber initialized on retry #' + composeDockerLoadInitAttempts, null, 'user', 'debug', 'dockerload');
                     clearInterval(composeDockerLoadInitTimer);
                 } else if (composeDockerLoadInitAttempts >= 40) {
                     composeLogger('subscriber init gave up after ' + composeDockerLoadInitAttempts + ' attempts', null, 'user', 'warn', 'dockerload');
@@ -2871,6 +2871,57 @@ function loadComposeYaml(content) {
     return yamlLib.load(input);
 }
 
+function getComposeServiceNamesFromContent(content) {
+    if (!content || !content.trim()) {
+        return [];
+    }
+
+    try {
+        var doc = loadComposeYaml(content) || {};
+        var services = doc.services || {};
+        return Object.keys(services);
+    } catch (e) {
+        return [];
+    }
+}
+
+function getRemovedComposeServices() {
+    var originalContent = editorModal.originalContent['compose'] || '';
+    var currentEditor = editorModal.editors['compose'];
+
+    if (!originalContent || !currentEditor) {
+        return [];
+    }
+
+    var originalServices = getComposeServiceNamesFromContent(originalContent);
+    var currentServices = getComposeServiceNamesFromContent(currentEditor.getValue());
+
+    if (originalServices.length === 0 || currentServices.length === 0) {
+        return [];
+    }
+
+    var currentServiceSet = {};
+    currentServices.forEach(function(serviceName) {
+        currentServiceSet[serviceName] = true;
+    });
+
+    return originalServices.filter(function(serviceName) {
+        return !currentServiceSet[serviceName];
+    });
+}
+
+function isStackRunning(project) {
+    var $stackRow = $('#compose_stacks tr.compose-sortable[data-project="' + project + '"]');
+    return $stackRow.length > 0 && $stackRow.data('isup') == '1';
+}
+
+function buildRemoveOrphansCheckboxHtml(checkboxId) {
+    return '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--dynamix-box-inner-div-border-color);display:flex;align-items:center;gap:8px;">' +
+        '<input type="checkbox" id="' + checkboxId + '" style="width:16px;height:16px;cursor:pointer;">' +
+        '<label for="' + checkboxId + '" style="cursor:pointer;user-select:none;margin:0;font-size:0.95em;">Remove orphans</label>' +
+        '</div>';
+}
+
 function applyDesc(myID) {
     var newDesc = $("#newDesc" + myID).val();
     var project = $("#" + myID).attr("data-scriptname");
@@ -3133,6 +3184,9 @@ function performComposeAction(opts) {
     }
 
     payload.background = background ? 1 : 0;
+    if (Object.prototype.hasOwnProperty.call(payload, 'removeOrphans')) {
+        payload.removeOrphans = payload.removeOrphans ? 1 : 0;
+    }
 
     $.post(requestUrl, payload, function(data) {
         var parsed = tryParseJson(data);
@@ -3210,7 +3264,8 @@ function confirmedComposeAction(path, opts) {
 }
 
 // Confirmed action handlers (no dialog, just execute)
-function ComposeUpConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false) {
+function ComposeUpConfirmed(path, opts) {
+    opts = opts || {};
     confirmedComposeAction(path, {
         actionName: 'up',
         titlePrefix: 'Compose Up',
@@ -3218,10 +3273,11 @@ function ComposeUpConfirmed(path, profile = "", background = false, suppressBack
         payload: {
             action: 'composeUp',
             path: path,
-            profile: profile
+            profile: opts.profile || '',
+            removeOrphans: !!opts.removeOrphans
         },
-        background: background,
-        suppressBackgroundNotification: suppressBackgroundNotification,
+        background: !!opts.background,
+        suppressBackgroundNotification: !!opts.suppressBackgroundNotification,
         pendingReload: true
     });
 }
@@ -3246,7 +3302,8 @@ function ComposeUp(path, profile = "") {
     showStackActionDialog('up', path, profile);
 }
 
-function ComposeDownConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false) {
+function ComposeDownConfirmed(path, opts) {
+    opts = opts || {};
     confirmedComposeAction(path, {
         actionName: 'down',
         titlePrefix: 'Compose Down',
@@ -3254,10 +3311,11 @@ function ComposeDownConfirmed(path, profile = "", background = false, suppressBa
         payload: {
             action: 'composeDown',
             path: path,
-            profile: profile
+            profile: opts.profile || '',
+            removeOrphans: !!opts.removeOrphans
         },
-        background: background,
-        suppressBackgroundNotification: suppressBackgroundNotification,
+        background: !!opts.background,
+        suppressBackgroundNotification: !!opts.suppressBackgroundNotification,
         pendingReload: true
     });
 }
@@ -3267,7 +3325,8 @@ function ComposeDown(path, profile = "") {
 }
 
 // Stop stack without removing containers
-function ComposeStopConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false) {
+function ComposeStopConfirmed(path, opts) {
+    opts = opts || {};
     confirmedComposeAction(path, {
         actionName: 'stop',
         titlePrefix: 'Compose Stop',
@@ -3275,10 +3334,10 @@ function ComposeStopConfirmed(path, profile = "", background = false, suppressBa
         payload: {
             action: 'composeStop',
             path: path,
-            profile: profile
+            profile: opts.profile || ''
         },
-        background: background,
-        suppressBackgroundNotification: suppressBackgroundNotification,
+        background: !!opts.background,
+        suppressBackgroundNotification: !!opts.suppressBackgroundNotification,
         pendingReload: true
     });
 }
@@ -3288,7 +3347,8 @@ function ComposeStop(path, profile = "") {
 }
 
 // Restart stack (recreate containers without pulling)
-function ComposeRestartConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false) {
+function ComposeRestartConfirmed(path, opts) {
+    opts = opts || {};
     confirmedComposeAction(path, {
         actionName: 'restart',
         titlePrefix: 'Compose Restart',
@@ -3296,10 +3356,10 @@ function ComposeRestartConfirmed(path, profile = "", background = false, suppres
         payload: {
             action: 'composeUpRecreate',
             path: path,
-            profile: profile
+            profile: opts.profile || ''
         },
-        background: background,
-        suppressBackgroundNotification: suppressBackgroundNotification,
+        background: !!opts.background,
+        suppressBackgroundNotification: !!opts.suppressBackgroundNotification,
         pendingReload: true,
         refreshDelayMs: 1000
     });
@@ -3310,7 +3370,8 @@ function ComposeRestart(path, profile = "") {
 }
 
 // Force update stack (pull and rebuild even without detected updates)
-function ForceUpdateStackConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false) {
+function ForceUpdateStackConfirmed(path, opts) {
+    opts = opts || {};
     var stackName = basename(path);
     if (pendingUpdateCheckStacks.indexOf(stackName) === -1) {
         pendingUpdateCheckStacks.push(stackName);
@@ -3329,10 +3390,10 @@ function ForceUpdateStackConfirmed(path, profile = "", background = false, suppr
         payload: {
             action: 'composeUpPullBuild',
             path: path,
-            profile: profile
+            profile: opts.profile || ''
         },
-        background: background,
-        suppressBackgroundNotification: suppressBackgroundNotification,
+        background: !!opts.background,
+        suppressBackgroundNotification: !!opts.suppressBackgroundNotification,
         pendingReload: true
     });
 }
@@ -3353,9 +3414,9 @@ function promptRecreateContainers(closeAfterSave) {
             title: "Saved!",
             text: "All changes have been saved.",
             type: "success",
-            timer: 1500,
             showConfirmButton: false
         });
+        setTimeout(function() { swal.close(); }, 1500);
         return;
     }
 
@@ -3383,11 +3444,12 @@ function promptRecreateContainers(closeAfterSave) {
             title: "Saved!",
             text: "Container labels were saved. Recreate or restart containers to apply the changes.",
             type: "info",
-            timer: 2000,
             showConfirmButton: false
-        }, function() {
-            refreshStackByProject(project);
         });
+        setTimeout(function() {
+            swal.close();
+            refreshStackByProject(project);
+        }, 2000);
         return;
     }
 
@@ -3418,11 +3480,12 @@ function promptRecreateContainers(closeAfterSave) {
                 title: "Saved!",
                 text: "Changes saved. Remember to restart or recreate containers to apply label changes.",
                 type: "info",
-                timer: 2000,
-                showConfirmButton: false
-            }, function() {
-                refreshStackByProject(project);
-            });
+showConfirmButton: false
+        });
+        setTimeout(function() {
+            swal.close();
+            refreshStackByProject(project);
+        }, 2000);
         }
     });
 }
@@ -3454,7 +3517,7 @@ function processPendingUpdateChecks() {
                 deferredStacks.push(stackName);
                 composeLogger('Deferring pending update check while action is in progress', {
                     stack: stackName
-                }, 'user', 'info', 'update-check');
+                }, 'user', 'debug', 'update-check');
             } else {
                 checkStackUpdates(stackName);
             }
@@ -3655,7 +3718,8 @@ function setStackActionInProgress(stackName, inProgress, text) {
     }
 }
 
-function UpdateStackConfirmed(path, profile = "", background = false, suppressBackgroundNotification = false) {
+function UpdateStackConfirmed(path, opts) {
+    opts = opts || {};
     var stackName = basename(path);
     if (pendingUpdateCheckStacks.indexOf(stackName) === -1) {
         pendingUpdateCheckStacks.push(stackName);
@@ -3674,10 +3738,10 @@ function UpdateStackConfirmed(path, profile = "", background = false, suppressBa
         payload: {
             action: 'composeUpPullBuild',
             path: path,
-            profile: profile
+            profile: opts.profile || ''
         },
-        background: background,
-        suppressBackgroundNotification: suppressBackgroundNotification,
+        background: !!opts.background,
+        suppressBackgroundNotification: !!opts.suppressBackgroundNotification,
         pendingReload: true
     });
 }
@@ -3734,20 +3798,27 @@ function startAllStacks() {
         '<input type="checkbox" id="swal-run-bg-startall" style="width:16px;height:16px;cursor:pointer;">' +
         '<label for="swal-run-bg-startall" style="cursor:pointer;user-select:none;margin:0;font-size:0.95em;">Run in background</label>' +
         '</div>';
+    var removeOrphansHtml = buildRemoveOrphansCheckboxHtml('swal-remove-orphans-startall');
 
     getConfig().then(function(pluginCfg) {
         var bgDefault = pluginCfg && pluginCfg.RUN_IN_BACKGROUND_DEFAULT === 'true';
+        var removeOrphansDefault = pluginCfg && pluginCfg.REMOVE_ORPHANS_DEFAULT === 'true';
         var disableWarnings = pluginCfg && pluginCfg.DISABLE_ACTION_WARNINGS === 'true';
 
         if (disableWarnings) {
-            executeStartAllStacks(stacks, bgDefault, bgDefault);
+            executeStartAllStacks({
+                stacks: stacks,
+                background: bgDefault,
+                suppressBackgroundNotification: bgDefault,
+                removeOrphans: removeOrphansDefault
+            });
             return;
         }
 
         swal({
             title: title,
             html: true,
-            text: '<div style="background:var(--alt-background-color);text-align:left;max-width:400px;margin:0 auto;"><p>The following stacks will be started:</p><div style="background:var(--background-color);padding:10px;border-radius:4px;max-height:200px;overflow-y:auto;margin:10px 0;">' + stackNames + '</div>' + bgCheckboxHtml + '</div>',
+            text: '<div style="background:var(--alt-background-color);text-align:left;max-width:400px;margin:0 auto;"><p>The following stacks will be started:</p><div style="background:var(--background-color);padding:10px;border-radius:4px;max-height:200px;overflow-y:auto;margin:10px 0;">' + stackNames + '</div>' + removeOrphansHtml + bgCheckboxHtml + '</div>',
             type: 'warning',
             showCancelButton: true,
             confirmButtonText: confirmText,
@@ -3755,18 +3826,31 @@ function startAllStacks() {
         }, function(confirmed) {
             if (confirmed) {
                 var runInBackground = $('#swal-run-bg-startall').is(':checked');
-                executeStartAllStacks(stacks, runInBackground);
+                var removeOrphans = $('#swal-remove-orphans-startall').is(':checked');
+                executeStartAllStacks({
+                    stacks: stacks,
+                    background: runInBackground,
+                    suppressBackgroundNotification: false,
+                    removeOrphans: removeOrphans
+                });
             }
         });
 
         setTimeout(function() {
             var $cb = $('#swal-run-bg-startall');
             if ($cb.length) $cb.prop('checked', bgDefault);
+            var $removeCb = $('#swal-remove-orphans-startall');
+            if ($removeCb.length) $removeCb.prop('checked', removeOrphansDefault);
         }, 50);
     });
 }
 
-function executeStartAllStacks(stacks, background, suppressBackgroundNotification = false) {
+function executeStartAllStacks(opts) {
+    opts = opts || {};
+    var stacks = opts.stacks || [];
+    var background = !!opts.background;
+    var suppressBackgroundNotification = !!opts.suppressBackgroundNotification;
+    var removeOrphans = !!opts.removeOrphans;
     var height = 800;
     var width = 1200;
 
@@ -3789,7 +3873,8 @@ function executeStartAllStacks(stacks, background, suppressBackgroundNotificatio
     $.post(compURL, {
         action: 'composeUpMultiple',
         paths: JSON.stringify(paths),
-        background: background ? 1 : 0
+        background: background ? 1 : 0,
+        removeOrphans: removeOrphans ? 1 : 0
     }, function(data) {
         var parsed = tryParseJson(data);
         if (parsed && parsed.background) {
@@ -3851,20 +3936,27 @@ function stopAllStacks() {
         '<input type="checkbox" id="swal-run-bg-stopall" style="width:16px;height:16px;cursor:pointer;">' +
         '<label for="swal-run-bg-stopall" style="cursor:pointer;user-select:none;margin:0;font-size:0.95em;">Run in background</label>' +
         '</div>';
+    var removeOrphansHtml = buildRemoveOrphansCheckboxHtml('swal-remove-orphans-stopall');
 
     getConfig().then(function(pluginCfg) {
         var bgDefault = pluginCfg && pluginCfg.RUN_IN_BACKGROUND_DEFAULT === 'true';
+        var removeOrphansDefault = pluginCfg && pluginCfg.REMOVE_ORPHANS_DEFAULT === 'true';
         var disableWarnings = pluginCfg && pluginCfg.DISABLE_ACTION_WARNINGS === 'true';
 
         if (disableWarnings) {
-            executeStopAllStacks(stacks, bgDefault, bgDefault);
+            executeStopAllStacks({
+                stacks: stacks,
+                background: bgDefault,
+                suppressBackgroundNotification: bgDefault,
+                removeOrphans: removeOrphansDefault
+            });
             return;
         }
 
         swal({
             title: title,
             html: true,
-            text: '<div style="background:var(--alt-background-color);text-align:left;max-width:400px;margin:0 auto;"><p>The following stacks will be stopped:</p><div style="background:var(--background-color);padding:10px;border-radius:4px;max-height:200px;overflow-y:auto;margin:10px 0;">' + stackNames + '</div><p class="compose-status-warning" style="margin-top:10px;"><i class="fa fa-exclamation-triangle"></i> Containers will be stopped and removed. Data in volumes will be preserved.</p>' + bgCheckboxHtml + '</div>',
+            text: '<div style="background:var(--alt-background-color);text-align:left;max-width:400px;margin:0 auto;"><p>The following stacks will be stopped:</p><div style="background:var(--background-color);padding:10px;border-radius:4px;max-height:200px;overflow-y:auto;margin:10px 0;">' + stackNames + '</div><p class="compose-status-warning" style="margin-top:10px;"><i class="fa fa-exclamation-triangle"></i> Containers will be stopped and removed. Data in volumes will be preserved.</p>' + removeOrphansHtml + bgCheckboxHtml + '</div>',
             type: 'warning',
             showCancelButton: true,
             confirmButtonText: confirmText,
@@ -3872,18 +3964,31 @@ function stopAllStacks() {
         }, function(confirmed) {
             if (confirmed) {
                 var runInBackground = $('#swal-run-bg-stopall').is(':checked');
-                executeStopAllStacks(stacks, runInBackground);
+                var removeOrphans = $('#swal-remove-orphans-stopall').is(':checked');
+                executeStopAllStacks({
+                    stacks: stacks,
+                    background: runInBackground,
+                    suppressBackgroundNotification: false,
+                    removeOrphans: removeOrphans
+                });
             }
         });
 
         setTimeout(function() {
             var $cb = $('#swal-run-bg-stopall');
             if ($cb.length) $cb.prop('checked', bgDefault);
+            var $removeCb = $('#swal-remove-orphans-stopall');
+            if ($removeCb.length) $removeCb.prop('checked', removeOrphansDefault);
         }, 50);
     });
 }
 
-function executeStopAllStacks(stacks, background, suppressBackgroundNotification = false) {
+function executeStopAllStacks(opts) {
+    opts = opts || {};
+    var stacks = opts.stacks || [];
+    var background = !!opts.background;
+    var suppressBackgroundNotification = !!opts.suppressBackgroundNotification;
+    var removeOrphans = !!opts.removeOrphans;
     var height = 800;
     var width = 1200;
 
@@ -3906,7 +4011,8 @@ function executeStopAllStacks(stacks, background, suppressBackgroundNotification
     $.post(compURL, {
         action: 'composeDownMultiple',
         paths: JSON.stringify(paths),
-        background: background ? 1 : 0
+        background: background ? 1 : 0,
+        removeOrphans: removeOrphans ? 1 : 0
     }, function(data) {
         var parsed = tryParseJson(data);
         if (parsed && parsed.background) {
@@ -4060,13 +4166,16 @@ function showStackActionDialog(action, path, profile) {
             containers.push(container);
         });
 
+        var detectedMismatch = cachedContainers.length !== profileServices.length;
+
         composeLogger('profile/unified AJAX done', {
             profileServices,
             containers,
-            cachedContainers
+            cachedContainers,
+            detectedMismatch
         }, 'user', 'debug', 'showStackActionDialog');
         containers = mergeUpdateStatus(containers, project);
-        renderStackActionDialog(action, displayName, path, profile, containers, hasBuild);
+        renderStackActionDialog(action, displayName, path, profile, containers, hasBuild, detectedMismatch);
     }).fail(function(xhr, status, error) {
         // Fallback: if profile resolution fails, show cached container metadata
         composeLogger('getProfileServices AJAX fail', {
@@ -4084,12 +4193,12 @@ function showStackActionDialog(action, path, profile) {
             });
             containers = mergeUpdateStatus(containers, project);
         }
-        renderStackActionDialog(action, displayName, path, profile, containers, hasBuild);
+        renderStackActionDialog(action, displayName, path, profile, containers, hasBuild, cachedContainers.length > 0);
     });
     return;
 }
 
-function renderStackActionDialog(action, displayName, path, profile, containers, hasBuild) {
+function renderStackActionDialog(action, displayName, path, profile, containers, hasBuild, showRemoveOrphans) {
     hasBuild = hasBuild || false;
     // Action-specific configuration
     var pullLabel = hasBuild ? 'Build' : 'Pull';
@@ -4103,6 +4212,7 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
             warningColor: window.getComputedStyle(document.documentElement).getPropertyValue('--dynamix-ui-dropdownchecklist-color'),
             confirmText: 'Compose Up',
             showVersionArrow: false,
+            showRemoveOrphans: true,
             confirmedFn: ComposeUpConfirmed
         },
         'down': {
@@ -4114,6 +4224,7 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
             warningColor: window.getComputedStyle(document.documentElement).getPropertyValue('--dynamix-sb-message-link-color'),
             confirmText: 'Compose Down',
             showVersionArrow: false,
+            showRemoveOrphans: true,
             confirmedFn: ComposeDownConfirmed
         },
         'stop': {
@@ -4251,6 +4362,15 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
     // Warning/info text
     html += '<div style="color:' + cfg.warningColor + ';margin-top:14px;font-size:0.9em;"><i class="fa fa-' + cfg.warningIcon + '"></i> ' + cfg.warning + '</div>';
 
+    var removeOrphansDefault = false;
+
+    if (cfg.showRemoveOrphans) {
+        html += '<div id="swal-remove-orphans-wrap" style="display:none;">' +
+            buildRemoveOrphansCheckboxHtml('swal-remove-orphans-checkbox') +
+            '<div class="compose-text-muted" style="margin-top:6px;font-size:0.85em;margin-left:24px;">Adds --remove-orphans to the compose command.</div>' +
+            '</div>';
+    }
+
     // Run-in-background checkbox (appended after config is fetched below)
     var bgCheckboxHtml = '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--dynamix-box-inner-div-border-color);display:flex;align-items:center;gap:8px;">' +
         '<input type="checkbox" id="swal-run-bg-checkbox" style="width:16px;height:16px;cursor:pointer;">' +
@@ -4262,13 +4382,22 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
     // Fetch config to determine default checkbox state, then show swal (or skip warnings)
     getConfig().then(function(pluginCfg) {
         var bgDefault = pluginCfg && pluginCfg.RUN_IN_BACKGROUND_DEFAULT === 'true';
+        removeOrphansDefault = pluginCfg && pluginCfg.REMOVE_ORPHANS_DEFAULT === 'true';
         var disableWarnings = pluginCfg && pluginCfg.DISABLE_ACTION_WARNINGS === 'true';
 
         if (disableWarnings) {
             // In default background mode (warnings disabled and background enabled), don't show toast if background is used
-            cfg.confirmedFn(path, profile, bgDefault, bgDefault);
+            cfg.confirmedFn(path, {
+                profile: profile,
+                background: bgDefault,
+                suppressBackgroundNotification: bgDefault,
+                removeOrphans: removeOrphansDefault
+            });
             return;
         }
+
+        var removeOrphansChecked = removeOrphansDefault || showRemoveOrphans;
+        var showRemoveOrphansOption = cfg.showRemoveOrphans && (removeOrphansChecked || showRemoveOrphans);
 
         // Use native swal (SweetAlert 1.x) with callback style
         swal({
@@ -4283,8 +4412,14 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
             if (confirmed) {
                 // Capture checkbox state before swal destroys the DOM
                 var runInBackground = $('#swal-run-bg-checkbox').is(':checked');
+                var removeOrphans = $('#swal-remove-orphans-checkbox').is(':checked');
                 // when running in background, suppress the extra notifyBackgroundStarted popup
-                cfg.confirmedFn(path, profile, runInBackground, runInBackground);
+                cfg.confirmedFn(path, {
+                    profile: profile,
+                    background: runInBackground,
+                    suppressBackgroundNotification: runInBackground,
+                    removeOrphans: removeOrphans
+                });
             }
         });
 
@@ -4293,6 +4428,11 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
             var $cb = $('#swal-run-bg-checkbox');
             if ($cb.length) {
                 $cb.prop('checked', bgDefault);
+            }
+            var $orphanCb = $('#swal-remove-orphans-checkbox');
+            if ($orphanCb.length) {
+                $orphanCb.prop('checked', removeOrphansChecked);
+                $('#swal-remove-orphans-wrap').toggle(showRemoveOrphansOption);
             }
         }, 50);
     });
@@ -4964,6 +5104,13 @@ function loadSettingsData(project, projectName) {
                 var invalidIndirectPath = response.invalidIndirectPath || '';
                 var indirectMode = response.indirectMode || '';
                 if (!externalComposePath && !externalComposeFilePath && invalidIndirectPath) {
+                    composeLogger('settings-invalid-indirect-warning-show', {
+                        project: project,
+                        invalidIndirectPath: invalidIndirectPath,
+                        indirectMode: indirectMode,
+                        externalComposePath: externalComposePath,
+                        externalComposeFilePath: externalComposeFilePath
+                    }, 'user', 'debug', 'stack-settings');
                     // Pre-populate with the broken path so the user can fix it
                     if (indirectMode === 'file') {
                         $('#settings-external-compose-path').val('');
@@ -4981,6 +5128,14 @@ function loadSettingsData(project, projectName) {
                     $('#settings-invalid-indirect-warning').show();
                     $('#settings-external-compose-info').hide();
                 } else {
+                    if ($('#settings-invalid-indirect-warning').is(':visible')) {
+                        composeLogger('settings-invalid-indirect-warning-hide', {
+                            project: project,
+                            invalidIndirectPath: invalidIndirectPath,
+                            externalComposePath: externalComposePath,
+                            externalComposeFilePath: externalComposeFilePath
+                        }, 'user', 'debug', 'stack-settings');
+                    }
                     $('#settings-external-compose-path').val(externalComposePath);
                     $('#settings-external-compose-file').val(externalComposeFilePath);
                     editorModal.originalSettings['external-compose-path'] = externalComposePath;
@@ -5820,131 +5975,6 @@ function saveTab(tabName, saveErrors) {
     });
 }
 
-// Save all modified changes (files, settings, and labels)
-function saveAllChanges(closeAfterSave) {
-    if (typeof closeAfterSave === 'undefined') {
-        closeAfterSave = false;
-    }
-
-    var savePromises = [];
-    var saveErrors = [];
-    var skippedManualLabels = false;
-    var totalChanges = editorModal.modifiedTabs.size + editorModal.modifiedSettings.size + editorModal.modifiedLabels.size;
-    var pathSensitiveSettingsChanged = hasPathSensitiveSettingsChanges();
-    var pathDependentEdits = hasPathDependentEdits();
-
-    if (totalChanges === 0) {
-        return;
-    }
-
-    if (pathSensitiveSettingsChanged && pathDependentEdits) {
-        swal({
-            title: 'Reload Required',
-            text: 'Compose path or discovery settings changed. Save settings and reload the editor before saving compose, .env, override, or label edits.',
-            type: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'Save Settings Only',
-            cancelButtonText: 'Cancel'
-        }, function(confirmed) {
-            if (confirmed) {
-                saveSettingsWithOptionalReload(closeAfterSave);
-            }
-        });
-        return;
-    }
-
-    if (pathSensitiveSettingsChanged) {
-        saveSettingsWithOptionalReload(closeAfterSave);
-        return;
-    }
-
-    // Track if labels are being modified in Automatic mode (need to offer recreate)
-    var labelsWereModified = editorModal.labelsViewMode === 'basic' && editorModal.modifiedLabels.size > 0;
-
-    // Save modified file tabs (compose, env, and override editor)
-    editorModal.modifiedTabs.forEach(function(tabName) {
-        savePromises.push(saveTab(tabName, saveErrors));
-    });
-
-    // Save settings if modified
-    if (editorModal.modifiedSettings.size > 0) {
-        savePromises.push(saveSettings(saveErrors));
-    }
-
-    // Save labels only in Automatic mode.
-    if (editorModal.modifiedLabels.size > 0) {
-        if (editorModal.labelsViewMode === 'basic') {
-            savePromises.push(saveLabels(saveErrors));
-        } else {
-            skippedManualLabels = true;
-        }
-    }
-
-    $.when.apply($, savePromises).then(function() {
-        var results = Array.prototype.slice.call(arguments);
-        var allSucceeded = results.every(function(result) {
-            return result === true;
-        });
-
-        if (allSucceeded) {
-            if (skippedManualLabels) {
-                swal({
-                    title: "Partially Saved",
-                    text: "Non-label changes were saved. WebUI label form edits were not saved because Override File Management is set to Manual. Switch to Automatic to save Labels form changes.",
-                    type: "warning"
-                });
-                updateTabModifiedState();
-                updateSaveButtonState();
-                return;
-            }
-
-            // Check if we should offer to recreate containers
-            if (labelsWereModified) {
-                promptRecreateContainers(closeAfterSave);
-            } else {
-                var project = editorModal.currentProject;
-                if (closeAfterSave) {
-                    doCloseEditorModal();
-                }
-                swal({
-                    title: "Saved!",
-                    text: "All changes have been saved.",
-                    type: "success",
-                    timer: 1500,
-                    showConfirmButton: false
-                });
-                setTimeout(function() {
-                    if (project) {
-                        refreshStackByProject(project);
-                    }
-                }, 1600);
-            }
-        } else {
-            var filteredErrors = saveErrors.filter(function(message) {
-                return message !== '__STALE_PATH__';
-            });
-            if (filteredErrors.length === 0 && saveErrors.indexOf('__STALE_PATH__') !== -1) {
-                return;
-            }
-            var errorText = filteredErrors.length > 0 ?
-                filteredErrors.join('\n') :
-                'Some items could not be saved. Please try again.';
-            swal({
-                title: "Save Failed",
-                text: errorText,
-                type: "error"
-            });
-        }
-    }).fail(function() {
-        swal({
-            title: "Save Failed",
-            text: "An error occurred while saving. Please try again.",
-            type: "error"
-        });
-    });
-}
-
-// Save settings
 function saveSettings(saveErrors) {
     var project = editorModal.currentProject;
     var savePromises = [];
@@ -6069,10 +6099,8 @@ function saveSettings(saveErrors) {
                         editorModal.modifiedSettings.delete('external-compose-file');
                         editorModal.modifiedSettings.delete('use-default-compose-files');
                         return true;
-                    } else {
-                        // Collect error message from server
-                        if (saveErrors) saveErrors.push(response.message || 'Failed to save stack settings.');
                     }
+                    if (saveErrors) saveErrors.push(response.message || 'Failed to save stack settings.');
                 }
                 return false;
             }).fail(function() {
@@ -6127,6 +6155,147 @@ function saveSettings(saveErrors) {
         updateSaveButtonState();
         return allSucceeded;
     });
+}
+
+// Save all modified changes (files, settings, and labels)
+function saveAllChanges(closeAfterSave) {
+    if (typeof closeAfterSave === 'undefined') {
+        closeAfterSave = false;
+    }
+
+    var savePromises = [];
+    var saveErrors = [];
+    var skippedManualLabels = false;
+    var totalChanges = editorModal.modifiedTabs.size + editorModal.modifiedSettings.size + editorModal.modifiedLabels.size;
+    var pathSensitiveSettingsChanged = hasPathSensitiveSettingsChanges();
+    var pathDependentEdits = hasPathDependentEdits();
+    var project = editorModal.currentProject;
+    var removedServices = [];
+
+    if (totalChanges === 0) {
+        return;
+    }
+
+    if (project && editorModal.modifiedTabs.has('compose') && isStackRunning(project)) {
+        removedServices = getRemovedComposeServices();
+    }
+
+    function continueSave() {
+        // Track if labels are being modified in Automatic mode (need to offer recreate)
+        var labelsWereModified = editorModal.labelsViewMode === 'basic' && editorModal.modifiedLabels.size > 0;
+
+        // Save modified file tabs (compose, env, and override editor)
+        editorModal.modifiedTabs.forEach(function(tabName) {
+            savePromises.push(saveTab(tabName, saveErrors));
+        });
+
+        // Save settings if modified
+        if (editorModal.modifiedSettings.size > 0) {
+            savePromises.push(saveSettings(saveErrors));
+        }
+
+        // Save labels only in Automatic mode.
+        if (editorModal.modifiedLabels.size > 0) {
+            if (editorModal.labelsViewMode === 'basic') {
+                savePromises.push(saveLabels(saveErrors));
+            } else {
+                skippedManualLabels = true;
+            }
+        }
+
+        $.when.apply($, savePromises).then(function() {
+            var results = Array.prototype.slice.call(arguments);
+            var allSucceeded = results.every(function(result) {
+                return result === true;
+            });
+
+            if (allSucceeded) {
+                if (skippedManualLabels) {
+                    swal({
+                        title: "Partially Saved",
+                        text: "Non-label changes were saved. WebUI label form edits were not saved because Override File Management is set to Manual. Switch to Automatic to save Labels form changes.",
+                        type: "warning"
+                    });
+                    updateTabModifiedState();
+                    updateSaveButtonState();
+                    return;
+                }
+
+                // Check if we should offer to recreate containers
+                if (labelsWereModified) {
+                    promptRecreateContainers(closeAfterSave);
+                } else {
+                    var saveProject = editorModal.currentProject;
+                    if (closeAfterSave) {
+                        doCloseEditorModal();
+                    }
+                    swal({
+                        title: "Saved!",
+                        text: "All changes have been saved.",
+                        type: "success",
+                        showConfirmButton: false
+                    });
+                    setTimeout(function() {
+                        swal.close();
+                        if (saveProject) {
+                            refreshStackByProject(saveProject);
+                        }
+                    }, 1500);
+                }
+            } else {
+                var filteredErrors = saveErrors.filter(function(message) {
+                    return message !== '__STALE_PATH__';
+                });
+                if (filteredErrors.length === 0 && saveErrors.indexOf('__STALE_PATH__') !== -1) {
+                    return;
+                }
+                swal({
+                    title: 'Save Failed',
+                    text: filteredErrors.join('\n') || 'An unknown error occurred while saving.',
+                    type: 'error'
+                });
+            }
+        });
+    }
+
+    if (pathSensitiveSettingsChanged && pathDependentEdits) {
+        swal({
+            title: 'Reload Required',
+            text: 'Compose path or discovery settings changed. Save settings and reload the editor before saving compose, .env, override, or label edits.',
+            type: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Save Settings Only',
+            cancelButtonText: 'Cancel'
+        }, function(confirmed) {
+            if (confirmed) {
+                saveSettingsWithOptionalReload(closeAfterSave);
+            }
+        });
+        return;
+    }
+
+    if (pathSensitiveSettingsChanged) {
+        saveSettingsWithOptionalReload(closeAfterSave);
+        return;
+    }
+
+    if (removedServices.length > 0) {
+        swal({
+            title: 'Running Stack Changed',
+            text: 'This stack is running and the compose file no longer defines: ' + removedServices.join(', ') + '. Saving now can leave orphaned containers behind. Stop the stack first, or use Remove orphans from the Compose Up/Down dialog to clean them up.',
+            type: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Save Anyway',
+            cancelButtonText: 'Cancel'
+        }, function(confirmed) {
+            if (confirmed) {
+                continueSave();
+            }
+        });
+        return;
+    }
+
+    continueSave();
 }
 
 // Save labels to override file
@@ -6416,7 +6585,7 @@ function loadStackContainerDetails(stackId, project) {
                 stackId: stackId,
                 project: project,
                 containers: containers.length
-            }, 'user', 'info', 'container-details');
+            }, 'user', 'debug', 'container-details');
             renderContainerDetails(stackId, containers, project);
             $('#details-row-' + stackId).stop(true, true).slideDown(200, finishLoad);
             return true;
@@ -6453,7 +6622,7 @@ function loadStackContainerDetails(stackId, project) {
     composeLogger('start', {
         stackId: stackId,
         project: project
-    }, 'user', 'info', 'container-details');
+    }, 'user', 'debug', 'container-details');
 
     // Show loading state
     $container.html('<div class="stack-details-loading"><i class="fa fa-spinner fa-spin"></i> Loading container details...</div>');
@@ -6740,7 +6909,7 @@ function renderContainerDetails(stackId, containers, project) {
             composeLogger('just-rendered', {
                 stackId: stackId,
                 project: project
-            }, 'user', 'info', 'container-details');
+            }, 'user', 'debug', 'container-details');
             // Clear the flag after a short window
             setTimeout(function() {
                 try {

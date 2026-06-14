@@ -220,6 +220,13 @@ foreach ($stackInfos as $stackInfo) {
     $o .= "<span class='inner'><span class='appname'>$projectNameHtml</span><br>";
     $o .= "<i class='fa fa-$shape $status $color compose-status-icon' data-status='$status'></i><span class='state'>$statusLabel</span>";
     if ($hasInvalidIndirect) {
+        composeLogger('Rendering invalid indirect warning in stack list', [
+            'project' => $stackInfo->projectFolder,
+            'projectPath' => $stackInfo->path,
+            'invalidIndirectPath' => $invalidIndirectPath,
+            'isIndirect' => $stackInfo->isIndirect,
+            'composeSource' => $stackInfo->composeSource,
+        ], 'user', 'debug', 'stack-list');
         $o .= " <i class='fa fa-warning orange-text' title='External compose path is invalid or unavailable: $invalidIndirectPathHtml'></i>";
     }
     $o .= "<div class='cm-advanced compose-text-muted' style='margin-top:4px;font-size:0.85em;'>";

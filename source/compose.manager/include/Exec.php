@@ -159,6 +159,11 @@ switch ($_POST['action']) {
         $cfg = @parse_ini_file("/boot/config/plugins/compose.manager/compose.manager.cfg", true, INI_SCANNER_NORMAL);
         echo json_encode(['result' => 'success', 'config' => $cfg]);
         break;
+    case 'getPersistentContainerCache':
+        $cacheFile = '/boot/config/plugins/compose.manager/containers.cache.json';
+        $cache = is_file($cacheFile) ? json_decode(file_get_contents($cacheFile), true) : [];
+        echo json_encode(['result' => 'success', 'cache' => is_array($cache) ? $cache : []]);
+        break;
     case 'addStack':
         // Validate optional indirect inputs (folder or specific compose file)
         $indirectDir = isset($_POST['stackPath']) ? trim($_POST['stackPath']) : '';
