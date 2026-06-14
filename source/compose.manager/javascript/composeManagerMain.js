@@ -3337,9 +3337,9 @@ function promptRecreateContainers(closeAfterSave) {
             title: "Saved!",
             text: "All changes have been saved.",
             type: "success",
-            timer: 1500,
             showConfirmButton: false
         });
+        setTimeout(function() { swal.close(); }, 1500);
         return;
     }
 
@@ -3367,11 +3367,12 @@ function promptRecreateContainers(closeAfterSave) {
             title: "Saved!",
             text: "Container labels were saved. Recreate or restart containers to apply the changes.",
             type: "info",
-            timer: 2000,
             showConfirmButton: false
-        }, function() {
-            refreshStackByProject(project);
         });
+        setTimeout(function() {
+            swal.close();
+            refreshStackByProject(project);
+        }, 2000);
         return;
     }
 
@@ -3402,11 +3403,12 @@ function promptRecreateContainers(closeAfterSave) {
                 title: "Saved!",
                 text: "Changes saved. Remember to restart or recreate containers to apply label changes.",
                 type: "info",
-                timer: 2000,
-                showConfirmButton: false
-            }, function() {
-                refreshStackByProject(project);
-            });
+showConfirmButton: false
+        });
+        setTimeout(function() {
+            swal.close();
+            refreshStackByProject(project);
+        }, 2000);
         }
     });
 }
@@ -6047,14 +6049,14 @@ function saveAllChanges(closeAfterSave) {
                         title: "Saved!",
                         text: "All changes have been saved.",
                         type: "success",
-                        timer: 1500,
                         showConfirmButton: false
                     });
                     setTimeout(function() {
+                        swal.close();
                         if (saveProject) {
                             refreshStackByProject(saveProject);
                         }
-                    }, 1600);
+                    }, 1500);
                 }
             } else {
                 var filteredErrors = saveErrors.filter(function(message) {
