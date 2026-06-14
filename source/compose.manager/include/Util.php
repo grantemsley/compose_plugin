@@ -1909,6 +1909,40 @@ class StackInfo
     }
 
     /**
+     * Parse additional compose file paths from the `extra_compose_files`
+     * metadata file (one path per line; `#` comments allowed).
+     *
+     * Paths may be absolute or relative to the compose source folder.
+     * Missing files are skipped with a warning so a stale entry cannot
+     * break stack operations.
+     *
+     * @return string[]
+     */
+    private function getExtraComposeFiles(): array
+    {
+        $raw = $this->readMetadata('extra_compose_files');
+        if ($raw === null || $raw === '') {
+            return [];
+        }
+
+        $files = [];
+        foreach (preg_split('/\R/', $raw) as $line) {
+            $line = trim($line);
+            if ($line === '' || str_starts_with($line, '#')) {
+                continue;
+            }
+            $path = Path::isAbsolutePath($line) ? $line : $this->composeSource . '/' . $line;
+            if (!is_file($path)) {
+                composeLogger("Ignoring missing extra compose file for stack $this->projectFolder", ['path' => $path], 'user', 'warning', 'stack');
+                continue;
+            }
+            $files[] = $path;
+        }
+
+        return $files;
+    }
+
+    /**
      * Normalize compose file paths for deduplication.
      *
      * @return string
@@ -1964,6 +1998,26 @@ class StackInfo
         return $entries;
     }
 
+    /**
+     * Compose files that are directly editable in the stack editor: every
+     * existing file that contributes to the compose command, in `-f` order
+     * (main compose file, override file, COMPOSE_FILE env entries, and
+     * `extra_compose_files` metadata).
+     *
+     * @return string[]
+     */
+    public function getEditableComposeFiles(): array
+    {
+        $files = [];
+        foreach ($this->getComposeFilePaths() as $path) {
+            if (!is_file($path)) {
+                continue;
+            }
+            $files[] = $path;
+        }
+        return $files;
+    }
+
     private function getComposeFilePaths(): array
     {
         $paths = [];
@@ -1976,6 +2030,10 @@ class StackInfo
         }
 
         foreach ($this->getAdditionalComposeFilesFromEnv() as $extraFile) {
+            $paths[] = $extraFile;
+        }
+
+        foreach ($this->getExtraComposeFiles() as $extraFile) {
             $paths[] = $extraFile;
         }
 
@@ -2019,8 +2077,8 @@ class StackInfo
     /**
      * Determine whether this stack has manual settings that require explicit mode.
      *
-    * Explicit env-path and indirect-file selections are treated as explicit-mode
-    * signals, so default file discovery is bypassed.
+    * Explicit env-path, extra compose files, and indirect-file selections are
+    * treated as explicit-mode signals, so default file discovery is bypassed.
      *
      * @return bool
      */
@@ -2028,6 +2086,11 @@ class StackInfo
     {
         $configuredEnvPath = $this->readMetadata('envpath');
         if ($configuredEnvPath !== null && trim($configuredEnvPath) !== '') {
+            return true;
+        }
+
+        $extraComposeFiles = $this->readMetadata('extra_compose_files');
+        if ($extraComposeFiles !== null && $extraComposeFiles !== '') {
             return true;
         }
 

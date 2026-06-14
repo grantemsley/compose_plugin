@@ -872,6 +872,52 @@ class ExecActionsTest extends TestCase
         $this->assertEquals('success', $result['result']);
     }
 
+    public function testSetStackSettingsPreservesExtraComposeFilesWhenFieldMissing(): void
+    {
+        $stackPath = $this->createTestStack('test-stack');
+        file_put_contents($stackPath . '/extra_compose_files', "compose.gpu.yaml\n");
+
+        // A stale UI session that predates the field posts without it
+        $output = $this->executeAction('setStackSettings', [
+            'script' => 'test-stack',
+            'defaultProfile' => 'staging',
+        ]);
+
+        $result = json_decode($output, true);
+        $this->assertEquals('success', $result['result']);
+        $this->assertFileExists($stackPath . '/extra_compose_files');
+        $this->assertEquals("compose.gpu.yaml\n", file_get_contents($stackPath . '/extra_compose_files'));
+    }
+
+    public function testSetStackSettingsClearsExtraComposeFilesWhenFieldEmpty(): void
+    {
+        $stackPath = $this->createTestStack('test-stack');
+        file_put_contents($stackPath . '/extra_compose_files', "compose.gpu.yaml\n");
+
+        $output = $this->executeAction('setStackSettings', [
+            'script' => 'test-stack',
+            'extraComposeFiles' => '',
+        ]);
+
+        $result = json_decode($output, true);
+        $this->assertEquals('success', $result['result']);
+        $this->assertFileDoesNotExist($stackPath . '/extra_compose_files');
+    }
+
+    public function testSetStackSettingsWritesExtraComposeFiles(): void
+    {
+        $stackPath = $this->createTestStack('test-stack');
+
+        $output = $this->executeAction('setStackSettings', [
+            'script' => 'test-stack',
+            'extraComposeFiles' => "compose.gpu.yaml\ncompose.debug.yaml",
+        ]);
+
+        $result = json_decode($output, true);
+        $this->assertEquals('success', $result['result']);
+        $this->assertEquals("compose.gpu.yaml\ncompose.debug.yaml\n", file_get_contents($stackPath . '/extra_compose_files'));
+    }
+
     public function testSetStackSettingsRejectsBothExternalComposePathAndFile(): void
     {
         $this->createTestStack('test-stack');

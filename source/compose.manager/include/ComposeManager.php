@@ -477,6 +477,10 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             <!-- ========== COMPOSE EDITOR PANEL ========== -->
             <div class="editor-panel active" id="editor-panel-compose" role="tabpanel" aria-labelledby="editor-tab-compose">
                 <div class="editor-modal-body">
+                    <div id="compose-file-selector-wrap" style="display:none;align-items:center;gap:8px;padding:6px 12px;">
+                        <label for="compose-file-selector" style="margin:0;">File:</label>
+                        <select id="compose-file-selector" onchange="switchComposeFile(this.value)"></select>
+                    </div>
                     <div class="editor-container active" id="editor-container-compose">
                         <div id="editor-compose" style="width: 100%; height: 100%;"></div>
                     </div>
@@ -614,6 +618,17 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                             <label for="settings-external-compose-file">External Compose File</label>
                             <input type="text" id="settings-external-compose-file" placeholder="Optional specific compose file path" data-pickroot="/" data-picktop="/mnt" data-pickcloseonfile="true" data-pickfilter="yml,yaml">
                             <div class="settings-field-help">Path to a specific external compose file (e.g., /mnt/user/appdata/myapp/custom.compose.yml). Leave empty to use folder mode or local project files.</div>
+                        </div>
+
+                        <div class="settings-field">
+                            <label for="settings-extra-compose-candidates">Additional Compose Files</label>
+                            <div id="settings-extra-compose-candidates" style="display:none;"></div>
+                            <div id="settings-extra-compose-none" class="settings-field-help" style="display:none;">No additional compose files found in the compose source folder (looking for <code>*compose*.yml</code> / <code>*compose*.yaml</code>).</div>
+                            <details id="settings-extra-compose-external-wrap" style="margin-top:8px;">
+                                <summary style="cursor:pointer;">External files (advanced)</summary>
+                                <textarea id="settings-extra-compose-external" rows="2" placeholder="One absolute path per line, e.g. /mnt/user/appdata/shared/gpu.compose.yml"></textarea>
+                            </details>
+                            <div class="settings-field-help">Selected files are appended as additional <code>-f</code> flags after the main compose and override files (e.g., GPU or environment overrides). Setting this disables default file discovery.</div>
                         </div>
 
                         <div class="settings-field">
