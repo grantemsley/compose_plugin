@@ -2,15 +2,15 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name "compose.manager">
 <!ENTITY author "mstrhakr">
-<!ENTITY version     "2026.06.06">
+<!ENTITY version     "2026.06.11.1526">
 <!ENTITY launch "Settings/&name;.settings">
 <!ENTITY packageVER "&version;">
-<!ENTITY packageMD5  "8cf5a8e4f40a712f63ca06fb0c7aee5c">
-<!ENTITY pkgBUILD    "0513">
+<!ENTITY packageMD5  "3bc7ddef838f2667c13246fdadc48d65">
+<!ENTITY pkgBUILD    "1526">
 <!ENTITY packageName "&name;-&packageVER;-noarch-&pkgBUILD;">
 <!ENTITY packagefile "&packageName;.txz">
 <!ENTITY github "mstrhakr/compose_plugin">
-<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/main/&name;.plg">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/dev/&name;.plg">
 <!ENTITY packageURL "https://github.com/&github;/releases/download/v&version;/&packagefile;">
 <!ENTITY pluginsPATH "/boot/config/plugins">
 <!ENTITY pluginLOC "&pluginsPATH;/&name;">
@@ -36,9 +36,11 @@
 >
 
 <CHANGES>
-###2026.06.06
-- Bug Fixes: update container cache loading to use PHP endpoint and improve data parsing; [Bug]: [error] 12159#12159: *38373 open() "/usr/local/emhttp/plugins/compose.manager/containers.cache.json" failed (2: No such file or directory) while sending to client Fixes mstrhakr/compose_plugin#117
-- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.05.31...v2026.06.06)
+###2026.06.11.1526
+- Bug Fixes (deploy.sh, test.sh): update file permissions to make scripts executable
+- Bug Fixes (Exec.php): update dockerVersionsInstalled check to verify plugin directory existence and cleanup tests
+- [PR #120](https://github.com/mstrhakr/compose_plugin/pull/120)
+- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.06.06...v2026.06.11.1526)
 </CHANGES>
 
 <!-- The 'pre-install' script. -->

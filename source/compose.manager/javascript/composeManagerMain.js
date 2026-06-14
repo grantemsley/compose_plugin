@@ -348,120 +348,261 @@ function hideComposeSpinner() {
 function composeLoadlist() {
     // Return a Promise so callers can reliably .then() / .catch() on completion
     return new Promise(function(resolve, reject) {
+        // Bind autostart change handler early, before any rows are rendered or become interactive
+        // during progressive loading. Use delegated event handler so it works for dynamically added rows.
+        $('#compose_list').off('change', '.auto_start').on('change', '.auto_start', function() {
+            var script = $(this).attr("data-scriptname");
+            var auto = $(this).prop('checked');
+            $.post(caURL, {
+                action: 'updateAutostart',
+                script: script,
+                autostart: auto
+            });
+        });
+
         composeTimers.load = setTimeout(function() {
             showComposeSpinner('Loading stack list...');
         }, 500);
 
-        $.get('/plugins/compose.manager/include/ComposeList.php')
-            .done(function(data) {
-                clearTimeout(composeTimers.load);
+        function finalizeComposeLoadlist(resolvePayload) {
+            clearTimeout(composeTimers.load);
 
-                // Insert the loaded content
-                $('#compose_list').html(data);
+            // Signal load subscribers (e.g. dockerload cache) that the list changed
+            $(document).trigger('composeListRefreshed');
 
-                // Signal load subscribers (e.g. dockerload cache) that the list changed
-                $(document).trigger('composeListRefreshed');
+            // Initialize UI components for the newly loaded content
+            initStackListUI();
 
-                // Initialize UI components for the newly loaded content
-                initStackListUI();
-
-                // Debug: log initial per-stack rendered status icons (data-status attribute)
-                try {
-                    var initialStatuses = [];
-                    $('#compose_stacks tr.compose-sortable').each(function() {
-                        var project = $(this).data('project');
-                        var icon = $(this).find('.compose-status-icon').first();
-                        var status = icon.attr('data-status') || icon.attr('class') || '';
-                        initialStatuses.push({
-                            project: project,
-                            status: status
-                        });
+            // Debug: log initial per-stack rendered status icons (data-status attribute)
+            try {
+                var initialStatuses = [];
+                $('#compose_stacks tr.compose-sortable').each(function() {
+                    var project = $(this).data('project');
+                    var icon = $(this).find('.compose-status-icon').first();
+                    var status = icon.attr('data-status') || icon.attr('class') || '';
+                    initialStatuses.push({
+                        project: project,
+                        status: status
                     });
-                    composeLogger('initial-stack-statuses', {
-                        stacks: initialStatuses
+                });
+                composeLogger('initial-stack-statuses', {
+                    stacks: initialStatuses
+                }, 'user', 'debug', 'composeLoadlist');
+            } catch (e) {}
+
+            // Normalize icons based on state text to ensure server-side render and
+            // client-side update logic agree (workaround for caching or older server HTML)
+            try {
+                $('#compose_stacks tr.compose-sortable').each(function() {
+                    var $row = $(this);
+                    var stateText = $row.find('.state').text().toLowerCase();
+                    var $icon = $row.find('.compose-status-icon').first();
+                    if (!$icon.length) return;
+                    var desiredShape = null;
+                    var desiredColor = 'grey-text';
+                    if (stateText.indexOf('partial') !== -1) {
+                        desiredShape = 'exclamation-circle';
+                        desiredColor = 'orange-text';
+                    } else if (stateText.indexOf('started') !== -1) {
+                        desiredShape = 'play';
+                        desiredColor = 'green-text';
+                    } else if (stateText.indexOf('paused') !== -1) {
+                        desiredShape = 'pause';
+                        desiredColor = 'orange-text';
+                    } else {
+                        desiredShape = 'square';
+                        desiredColor = 'grey-text';
+                    }
+
+                    // If icon already matches, skip
+                    if (($icon.hasClass('fa-' + desiredShape) && $icon.hasClass(desiredColor))) return;
+
+                    composeLogger('normalize-icon', {
+                        project: $row.data('project'),
+                        stateText: stateText,
+                        desiredShape: desiredShape,
+                        desiredColor: desiredColor,
+                        before: $icon.attr('class')
                     }, 'user', 'debug', 'composeLoadlist');
-                } catch (e) {}
-
-                // Normalize icons based on state text to ensure server-side render and
-                // client-side update logic agree (workaround for caching or older server HTML)
-                try {
-                    $('#compose_stacks tr.compose-sortable').each(function() {
-                        var $row = $(this);
-                        var stateText = $row.find('.state').text().toLowerCase();
-                        var $icon = $row.find('.compose-status-icon').first();
-                        if (!$icon.length) return;
-                        var desiredShape = null;
-                        var desiredColor = 'grey-text';
-                        if (stateText.indexOf('partial') !== -1) {
-                            desiredShape = 'exclamation-circle';
-                            desiredColor = 'orange-text';
-                        } else if (stateText.indexOf('started') !== -1) {
-                            desiredShape = 'play';
-                            desiredColor = 'green-text';
-                        } else if (stateText.indexOf('paused') !== -1) {
-                            desiredShape = 'pause';
-                            desiredColor = 'orange-text';
-                        } else {
-                            desiredShape = 'square';
-                            desiredColor = 'grey-text';
-                        }
-
-                        // If icon already matches, skip
-                        if (($icon.hasClass('fa-' + desiredShape) && $icon.hasClass(desiredColor))) return;
-
-                        composeLogger('normalize-icon', {
-                            project: $row.data('project'),
-                            stateText: stateText,
-                            desiredShape: desiredShape,
-                            desiredColor: desiredColor,
-                            before: $icon.attr('class')
-                        }, 'user', 'debug', 'composeLoadlist');
-                        // Remove old fa-* classes, color classes and apply desired ones
-                        $icon.removeClass(function(i, cls) {
-                            return (cls.match(/fa-[^\s]+/g) || []).join(' ');
-                        });
-                        $icon.removeClass('green-text orange-text grey-text cyan-text');
-                        $icon.addClass('fa fa-' + desiredShape + ' ' + desiredColor + ' compose-status-icon');
-                        composeLogger('normalize-icon-done', {
-                            project: $row.data('project'),
-                            after: $icon.attr('class')
-                        }, 'user', 'debug', 'composeLoadlist');
+                    // Remove old fa-* classes, color classes and apply desired ones
+                    $icon.removeClass(function(i, cls) {
+                        return (cls.match(/fa-[^\s]+/g) || []).join(' ');
                     });
-                } catch (e) {}
+                    $icon.removeClass('green-text orange-text grey-text cyan-text');
+                    $icon.addClass('fa fa-' + desiredShape + ' ' + desiredColor + ' compose-status-icon');
+                    composeLogger('normalize-icon-done', {
+                        project: $row.data('project'),
+                        after: $icon.attr('class')
+                    }, 'user', 'debug', 'composeLoadlist');
+                });
+            } catch (e) {}
 
-                // Cleanup any temporary per-container spinners or leftover in-progress state
-                try {
-                    $('#compose_list').find('.compose-container-spinner').each(function() {
-                        var $sp = $(this);
-                        var $wrap = $sp.closest('.hand');
-                        $sp.remove();
-                        $wrap.find('img').css('opacity', 1);
-                    });
-                    // Restore any state text preserved by setStackActionInProgress
-                    $('#compose_stacks .state').each(function() {
-                        var $s = $(this);
-                        if ($s.data('orig-text')) {
-                            $s.text($s.data('orig-text'));
-                            $s.removeData('orig-text');
-                        }
-                    });
-                } catch (e) {}
+            // Cleanup any temporary per-container spinners or leftover in-progress state
+            try {
+                $('#compose_list').find('.compose-container-spinner').each(function() {
+                    var $sp = $(this);
+                    var $wrap = $sp.closest('.hand');
+                    $sp.remove();
+                    $wrap.find('img').css('opacity', 1);
+                });
+                // Restore any state text preserved by setStackActionInProgress
+                $('#compose_stacks .state').each(function() {
+                    var $s = $(this);
+                    if ($s.data('orig-text')) {
+                        $s.text($s.data('orig-text'));
+                        $s.removeData('orig-text');
+                    }
+                });
+            } catch (e) {}
 
-                // Hide compose spinner overlay
+            // Hide compose spinner overlay
+            hideComposeSpinner();
+
+            // Show buttons now that content is loaded
+            $('input[type=button]').show();
+
+            // Notify other features (e.g. hide-from-docker) that compose list is ready
+            $(document).trigger('compose-list-loaded');
+
+            try {
+                resolve(resolvePayload);
+            } catch (e) {
+                resolve();
+            }
+        }
+
+        $.get('/plugins/compose.manager/include/ComposeList.php', {
+                mode: 'list'
+            })
+            .done(function(metaRaw) {
+                var meta = tryParseJson(metaRaw);
+                if (!meta || meta.result !== 'success' || !Array.isArray(meta.projects)) {
+                    composeLogger('Invalid stack meta response', {
+                        response: metaRaw
+                    }, 'user', 'error', 'composeLoadlist');
+                    $('#compose_list').html('<tr><td colspan="10" class="compose-status-danger" style="text-align:center;padding:20px;">Failed to load stack list. Please refresh the page.</td></tr>');
+                    clearTimeout(composeTimers.load);
+                    hideComposeSpinner();
+                    reject(new Error('Invalid stack list response'));
+                    return;
+                }
+
+                var projects = meta.projects;
+                if (projects.length === 0) {
+                    $('#compose_list').html('<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--alt-text-color);">No Docker Compose stacks found. Click \"Add New Stack\" to create one.</td></tr>');
+                    finalizeComposeLoadlist('');
+                    return;
+                }
+
+                // Warm expansion settings once so progressive row insertions can expand immediately.
+                ensureComposeDefaultExpandSettings();
+
+                // Start loading stack container details in the background immediately.
+                // UI rendering stays top-down; this just gets data ahead of the visual pipeline.
+                prefetchStackDetailsInBackground(projects);
+
+                var progressHtml = '<tr id="compose-load-progress-row">' +
+                    '<td colspan="10" style="text-align:center;padding:12px;border:none;background:transparent;">' +
+                    '<span class="compose-text-muted" style="display:inline-flex;align-items:center;gap:8px;">' +
+                    '<i class="fa fa-refresh fa-spin"></i>' +
+                    '<span>Loading stacks... <span id="compose-load-progress-count">0/' + projects.length + '</span></span>' +
+                    '</span>' +
+                    '</td>' +
+                    '</tr>';
+                $('#compose_list').html(progressHtml);
+
+                // Prime cached update status early so rows can render status as soon as they land.
+                if (!savedUpdateStatusLoaded) {
+                    loadSavedUpdateStatus();
+                }
+
+                // Progressive mode shows in-table placeholders, so remove global overlay spinner.
+                clearTimeout(composeTimers.load);
                 hideComposeSpinner();
 
-                // Show buttons now that content is loaded
-                $('input[type=button]').show();
+                var completed = 0;
+                var queueIndex = 0;
+                var stackLoadTimers = {};
 
-                // Notify other features (e.g. hide-from-docker) that compose list is ready
-                $(document).trigger('compose-list-loaded');
-
-                // Resolve the promise so callers know the list has been loaded
-                try {
-                    resolve(data);
-                } catch (e) {
-                    resolve();
+                function updateProgress() {
+                    $('#compose-load-progress-count').text(completed + '/' + projects.length);
+                    if (completed >= projects.length) {
+                        $('#compose-load-progress-row').remove();
+                        finalizeComposeLoadlist('progressive');
+                    }
                 }
+
+                function loadNextProjectSequentially() {
+                    if (queueIndex >= projects.length) {
+                        return;
+                    }
+
+                    var project = projects[queueIndex];
+                    queueIndex++;
+                    stackLoadTimers[project] = Date.now();
+
+                    composeLogger('progressive stack load start', {
+                        project: project,
+                        position: queueIndex,
+                        total: projects.length
+                    }, 'user', 'debug', 'composeLoadlist');
+
+                    $.get('/plugins/compose.manager/include/ComposeList.php', {
+                            mode: 'row',
+                            project: project
+                        })
+                        .done(function(rowRaw) {
+                            var waitForExpansion = Promise.resolve();
+                            var rowResp = tryParseJson(rowRaw);
+                            if (rowResp && rowResp.result === 'success' && rowResp.html) {
+                                var elapsedMs = Date.now() - (stackLoadTimers[project] || Date.now());
+                                composeLogger('progressive stack load success', {
+                                    project: project,
+                                    position: queueIndex,
+                                    total: projects.length,
+                                    elapsedMs: elapsedMs
+                                }, 'user', 'debug', 'composeLoadlist');
+                                var $rowChunk = $(rowResp.html);
+                                $('#compose-load-progress-row').before($rowChunk);
+                                initializeProgressiveLoadedRows($rowChunk);
+                                // Enforce top-down UX: wait for this stack's expansion/details work before next stack.
+                                waitForExpansion = composeDefaultExpandQueue;
+                            } else {
+                                var badRespElapsedMs = Date.now() - (stackLoadTimers[project] || Date.now());
+                                composeLogger('progressive stack load invalid response', {
+                                    project: project,
+                                    position: queueIndex,
+                                    total: projects.length,
+                                    elapsedMs: badRespElapsedMs,
+                                    response: rowResp
+                                }, 'user', 'warn', 'composeLoadlist');
+                                $('#compose-load-progress-row').before('<tr><td colspan="10" class="compose-status-danger" style="padding:8px 12px;">Failed to load ' + composeEscapeHtml(project) + '.</td></tr>');
+                            }
+
+                            waitForExpansion.finally(function() {
+                                delete stackLoadTimers[project];
+                                completed++;
+                                updateProgress();
+                                loadNextProjectSequentially();
+                            });
+                        })
+                        .fail(function() {
+                            var failElapsedMs = Date.now() - (stackLoadTimers[project] || Date.now());
+                            composeLogger('progressive stack load failed', {
+                                project: project,
+                                position: queueIndex,
+                                total: projects.length,
+                                elapsedMs: failElapsedMs
+                            }, 'user', 'warn', 'composeLoadlist');
+                            delete stackLoadTimers[project];
+                            $('#compose-load-progress-row').before('<tr><td colspan="10" class="compose-status-danger" style="padding:8px 12px;">Failed to load ' + composeEscapeHtml(project) + '.</td></tr>');
+                            completed++;
+                            updateProgress();
+                            loadNextProjectSequentially();
+                        });
+                }
+
+                loadNextProjectSequentially();
             })
             .fail(function(xhr, status, error) {
                 composeLogger('failed', {
@@ -503,16 +644,8 @@ function initStackListUI() {
         });
         $el.data('switchbutton-initialized', true);
     });
-    // Ensure change handler is bound only once
-    $('#compose_list').off('change', '.auto_start').on('change', '.auto_start', function() {
-        var script = $(this).attr("data-scriptname");
-        var auto = $(this).prop('checked');
-        $.post(caURL, {
-            action: 'updateAutostart',
-            script: script,
-            autostart: auto
-        });
-    });
+    // Note: change handler for .auto_start is now bound early in composeLoadlist()
+    // before any rows are added, so it's ready for both progressive and final renders.
 
     // Initialize context menus for stack icons
     $('[id^="stack-"][data-stackid]').each(function() {
@@ -537,10 +670,72 @@ function initStackListUI() {
         expandedStacks[stackId] = true;
     });
 
-    // Load saved update status after list is loaded
-    loadSavedUpdateStatus();
+    // Load saved update status after list is loaded (skip if already primed)
+    if (!savedUpdateStatusLoaded) {
+        loadSavedUpdateStatus();
+    }
 
     syncComposeSortModeUI();
+}
+
+function initializeProgressiveLoadedRows($rowChunk) {
+    if (!$rowChunk || !$rowChunk.length) return;
+
+    var $rows = $rowChunk.filter('tr.compose-sortable');
+    if (!$rows.length) {
+        $rows = $rowChunk.find('tr.compose-sortable');
+    }
+    if (!$rows.length) return;
+
+    // Initialize autostart toggles only for newly appended rows.
+    $rows.find('.auto_start').each(function() {
+        var $el = $(this);
+        if ($el.data('switchbutton-initialized')) return;
+        $el.switchButton({
+            labels_placement: 'right',
+            on_label: 'On',
+            off_label: 'Off',
+            clear: false
+        });
+        $el.data('switchbutton-initialized', true);
+    });
+
+    // Initialize context menus for only newly added stack icons.
+    $rows.find('[id^="stack-"][data-stackid]').each(function() {
+        addComposeStackContext(this.id);
+    });
+
+    // Keep description truncation behavior consistent for new rows.
+    $rows.find('.docker_readmore').not('.stack-details-container .docker_readmore').each(function() {
+        var $el = $(this);
+        $el.readmore('destroy');
+        $el.readmore({
+            maxHeight: 32,
+            moreLink: "<a href='#' style='text-align:center'><i class='fa fa-chevron-down'></i></a>",
+            lessLink: "<a href='#' style='text-align:center'><i class='fa fa-chevron-up'></i></a>"
+        });
+    });
+
+    // Apply the currently selected basic/advanced mode to new rows.
+    applyListView(false);
+
+    // Apply cached update status immediately for new rows when available.
+    $rows.each(function() {
+        var project = $(this).data('project');
+        if (project && stackUpdateStatus[project]) {
+            updateStackUpdateUI(project, stackUpdateStatus[project]);
+        }
+    });
+    updateUpdateAllButton();
+
+    // Apply default expansion policy per row as soon as it is inserted.
+    applyDefaultExpansionToRows($rows);
+
+    // Notify dockerload/hide-from-docker listeners so new rows can receive live updates now.
+    $(document).trigger('composeListRefreshed');
+    if (typeof window.composeDockerLoadToggle === 'function' && isComposeAdvancedMode()) {
+        window.composeDockerLoadToggle(true);
+    }
 }
 
 // Load external stylesheets (non-critical styles — critical ones are inline above)
@@ -1039,6 +1234,98 @@ function updateTabModifiedState() {
 
 // Update status cache per stack
 var stackUpdateStatus = {};
+var savedUpdateStatusLoaded = false;
+
+var composeDefaultExpandSettings = null;
+var composeDefaultExpandSettingsPromise = null;
+var composeDefaultExpandQueue = Promise.resolve();
+
+function ensureComposeDefaultExpandSettings() {
+    if (composeDefaultExpandSettings !== null) {
+        return Promise.resolve(composeDefaultExpandSettings);
+    }
+    if (composeDefaultExpandSettingsPromise) {
+        return composeDefaultExpandSettingsPromise;
+    }
+
+    composeDefaultExpandSettingsPromise = getConfig().then(function(config) {
+        composeDefaultExpandSettings = {
+            enabled: config && config['STACKS_DEFAULT_EXPANDED'] == 'true',
+            onlyRunning: config && config['ONLY_EXPAND_RUNNING_STACKS'] == 'true'
+        };
+        return composeDefaultExpandSettings;
+    }).catch(function() {
+        composeDefaultExpandSettings = {
+            enabled: false,
+            onlyRunning: false
+        };
+        return composeDefaultExpandSettings;
+    });
+
+    return composeDefaultExpandSettingsPromise;
+}
+
+function applyDefaultExpansionToRows($rows) {
+    if (!$rows || !$rows.length) return;
+
+    ensureComposeDefaultExpandSettings().then(function(settings) {
+        if (!settings || !settings.enabled) return;
+
+        $rows.each(function() {
+            var $row = $(this);
+            var stackId = ($row.attr('id') || '').replace('stack-row-', '');
+            if (!stackId) return;
+
+            if (settings.onlyRunning && $row.data('isup') != '1') {
+                return;
+            }
+
+            if (expandedStacks[stackId] || $('#details-row-' + stackId).is(':visible')) {
+                return;
+            }
+
+            composeDefaultExpandQueue = composeDefaultExpandQueue.then(function() {
+                return expandStackDetailsSequential(stackId);
+            }).catch(function() {
+                return null;
+            });
+        });
+    });
+}
+
+function expandStackDetailsSequential(stackId) {
+    var $row = $('#stack-row-' + stackId);
+    var $detailsRow = $('#details-row-' + stackId);
+    var $expandIcon = $('#expand-icon-' + stackId);
+    var project = $row.data('project');
+
+    if (!$row.length || !$detailsRow.length) {
+        return Promise.resolve();
+    }
+
+    // Already expanded/visible: if a load is in progress, wait for it; otherwise skip.
+    if (expandedStacks[stackId] || $detailsRow.is(':visible')) {
+        if (stackDetailsLoading[stackId]) {
+            return loadStackContainerDetails(stackId, project);
+        }
+        return Promise.resolve();
+    }
+
+    $expandIcon.addClass('expanded');
+    expandedStacks[stackId] = true;
+
+    if (stackContainersCache[stackId]) {
+        renderContainerDetails(stackId, stackContainersCache[stackId], project);
+        return new Promise(function(resolve) {
+            $detailsRow.stop(true, true).slideDown(200, resolve);
+        });
+    }
+
+    return loadStackContainerDetails(stackId, project);
+}
+
+// Set to true when docker.versions plugin is detected (populated from getSavedUpdateStatus response)
+var dockerVersionsInstalled = false;
 
 // Load saved update status from server (called on page load)
 // If auto-check is enabled and interval has elapsed, trigger a fresh check
@@ -1052,6 +1339,10 @@ function loadSavedUpdateStatus() {
                 var response = JSON.parse(data);
                 if (response.result === 'success' && response.stacks) {
                     stackUpdateStatus = response.stacks;
+                    if (response.dockerVersionsInstalled) dockerVersionsInstalled = true;
+
+                    // Mark as loaded only after successful callback
+                    savedUpdateStatusLoaded = true;
 
                     // Update the UI for each stack with saved status
                     for (var stackName in response.stacks) {
@@ -1096,6 +1387,10 @@ function loadSavedUpdateStatus() {
                 }
             });
         }
+    }).fail(function(xhr, status, error) {
+        // Reset flag on transport failure so retries can work
+        savedUpdateStatusLoaded = false;
+        composeLogger('Failed to load saved update status', { status: status, error: error }, 'user', 'error', 'update-check');
     });
 }
 
@@ -1401,7 +1696,7 @@ function updateStackUpdateUI(stackName, stackInfo) {
     // Update the stack row's update column (match Docker tab style)
     if (updateCount > 0) {
         // Updates available - orange "update ready" style with clickable link and SHA info
-        var updateHtml = '<a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(stackName) + '\', \'' + composeEscapeAttr(stackId) + '\');">';
+        var updateHtml = '<a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(stackName) + '\', \'' + composeEscapeAttr(stackId) + '\', \'update\');">';
         updateHtml += '<span class="orange-text" style="white-space:nowrap;"><i class="fa fa-flash fa-fw"></i> ' + updateCount + ' update' + (updateCount > 1 ? 's' : '') + '</span>';
         updateHtml += '</a>';
 
@@ -1439,14 +1734,14 @@ function updateStackUpdateUI(stackName, stackInfo) {
             // Some containers pinned, rest up-to-date
             var html = '<span class="green-text" style="white-space:nowrap;"><i class="fa fa-check fa-fw"></i> up-to-date</span>';
             html += '<div class="cm-advanced compose-status-info" style="font-size:0.8em;margin-top:2px;"><i class="fa fa-thumb-tack fa-fw"></i> ' + pinnedCount + ' pinned</div>';
-            html += '<div class="cm-advanced"><a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(stackName) + '\', \'' + composeEscapeAttr(stackId) + '\');"><span style="white-space:nowrap;"><i class="fa fa-cloud-download fa-fw"></i> force update</span></a></div>';
+            html += '<div class="cm-advanced"><a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(stackName) + '\', \'' + composeEscapeAttr(stackId) + '\', \'forceUpdate\');"><span style="white-space:nowrap;"><i class="fa fa-cloud-download fa-fw"></i> force update</span></a></div>';
             $updateCell.html(html);
         } else {
             // No updates, no pinned - green "up-to-date" style (like Docker tab)
             // Basic view: just shows up-to-date
             // Advanced view: shows force update link
             var html = '<span class="green-text" style="white-space:nowrap;"><i class="fa fa-check fa-fw"></i> up-to-date</span>';
-            html += '<div class="cm-advanced"><a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(stackName) + '\', \'' + composeEscapeAttr(stackId) + '\');"><span style="white-space:nowrap;"><i class="fa fa-cloud-download fa-fw"></i> force update</span></a></div>';
+            html += '<div class="cm-advanced"><a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(stackName) + '\', \'' + composeEscapeAttr(stackId) + '\', \'forceUpdate\');"><span style="white-space:nowrap;"><i class="fa fa-cloud-download fa-fw"></i> force update</span></a></div>';
             $updateCell.html(html);
         }
     } else {
@@ -1774,13 +2069,20 @@ $(function() {
 
     // Gate dockerload socket start until the stack list DOM is ready.
     var composeListReady = false;
+    var composeListLoadStartedAt = Date.now();
 
     // Load the persistent container cache before the stack list.
     // This ensures dialog merge logic can use last-known container metadata.
     loadPersistentContainerCache().then(function() {
-        composeLoadlist().then(function() {
+        composeListLoadStartedAt = Date.now();
+        composeLoadlist().then(function(loadMode) {
             composeListReady = true;
-            composeLogger('composeListReady=true, rows=' + $('#compose_stacks tr.compose-sortable').length, null, 'user', 'debug', 'dockerload');
+            composeLogger('compose list finished loading', {
+                rows: $('#compose_stacks tr.compose-sortable').length,
+                elapsedMs: Date.now() - composeListLoadStartedAt,
+                mode: loadMode || 'standard',
+                composeListReady: true
+            }, 'user', 'debug', 'dockerload');
 
             // Start the dockerload socket now that the DOM has rows with data-ctids.
             if (typeof window.composeDockerLoadToggle === 'function') {
@@ -1790,18 +2092,6 @@ $(function() {
                 composeLogger('composeDockerLoadToggle not available yet at composeLoadlist completion', null, 'user', 'debug', 'dockerload');
             }
 
-            getConfig().then(function(config) {
-                if (config['STACKS_DEFAULT_EXPANDED'] == 'true') {
-                    // Expand all stacks if the default is set to expanded
-                    $('#compose_stacks tr.compose-sortable').each(function() {
-                        if ($(this).data('isup') != "1" && config['ONLY_EXPAND_RUNNING_STACKS'] == 'true') {
-                            return; // Skip stopped stacks if ONLY_EXPAND_RUNNING_STACKS is true
-                        }
-                        var stackId = $(this).attr('id').replace('stack-row-', '');
-                        toggleStackDetails(stackId);
-                    });
-                }
-            });
         });
         // ── Cross-widget sync ──────────────────────────────────────────
         // On the Docker page the Compose stacks list is rendered below
@@ -1927,6 +2217,7 @@ $(function() {
             // composeLoadlist() and reused until the row count changes.
             // Avoids O(stacks) DOM traversal + string splits on every stats tick.
             var composeStackIndex = null;
+            var composeStackSignature = '';
             var composeLoadById = {};
             var composeLoadStaleMs = 15000;
 
@@ -1946,6 +2237,32 @@ $(function() {
                 $('.compose-mem-' + shortId).hide();
             }
 
+            // Build a lightweight fingerprint of stack rows + their container ids.
+            // Used to avoid invalidating caches when composeListRefreshed fires but
+            // the actual stack structure did not change.
+            function getComposeStackSignatureFromDom() {
+                var parts = [];
+                $('#compose_stacks tr.compose-sortable').each(function() {
+                    var stackId = ($(this).attr('id') || '').replace('stack-row-', '');
+                    if (!stackId) return;
+                    var ctidsAttr = $(this).attr('data-ctids') || '';
+                    parts.push(stackId + ':' + ctidsAttr);
+                });
+                return parts.join('|');
+            }
+
+            function getComposeContainerIdSetFromDom() {
+                var idSet = {};
+                $('#compose_stacks tr.compose-sortable').each(function() {
+                    var ctidsAttr = $(this).attr('data-ctids') || '';
+                    if (!ctidsAttr) return;
+                    ctidsAttr.split(',').forEach(function(id) {
+                        if (id) idSet[id] = true;
+                    });
+                });
+                return idSet;
+            }
+
             function buildComposeStackIndex() {
                 composeStackIndex = [];
                 $('#compose_stacks tr.compose-sortable').each(function() {
@@ -1957,15 +2274,46 @@ $(function() {
                         containerIds: ctidsAttr ? ctidsAttr.split(',') : []
                     });
                 });
-                composeLogger('buildComposeStackIndex complete, stacks=' + composeStackIndex.length, null, 'user', 'debug', 'dockerload');
+                composeStackSignature = getComposeStackSignatureFromDom();
+                // During progressive initial load, row count changes rapidly.
+                // Avoid flooding debug logs until composeListReady is true.
+                if (composeListReady) {
+                    composeLogger('buildComposeStackIndex complete, stacks=' + composeStackIndex.length, null, 'user', 'debug', 'dockerload');
+                }
             }
 
-            // Invalidate the cache when the list refreshes so that added/removed
-            // stacks are picked up on the next stats tick.
+            // Invalidate only when stack/container structure changed.
+            // composeListRefreshed may fire for UI-only updates where cache can be reused.
             $(document).on('composeListRefreshed.dockerload', function() {
-                composeLogger('composeListRefreshed — invalidating stack index and load cache', null, 'user', 'debug', 'dockerload');
+                var newSignature = getComposeStackSignatureFromDom();
+                var structureChanged = (newSignature !== composeStackSignature);
+
+                // No structural change: keep index/cache intact.
+                if (!structureChanged) {
+                    if (composeListReady && composeStackIndex) {
+                        composeLogger('composeListRefreshed — structure unchanged, keeping cache', null, 'user', 'debug', 'dockerload');
+                    }
+                    return;
+                }
+
+                var hadIndex = !!composeStackIndex;
+                var hadLoadCache = Object.keys(composeLoadById).length > 0;
+                if (composeListReady && (hadIndex || hadLoadCache)) {
+                    composeLogger('composeListRefreshed — structure changed, invalidating stack index', null, 'user', 'debug', 'dockerload');
+                }
+
+                // Rebuild index lazily on next render tick.
                 composeStackIndex = null;
-                composeLoadById = {};
+                composeStackSignature = newSignature;
+
+                // Keep live load values for unchanged containers; drop removed ids.
+                var currentIds = getComposeContainerIdSetFromDom();
+                Object.keys(composeLoadById).forEach(function(id) {
+                    if (!currentIds[id]) {
+                        delete composeLoadById[id];
+                        clearContainerLoad(id);
+                    }
+                });
             });
 
             window.composeDockerLoadToggle = function(enable) {
@@ -2652,10 +3000,28 @@ function editStackSettings(myID) {
 }
 
 // Unified update warning dialog - called from stack row and container table
-function showUpdateWarning(project, stackId) {
+function showUpdateWarning(project, stackId, updateAction) {
     var path = compose_root + '/' + project;
-    // Use the existing UpdateStack function which already has the warning dialog
-    UpdateStack(path, "");
+    // Use row metadata so profile selection behavior matches context menu actions.
+    var $stackRow = $('#compose_stacks tr.compose-sortable[data-project="' + project + '"]');
+    var profiles = [];
+    var runningProfile = '';
+    var defaultProfile = '';
+    updateAction = updateAction || 'update';
+
+    if ($stackRow.length > 0) {
+        profiles = $stackRow.data('profiles') || [];
+        runningProfile = $stackRow.attr('data-running-profile') || '';
+        defaultProfile = $stackRow.attr('data-default-profile') || '';
+    }
+
+    if (profiles.length > 0) {
+        showProfileSelector(updateAction, path, profiles, runningProfile, defaultProfile);
+    } else if (updateAction === 'forceUpdate') {
+        ForceUpdateStack(path);
+    } else {
+        UpdateStack(path);
+    }
 }
 
 // Show a brief swal when a background command is dispatched
@@ -3564,15 +3930,56 @@ function mergeUpdateStatus(containers, project) {
         var cInfo = createContainerInfo(container);
         stackUpdateStatus[project].containers.forEach(function(update) {
             var uInfo = createContainerInfo(update);
-            if (cInfo.name === uInfo.name) {
+            var sameName = cInfo.name && uInfo.name && cInfo.name === uInfo.name;
+            var sameService = cInfo.service && uInfo.service && cInfo.service === uInfo.service;
+            if (sameName || sameService) {
                 container.hasUpdate = uInfo.hasUpdate;
                 container.updateStatus = uInfo.updateStatus;
                 container.localSha = uInfo.localSha;
                 container.remoteSha = uInfo.remoteSha;
+                if ((!container.icon || !isValidIconSrc(container.icon)) && uInfo.icon) {
+                    container.icon = uInfo.icon;
+                }
             }
         });
     });
     return containers;
+}
+
+// Show docker.versions changelog for a single container.
+// Delegates entirely to docker.versions' own showChangeLog() so that display
+// logic, Nchan subscription management, and message routing stay in one place.
+//
+// Coupling point: showChangeLog(containerName) — global function from
+// docker.versions/scripts/changelog.js.  If that function is renamed or
+// removed, this feature silently does nothing.
+function showComposeChangelog(containerName, path, profile) {
+    if (typeof showChangeLog !== 'function') return;
+    showChangeLog(containerName);
+    // docker.versions' OK button calls updateContainer(), which bypasses
+    // compose_plugin's update mechanism.  Hide it so the only exit is Cancel.
+    setTimeout(function() { $('.sweet-alert .confirm').hide(); }, 0);
+    if (!path) return;
+    // Reopen the Update Stack dialog when the changelog dialog closes.
+    // SweetAlert 1.x has no close event; poll the showSweetAlert class instead.
+    // Cap at 300 ticks (30 s) so the interval self-cleans if the dialog never opens.
+    var appeared = false;
+    var ticks = 0;
+    var poll = setInterval(function() {
+        if (++ticks > 300) { clearInterval(poll); return; }
+        var open = $('.sweet-alert').hasClass('showSweetAlert');
+        if (!appeared) { if (open) appeared = true; return; }
+        if (!open) {
+            clearInterval(poll);
+            // Skip reopening when DISABLE_ACTION_WARNINGS is true: renderStackActionDialog
+            // has a fast-path that calls UpdateStackConfirmed directly in that mode,
+            // so reopening would trigger an immediate update rather than a dialog.
+            getConfig().then(function(cfg) {
+                if (cfg && cfg.DISABLE_ACTION_WARNINGS === 'true') return;
+                showStackActionDialog('update', path, profile || '');
+            });
+        }
+    }, 100);
 }
 
 // Unified stack action dialog - handles up, down, and update actions
@@ -3827,6 +4234,9 @@ function renderStackActionDialog(action, displayName, path, profile, containers,
                     html += ' <i class="fa fa-arrow-right compose-status-success" style="margin:0 4px;"></i> ';
                     html += '<span class="compose-status-success" title="' + composeEscapeAttr(remoteSha) + '">' + composeEscapeHtml(remoteSha.substring(0, 8)) + '</span>';
                     html += '</div>';
+                    if (dockerVersionsInstalled) {
+                        html += '<div style="margin-top:4px;"><a href="#" data-changelog-container="' + composeEscapeAttr(containerName) + '" data-changelog-path="' + composeEscapeAttr(path) + '" data-changelog-profile="' + composeEscapeAttr(profile || '') + '" onclick="showComposeChangelog(this.dataset.changelogContainer,this.dataset.changelogPath,this.dataset.changelogProfile);return false;" style="font-size:0.85em;"><i class="fa fa-list" style="margin-right:3px;"></i>Changelog</a></div>';
+                    }
                 } else if (localSha) {
                     // No update - just show current SHA (greyed)
                     html += '<div style="font-family:var(--font-bitstream);font-size:0.9em;margin-top:2px;" title="' + composeEscapeAttr(localSha) + '"><span class="compose-text-muted">' + composeEscapeHtml(localSha.substring(0, 8)) + '</span></div>';
@@ -3974,8 +4384,54 @@ var persistentContainerCache = {}; // Persistent cache loaded from disk
 var stackStartedAtCache = {}; // Cache for stack-level started_at timestamps
 // Track stacks currently loading details to prevent concurrent reloads
 var stackDetailsLoading = {};
+var stackDetailsLoadPromises = {};
+var stackDetailsPrefetchPromises = {};
+var stackDetailsPrefetchCache = {};
 // Suppress immediate refresh after a render to avoid loops
 var stackDetailsJustRendered = {};
+
+function prefetchStackDetailsInBackground(projects) {
+    if (!Array.isArray(projects) || projects.length === 0) return;
+
+    var maxParallel = 4;
+    var next = 0;
+    var active = 0;
+
+    function schedule() {
+        while (active < maxParallel && next < projects.length) {
+            (function(project) {
+                next++;
+
+                if (!project || stackDetailsPrefetchPromises[project] || stackDetailsPrefetchCache[project]) {
+                    schedule();
+                    return;
+                }
+
+                active++;
+                stackDetailsPrefetchPromises[project] = new Promise(function(resolve) {
+                    $.post(caURL, {
+                        action: 'getStackContainers',
+                        script: project
+                    }, function(data) {
+                        var parsed = tryParseJson(data);
+                        if (parsed && parsed.result === 'success') {
+                            stackDetailsPrefetchCache[project] = parsed;
+                        }
+                        resolve();
+                    }).fail(function() {
+                        resolve();
+                    }).always(function() {
+                        active--;
+                        delete stackDetailsPrefetchPromises[project];
+                        schedule();
+                    });
+                });
+            })(projects[next]);
+        }
+    }
+
+    schedule();
+}
 
 function openStackActionsMenu(event, stackId) {
     event.stopPropagation();
@@ -4030,6 +4486,8 @@ function executeStackAction(action) {
     var projectName = $row.data('projectname');
     var path = $row.data('path');
     var profiles = $row.data('profiles') || [];
+    var runningProfile = $row.data('running-profile') || '';
+    var defaultProfile = $row.data('default-profile') || '';
     var isUp = $row.data('isup') == "1";
 
     closeStackActionsMenu();
@@ -4037,7 +4495,7 @@ function executeStackAction(action) {
     // Handle profile selection if profiles exist and action supports it
     var profileSupportedActions = ['up', 'down', 'update', 'pull', 'logs'];
     if (profiles.length > 0 && profileSupportedActions.includes(action)) {
-        showProfileSelector(action, path, profiles);
+        showProfileSelector(action, path, profiles, runningProfile, defaultProfile);
         return;
     }
 
@@ -4071,7 +4529,13 @@ function executeStackAction(action) {
     }
 }
 
-function showProfileSelector(action, path, profiles) {
+function showProfileSelector(action, path, profiles, runningProfile, defaultProfile) {
+    if (typeof runningProfile === 'undefined') {
+        runningProfile = '';
+    }
+    if (typeof defaultProfile === 'undefined') {
+        defaultProfile = '';
+    }
     var actionNames = {
         'up': 'Compose Up',
         'down': 'Compose Down',
@@ -4091,12 +4555,42 @@ function showProfileSelector(action, path, profiles) {
     profileHtml += '<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--dynamix-box-inner-div-border-color);">';
     profileHtml += '<label style="font-weight:bold;"><input type="checkbox" id="profile_default" checked disabled> Default services (no profile)</label>';
     profileHtml += '</div>';
+    
+    function parseProfileList(rawValue) {
+        if (!rawValue) return [];
+        return rawValue.split(',').map(function(p) {
+            return p.trim();
+        }).filter(function(p) {
+            return p !== '';
+        });
+    }
+
+    // Selection priority: running profiles -> default profiles -> all (*)
+    var runningProfileSet = parseProfileList(runningProfile);
+    var defaultProfileSet = parseProfileList(defaultProfile);
+    var preselectedProfiles = [];
+    var showAllProfilesChecked = false;
+
+    if (runningProfileSet.indexOf('*') !== -1) {
+        showAllProfilesChecked = true;
+    } else if (runningProfileSet.length > 0) {
+        preselectedProfiles = runningProfileSet;
+    } else if (defaultProfileSet.indexOf('*') !== -1) {
+        showAllProfilesChecked = true;
+    } else if (defaultProfileSet.length > 0) {
+        preselectedProfiles = defaultProfileSet;
+    } else {
+        showAllProfilesChecked = true;
+    }
+    var profileCheckboxDisabled = showAllProfilesChecked ? 'disabled' : '';
+    
     profileHtml += '<div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--dynamix-box-inner-div-border-color);">';
-    profileHtml += '<label style="font-weight:bold;"><input type="checkbox" id="profile_all_profiles" checked onchange="toggleAllProfiles(this)"> All profile-based services (*)</label>';
+    profileHtml += '<label style="font-weight:bold;"><input type="checkbox" id="profile_all_profiles" ' + (showAllProfilesChecked ? 'checked' : '') + ' onchange="toggleAllProfiles(this)"> All profile-based services (*)</label>';
     profileHtml += '</div>';
     profileHtml += '<div id="profile_list">';
     profiles.forEach(function(profile) {
-        profileHtml += '<label style="display:block;margin:5px 0;"><input type="checkbox" class="profile_checkbox" value="' + composeEscapeHtml(profile) + '" disabled> ' + composeEscapeHtml(profile) + '</label>';
+        var isChecked = !showAllProfilesChecked && preselectedProfiles.indexOf(profile) >= 0;
+        profileHtml += '<label style="display:block;margin:5px 0;"><input type="checkbox" class="profile_checkbox" value="' + composeEscapeHtml(profile) + '" ' + profileCheckboxDisabled + ' ' + (isChecked ? 'checked' : '') + ' onchange="updateProfileCheckboxes()"> ' + composeEscapeHtml(profile) + '</label>';
     });
     profileHtml += '</div>';
     profileHtml += '<div class="compose-text-muted" style="margin-top:10px;font-size:0.9em;"><i class="fa fa-info-circle"></i> Default services are always included. Select multiple profiles to include profile-based services.</div>';
@@ -4154,6 +4648,14 @@ function showProfileSelector(action, path, profiles) {
 function toggleAllProfiles(checkbox) {
     var disabled = checkbox.checked;
     $('.profile_checkbox').prop('disabled', disabled).prop('checked', false);
+}
+
+function updateProfileCheckboxes() {
+    // If any individual profile is checked, uncheck "all profiles"
+    var anyIndividualChecked = $('.profile_checkbox:checked').length > 0;
+    if (anyIndividualChecked) {
+        $('#profile_all_profiles').prop('checked', false);
+    }
 }
 
 function openEditorModalByProject(project, projectName, initialTab) {
@@ -5898,15 +6400,56 @@ function toggleStackDetails(stackId) {
 function loadStackContainerDetails(stackId, project) {
     var $container = $('#details-container-' + stackId);
 
+    function renderFromResponse(response, finishLoad) {
+        if (response && response.result === 'success') {
+            var containers = response.containers || [];
+
+            // Normalize all containers via factory function (PascalCase→camelCase)
+            containers = containers.map(createContainerInfo).filter(Boolean);
+
+            // Merge update status from stackUpdateStatus if available
+            mergeUpdateStatus(containers, project);
+
+            stackContainersCache[stackId] = containers;
+            if (response.startedAt) stackStartedAtCache[stackId] = response.startedAt;
+            composeLogger('success', {
+                stackId: stackId,
+                project: project,
+                containers: containers.length
+            }, 'user', 'info', 'container-details');
+            renderContainerDetails(stackId, containers, project);
+            $('#details-row-' + stackId).stop(true, true).slideDown(200, finishLoad);
+            return true;
+        }
+        return false;
+    }
+
+    function renderError(message, finishLoad, level) {
+        $container.html('<div class="stack-details-error"><i class="fa fa-exclamation-triangle"></i> ' + composeEscapeHtml(message) + '</div>');
+        $('#details-row-' + stackId).stop(true, true).slideDown(200, finishLoad);
+        composeLogger(level || 'error', {
+            stackId: stackId,
+            project: project,
+            message: message
+        }, 'user', level || 'error', 'container-details');
+    }
+
     // Prevent parallel loads for same stack
     if (stackDetailsLoading[stackId]) {
         composeLogger('already-loading', {
             stackId: stackId,
             project: project
         }, 'user', 'warning', 'container-details');
-        return;
+        return stackDetailsLoadPromises[stackId] || Promise.resolve();
     }
     stackDetailsLoading[stackId] = true;
+    stackDetailsLoadPromises[stackId] = new Promise(function(resolve) {
+        function finishLoad() {
+            stackDetailsLoading[stackId] = false;
+            delete stackDetailsLoadPromises[stackId];
+            resolve();
+        }
+
     composeLogger('start', {
         stackId: stackId,
         project: project
@@ -5915,70 +6458,65 @@ function loadStackContainerDetails(stackId, project) {
     // Show loading state
     $container.html('<div class="stack-details-loading"><i class="fa fa-spinner fa-spin"></i> Loading container details...</div>');
 
-    $.post(caURL, {
-        action: 'getStackContainers',
-        script: project
-    }, function(data) {
-        if (data) {
-            try {
-                var response = JSON.parse(data);
-                if (response.result === 'success') {
-                    var containers = response.containers;
-
-                    // Normalize all containers via factory function (PascalCase→camelCase)
-                    containers = containers.map(createContainerInfo).filter(Boolean);
-
-                    // Merge update status from stackUpdateStatus if available
-                    mergeUpdateStatus(containers, project);
-
-                    stackContainersCache[stackId] = containers;
-                    if (response.startedAt) stackStartedAtCache[stackId] = response.startedAt;
-                    composeLogger('success', {
-                        stackId: stackId,
-                        project: project,
-                        containers: containers.length
-                    }, 'user', 'info', 'container-details');
-                    renderContainerDetails(stackId, containers, project);
-                    // Slide down details row now that content is rendered
-                    $('#details-row-' + stackId).slideDown(200);
-                } else {
-                    // Escape error message to prevent XSS
-                    var errorMsg = composeEscapeHtml(response.message || 'Failed to load container details');
-                    $container.html('<div class="stack-details-error"><i class="fa fa-exclamation-triangle"></i> ' + errorMsg + '</div>');
-                    $('#details-row-' + stackId).slideDown(200);
-                    composeLogger('error', {
-                        stackId: stackId,
-                        project: project,
-                        message: errorMsg
-                    }, 'user', 'error', 'container-details');
-                }
-            } catch (e) {
-                $container.html('<div class="stack-details-error"><i class="fa fa-exclamation-triangle"></i> Failed to parse container details response</div>');
-                $('#details-row-' + stackId).slideDown(200);
-                composeLogger('parse-error', {
-                    stackId: stackId,
-                    project: project,
-                    err: e.toString()
-                }, 'user', 'error', 'container-details');
+    function fetchAndRender(finishLoad) {
+        $.post(caURL, {
+            action: 'getStackContainers',
+            script: project
+        }, function(data) {
+            var parsed = tryParseJson(data);
+            if (parsed && parsed.result === 'success') {
+                // Keep prefetch cache warm with latest direct fetch too.
+                stackDetailsPrefetchCache[project] = parsed;
             }
-        } else {
-            $container.html('<div class="stack-details-error"><i class="fa fa-exclamation-triangle"></i> Failed to load container details</div>');
-            $('#details-row-' + stackId).slideDown(200);
-            composeLogger('empty-response', {
-                stackId: stackId,
-                project: project
-            }, 'user', 'warning', 'container-details');
+
+            if (renderFromResponse(parsed, finishLoad)) {
+                return;
+            }
+
+            if (parsed && parsed.message) {
+                renderError(parsed.message, finishLoad, 'error');
+            } else {
+                renderError('Failed to load container details', finishLoad, 'warning');
+            }
+        }).fail(function() {
+            renderError('Failed to load container details', finishLoad, 'error');
+        });
+    }
+
+    function consumePrefetchOrFetch(finishLoad) {
+        // Fast path: prefetch already finished.
+        if (stackDetailsPrefetchCache[project]) {
+            var cached = stackDetailsPrefetchCache[project];
+            delete stackDetailsPrefetchCache[project];
+            if (!renderFromResponse(cached, finishLoad)) {
+                fetchAndRender(finishLoad);
+            }
+            return;
         }
-        stackDetailsLoading[stackId] = false;
-    }).fail(function() {
-        $container.html('<div class="stack-details-error"><i class="fa fa-exclamation-triangle"></i> Failed to load container details</div>');
-        $('#details-row-' + stackId).slideDown(200);
-        stackDetailsLoading[stackId] = false;
-        composeLogger('failed', {
-            stackId: stackId,
-            project: project
-        }, 'user', 'error', 'container-details');
+
+        // If a prefetch is currently in-flight for this project, wait for it once.
+        if (stackDetailsPrefetchPromises[project]) {
+            stackDetailsPrefetchPromises[project].then(function() {
+                if (stackDetailsPrefetchCache[project]) {
+                    var prefetched = stackDetailsPrefetchCache[project];
+                    delete stackDetailsPrefetchCache[project];
+                    if (renderFromResponse(prefetched, finishLoad)) {
+                        return;
+                    }
+                }
+                fetchAndRender(finishLoad);
+            });
+            return;
+        }
+
+        // No prefetch available: normal path.
+        fetchAndRender(finishLoad);
+    }
+
+    consumePrefetchOrFetch(finishLoad);
     });
+
+    return stackDetailsLoadPromises[stackId];
 }
 
 function renderContainerDetails(stackId, containers, project) {
@@ -6113,7 +6651,7 @@ function renderContainerDetails(stackId, containers, project) {
             }
         } else if (ctHasUpdate) {
             // Update available - orange "update ready" style with SHA diff
-            html += '<a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(project) + '\', \'' + composeEscapeAttr(stackId) + '\');">';
+            html += '<a class="exec" style="cursor:pointer;" onclick="showUpdateWarning(\'' + composeEscapeAttr(project) + '\', \'' + composeEscapeAttr(stackId) + '\', \'update\');">';
             html += '<span class="orange-text" style="white-space:nowrap;"><i class="fa fa-flash fa-fw"></i> update ready</span>';
             html += '</a>';
             if (ctLocalSha && ctRemoteSha) {
@@ -6704,6 +7242,8 @@ function addComposeStackContext(elementId) {
     var $row = $('#stack-row-' + stackId);
     var path = $row.data('path');
     var profiles = $row.data('profiles') || [];
+    var runningProfile = $row.data('running-profile') || '';
+    var defaultProfile = $row.data('default-profile') || '';
     var webuiUrl = $row.data('webui') || '';
     var hasBuild = $row.data('hasbuild') == "1";
     var hasExistingContainers = false;
@@ -6775,7 +7315,7 @@ function addComposeStackContext(elementId) {
             action: function(e) {
                 e.preventDefault();
                 if (profiles.length > 0) {
-                    showProfileSelector('up', path, profiles);
+                    showProfileSelector('up', path, profiles, runningProfile, defaultProfile);
                 } else {
                     ComposeUp(path);
                 }
@@ -6789,7 +7329,7 @@ function addComposeStackContext(elementId) {
             action: function(e) {
                 e.preventDefault();
                 if (profiles.length > 0) {
-                    showProfileSelector('down', path, profiles);
+                    showProfileSelector('down', path, profiles, runningProfile, defaultProfile);
                 } else {
                     ComposeDown(path);
                 }
@@ -6803,7 +7343,7 @@ function addComposeStackContext(elementId) {
             action: function(e) {
                 e.preventDefault();
                 if (profiles.length > 0) {
-                    showProfileSelector('stop', path, profiles);
+                    showProfileSelector('stop', path, profiles, runningProfile, defaultProfile);
                 } else {
                     ComposeStop(path);
                 }
@@ -6817,7 +7357,7 @@ function addComposeStackContext(elementId) {
             action: function(e) {
                 e.preventDefault();
                 if (profiles.length > 0) {
-                    showProfileSelector('restart', path, profiles);
+                    showProfileSelector('restart', path, profiles, runningProfile, defaultProfile);
                 } else {
                     ComposeRestart(path);
                 }
@@ -6838,7 +7378,7 @@ function addComposeStackContext(elementId) {
                 action: function(e) {
                     e.preventDefault();
                     if (profiles.length > 0) {
-                        showProfileSelector('update', path, profiles);
+                        showProfileSelector('update', path, profiles, runningProfile, defaultProfile);
                     } else {
                         UpdateStack(path);
                     }
@@ -6853,7 +7393,7 @@ function addComposeStackContext(elementId) {
                 action: function(e) {
                     e.preventDefault();
                     if (profiles.length > 0) {
-                        showProfileSelector('forceUpdate', path, profiles);
+                        showProfileSelector('forceUpdate', path, profiles, runningProfile, defaultProfile);
                     } else {
                         ForceUpdateStack(path);
                     }
@@ -6870,7 +7410,7 @@ function addComposeStackContext(elementId) {
             action: function(e) {
                 e.preventDefault();
                 if (profiles.length > 0) {
-                    showProfileSelector('up', path, profiles);
+                    showProfileSelector('up', path, profiles, runningProfile, defaultProfile);
                 } else {
                     ComposeUp(path);
                 }
@@ -6885,7 +7425,7 @@ function addComposeStackContext(elementId) {
                 action: function(e) {
                     e.preventDefault();
                     if (profiles.length > 0) {
-                        showProfileSelector('down', path, profiles);
+                        showProfileSelector('down', path, profiles, runningProfile, defaultProfile);
                     } else {
                         ComposeDown(path);
                     }
@@ -6905,7 +7445,7 @@ function addComposeStackContext(elementId) {
             action: function(e) {
                 e.preventDefault();
                 if (profiles.length > 0) {
-                    showProfileSelector('pull', path, profiles);
+                    showProfileSelector('pull', path, profiles, runningProfile, defaultProfile);
                 } else {
                     ComposePull(path);
                 }
@@ -6920,7 +7460,7 @@ function addComposeStackContext(elementId) {
             action: function(e) {
                 e.preventDefault();
                 if (profiles.length > 0) {
-                    showProfileSelector('update', path, profiles);
+                    showProfileSelector('update', path, profiles, runningProfile, defaultProfile);
                 } else {
                     UpdateStack(path);
                 }

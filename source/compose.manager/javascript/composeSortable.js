@@ -112,24 +112,47 @@ function initComposeSortable() {
         items: '> tr.compose-sortable',
         cursor: 'grab',
         axis: 'y',
-        containment: 'parent',
+        // No containment — 'parent' clamps the helper's Y to the container edge,
+        // which makes jQuery UI compare positions using the clipped offset instead
+        // of the true mouse position.  That means dragging above the first row
+        // never triggers a swap (can't reach position 0).  axis:'y' already
+        // prevents horizontal drift, so containment is not needed.
         cancel: '[data-stackid], .compose-updatecolumn a, .compose-updatecolumn .exec, .auto_start, .switchButton, a, button, input',
         delay: 100,
         opacity: 0.5,
         zIndex: 9999,
         forcePlaceholderSize: true,
         start: function (event, ui) {
-            var $detailsRow = getComposeDetailsRowForItem(ui.item);
-            if ($detailsRow.length) {
-                ui.item.data('compose-details-row', $detailsRow.detach());
-            }
+            // Detach each stack row's details row by explicit ID lookup rather than
+            // DOM adjacency.  When jQuery UI fires 'start' it has already inserted
+            // the ui-sortable-placeholder <tr> into the tbody, and it lands between
+            // ui.item and that row's details row.  A prev('tr.compose-sortable')
+            // traversal would then find the placeholder instead of the stack row,
+            // returning an empty set — leaving the expanded details row un-stored
+            // and therefore orphaned in the DOM after the drop.
+            $tbody.children('tr.compose-sortable').each(function () {
+                var $stackRow = $(this);
+                var rowId = $stackRow.attr('id') || '';
+                if (rowId.indexOf('stack-row-') !== 0) { return; }
+                var $dr = $('#details-row-' + rowId.replace('stack-row-', ''));
+                if ($dr.length) {
+                    $stackRow.data('_detached-details', $dr.detach());
+                }
+            });
         },
         update: function () {
             saveComposeSortOrder();
         },
         stop: function (event, ui) {
-            reattachComposeDetailsRow(ui.item);
-            normalizeComposeDetailsRowOrder($tbody);
+            // Reattach all details rows in the new (post-drop) order.
+            $tbody.children('tr.compose-sortable').each(function () {
+                var $stackRow = $(this);
+                var $dr = $stackRow.data('_detached-details');
+                if ($dr && $dr.length) {
+                    $dr.insertAfter($stackRow);
+                    $stackRow.removeData('_detached-details');
+                }
+            });
         }
     });
 }

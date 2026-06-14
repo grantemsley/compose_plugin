@@ -311,13 +311,13 @@ class ContainerInfoTest extends TestCase
 
         $arr = $info->toUpdateArray();
 
-        $expected = ['name', 'image', 'hasUpdate', 'updateStatus', 'localSha', 'remoteSha', 'isPinned', 'pinnedDigest'];
+        $expected = ['name', 'service', 'image', 'icon', 'hasUpdate', 'updateStatus', 'localSha', 'remoteSha', 'isPinned', 'pinnedDigest'];
         $this->assertSame($expected, array_keys($arr));
         $this->assertSame('abcdef1234567890abcdef1234567890', $arr['pinnedDigest']);
+        $this->assertSame('icon.png', $arr['icon']);
 
         // Should NOT contain non-update fields
         $this->assertArrayNotHasKey('state', $arr);
-        $this->assertArrayNotHasKey('icon', $arr);
         $this->assertArrayNotHasKey('ports', $arr);
     }
 

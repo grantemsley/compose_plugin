@@ -289,6 +289,12 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
 <script src="<?php autov('/plugins/compose.manager/javascript/common.js'); ?>" type="text/javascript"></script>
 <script src="<?php autov('/plugins/compose.manager/javascript/composeSortable.js'); ?>" type="text/javascript"></script>
 <script src="<?php autov('/plugins/compose.manager/javascript/composeStackUtils.js'); ?>" type="text/javascript"></script>
+<?php if (file_exists('/usr/local/emhttp/plugins/docker.versions/styles/styles.css')): ?>
+<link type="text/css" rel="stylesheet" href="<?php autov('/plugins/docker.versions/styles/styles.css'); ?>">
+<?php endif; ?>
+<?php if (file_exists('/usr/local/emhttp/plugins/docker.versions/scripts/changelog.js')): ?>
+<script src="<?php autov('/plugins/docker.versions/scripts/changelog.js'); ?>" type="text/javascript"></script>
+<?php endif; ?>
 <script>
     window.composeManagerBootstrap = {
         compose_root: <?php echo json_encode($compose_root); ?>,
