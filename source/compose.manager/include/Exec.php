@@ -159,6 +159,101 @@ switch ($_POST['action']) {
         $cfg = @parse_ini_file("/boot/config/plugins/compose.manager/compose.manager.cfg", true, INI_SCANNER_NORMAL);
         echo json_encode(['result' => 'success', 'config' => $cfg]);
         break;
+    case 'getColumnVisibility':
+        $prefFile = '/boot/config/plugins/compose.manager/column_visibility.json';
+        $defaults = [
+            'stack' => [
+                'cpu' => true,
+                'memory' => true,
+                'net_io' => false,
+                'block_io' => false,
+                'description' => true,
+                'path' => true,
+            ],
+            'service' => [
+                'cpu' => true,
+                'memory' => true,
+                'net_io' => false,
+                'block_io' => false,
+                'source' => true,
+                'tag' => true,
+                'net' => true,
+                'ip' => true,
+            ],
+        ];
+
+        $visibility = $defaults;
+        if (is_file($prefFile)) {
+            $raw = @file_get_contents($prefFile);
+            $saved = json_decode((string)$raw, true);
+            if (is_array($saved)) {
+                foreach (['stack', 'service'] as $scope) {
+                    if (!isset($saved[$scope]) || !is_array($saved[$scope])) continue;
+                    foreach ($defaults[$scope] as $key => $defaultVal) {
+                        if (array_key_exists($key, $saved[$scope])) {
+                            $visibility[$scope][$key] = (bool)$saved[$scope][$key];
+                        }
+                    }
+                }
+            }
+        }
+        echo json_encode(['result' => 'success', 'visibility' => $visibility]);
+        break;
+    case 'saveColumnVisibility':
+        $prefFile = '/boot/config/plugins/compose.manager/column_visibility.json';
+        $prefDir = dirname($prefFile);
+        $defaults = [
+            'stack' => [
+                'cpu' => true,
+                'memory' => true,
+                'net_io' => false,
+                'block_io' => false,
+                'description' => true,
+                'path' => true,
+            ],
+            'service' => [
+                'cpu' => true,
+                'memory' => true,
+                'net_io' => false,
+                'block_io' => false,
+                'source' => true,
+                'tag' => true,
+                'net' => true,
+                'ip' => true,
+            ],
+        ];
+
+        $raw = $_POST['visibility'] ?? '';
+        $parsed = json_decode((string)$raw, true);
+        if (!is_array($parsed)) {
+            echo json_encode(['result' => 'error', 'message' => 'Invalid visibility payload.']);
+            break;
+        }
+
+        $normalized = $defaults;
+        foreach (['stack', 'service'] as $scope) {
+            if (!isset($parsed[$scope]) || !is_array($parsed[$scope])) continue;
+            foreach ($defaults[$scope] as $key => $defaultVal) {
+                if (array_key_exists($key, $parsed[$scope])) {
+                    $normalized[$scope][$key] = (bool)$parsed[$scope][$key];
+                }
+            }
+        }
+
+        if (!is_dir($prefDir)) {
+            @mkdir($prefDir, 0777, true);
+        }
+
+        $tmp = $prefFile . '.tmp';
+        $ok = @file_put_contents($tmp, json_encode($normalized, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        if ($ok === false || !@rename($tmp, $prefFile)) {
+            @unlink($tmp);
+            echo json_encode(['result' => 'error', 'message' => 'Failed to persist column visibility.']);
+            break;
+        }
+
+        echo json_encode(['result' => 'success', 'visibility' => $normalized]);
+        break;
     case 'getPersistentContainerCache':
         $cacheFile = '/boot/config/plugins/compose.manager/containers.cache.json';
         $cache = is_file($cacheFile) ? json_decode(file_get_contents($cacheFile), true) : [];

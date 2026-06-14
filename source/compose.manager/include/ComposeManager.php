@@ -141,8 +141,7 @@ if ($cpuCount <= 0) {
         width: 15%;
     }
 
-    /* Advanced-view column widths (10 visible columns)
-   Arrow + Icon stay fixed px; Description + Path get the most %. */
+    /* Advanced-view column widths with optional metric columns. */
     #compose_stacks.cm-advanced-view thead th.col-arrow {
         width: 15px;
     }
@@ -156,27 +155,39 @@ if ($cpuCount <= 0) {
     }
 
     #compose_stacks.cm-advanced-view thead th.col-update {
-        width: 10%
+        width: 8%
     }
 
     #compose_stacks.cm-advanced-view thead th.col-containers {
-        width: 5%
+        width: 4%
     }
 
     #compose_stacks.cm-advanced-view thead th.col-uptime {
-        width: 6%
+        width: 5%
     }
 
-    #compose_stacks.cm-advanced-view thead th.col-load {
+    #compose_stacks.cm-advanced-view thead th.col-cpu {
+        width: 8%
+    }
+
+    #compose_stacks.cm-advanced-view thead th.col-memory {
         width: 12%
     }
 
+    #compose_stacks.cm-advanced-view thead th.col-net_io {
+        width: 9%
+    }
+
+    #compose_stacks.cm-advanced-view thead th.col-block_io {
+        width: 9%
+    }
+
     #compose_stacks.cm-advanced-view thead th.col-description {
-        width: 22%
+        width: 15%
     }
 
     #compose_stacks.cm-advanced-view thead th.col-path {
-        width: 22%
+        width: 15%
     }
 
     #compose_stacks.cm-advanced-view thead th.col-autostart {
@@ -345,6 +356,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
     var composeCpuCount = Number(composeBootstrap.composeCpuCount || 1);
 </script>
 <script src="<?php autov('/plugins/compose.manager/javascript/composeManagerPageInit.js'); ?>" type="text/javascript"></script>
+<script src="<?php autov('/plugins/compose.manager/javascript/composeColumnCustomizer.js'); ?>" type="text/javascript"></script>
 <script src="<?php autov('/plugins/compose.manager/javascript/composeManagerMain.js'); ?>" type="text/javascript"></script>
 
 <HTML>
@@ -365,7 +377,10 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                     <th class="col-update">Update</th>
                     <th class="col-containers">Containers</th>
                     <th class="col-uptime">Uptime</th>
-                    <th class="cm-advanced col-load">CPU &amp; Memory load</th>
+                    <th class="cm-advanced col-cpu">CPU</th>
+                    <th class="cm-advanced col-memory">Memory</th>
+                    <th class="cm-advanced col-net_io">Net I/O</th>
+                    <th class="cm-advanced col-block_io">Disk I/O</th>
                     <th class="cm-advanced col-description">Description</th>
                     <th class="cm-advanced col-path">Path</th>
                     <th class="nine col-autostart">Autostart</th>
@@ -373,7 +388,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             </thead>
             <tbody id="compose_list">
                 <tr>
-                    <td colspan='10'></td>
+                    <td colspan='13'></td>
                 </tr>
             </tbody>
         </table>

@@ -148,6 +148,7 @@ echo "Marking plugin scripts and PHP executable..."
 run_quiet chmod -R +x "$tmpdir/usr/local/emhttp/plugins/compose.manager/event/"
 run_quiet chmod -R +x "$tmpdir/usr/local/emhttp/plugins/compose.manager/scripts/"
 run_quiet chmod -R +x "$tmpdir/usr/local/emhttp/plugins/compose.manager/include/"
+run_quiet chmod -R +x "$tmpdir/usr/local/emhttp/plugins/compose.manager/nchan/"
 
 echo "Downloading Docker Compose CLI plugin v${COMPOSE_VERSION}..."
 download_with_sha_cache \

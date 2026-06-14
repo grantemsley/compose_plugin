@@ -209,6 +209,15 @@ function formatMemUsageText(usedBytes, limitBytes) {
     return formatBytes(usedBytes) + ' / ' + formatBytes(limitBytes);
 }
 
+function formatInOutHtml(inVal, outVal, inLabel, outLabel) {
+    var inTitle = composeEscapeAttr(inLabel || 'in');
+    var outTitle = composeEscapeAttr(outLabel || 'out');
+    var inText = composeEscapeHtml(inVal || '-');
+    var outText = composeEscapeHtml(outVal || '-');
+    return '<span class="compose-io-in"><i class="fa fa-arrow-down compose-io-icon compose-io-in-icon" title="' + inTitle + '"></i> ' + inText + '</span>' +
+        '<span class="compose-io-out"><i class="fa fa-arrow-up compose-io-icon compose-io-out-icon" title="' + outTitle + '"></i> ' + outText + '</span>';
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Standard factory functions for container and stack identity objects
 // ═══════════════════════════════════════════════════════════════════
@@ -480,7 +489,7 @@ function composeLoadlist() {
                     composeLogger('Invalid stack meta response', {
                         response: metaRaw
                     }, 'user', 'error', 'composeLoadlist');
-                    $('#compose_list').html('<tr><td colspan="10" class="compose-status-danger" style="text-align:center;padding:20px;">Failed to load stack list. Please refresh the page.</td></tr>');
+                    $('#compose_list').html('<tr><td colspan="13" class="compose-status-danger" style="text-align:center;padding:20px;">Failed to load stack list. Please refresh the page.</td></tr>');
                     clearTimeout(composeTimers.load);
                     hideComposeSpinner();
                     reject(new Error('Invalid stack list response'));
@@ -489,7 +498,7 @@ function composeLoadlist() {
 
                 var projects = meta.projects;
                 if (projects.length === 0) {
-                    $('#compose_list').html('<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--alt-text-color);">No Docker Compose stacks found. Click \"Add New Stack\" to create one.</td></tr>');
+                    $('#compose_list').html('<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--alt-text-color);">No Docker Compose stacks found. Click \"Add New Stack\" to create one.</td></tr>');
                     finalizeComposeLoadlist('');
                     return;
                 }
@@ -502,7 +511,7 @@ function composeLoadlist() {
                 prefetchStackDetailsInBackground(projects);
 
                 var progressHtml = '<tr id="compose-load-progress-row">' +
-                    '<td colspan="10" style="text-align:center;padding:12px;border:none;background:transparent;">' +
+                    '<td colspan="13" style="text-align:center;padding:12px;border:none;background:transparent;">' +
                     '<span class="compose-text-muted" style="display:inline-flex;align-items:center;gap:8px;">' +
                     '<i class="fa fa-refresh fa-spin"></i>' +
                     '<span>Loading stacks... <span id="compose-load-progress-count">0/' + projects.length + '</span></span>' +
@@ -576,7 +585,7 @@ function composeLoadlist() {
                                     elapsedMs: badRespElapsedMs,
                                     response: rowResp
                                 }, 'user', 'warn', 'composeLoadlist');
-                                $('#compose-load-progress-row').before('<tr><td colspan="10" class="compose-status-danger" style="padding:8px 12px;">Failed to load ' + composeEscapeHtml(project) + '.</td></tr>');
+                                $('#compose-load-progress-row').before('<tr><td colspan="13" class="compose-status-danger" style="padding:8px 12px;">Failed to load ' + composeEscapeHtml(project) + '.</td></tr>');
                             }
 
                             waitForExpansion.finally(function() {
@@ -595,7 +604,7 @@ function composeLoadlist() {
                                 elapsedMs: failElapsedMs
                             }, 'user', 'warn', 'composeLoadlist');
                             delete stackLoadTimers[project];
-                            $('#compose-load-progress-row').before('<tr><td colspan="10" class="compose-status-danger" style="padding:8px 12px;">Failed to load ' + composeEscapeHtml(project) + '.</td></tr>');
+                            $('#compose-load-progress-row').before('<tr><td colspan="13" class="compose-status-danger" style="padding:8px 12px;">Failed to load ' + composeEscapeHtml(project) + '.</td></tr>');
                             completed++;
                             updateProgress();
                             loadNextProjectSequentially();
@@ -611,7 +620,7 @@ function composeLoadlist() {
                 }, 'user', 'error', 'composeLoadlist');
                 clearTimeout(composeTimers.load);
                 hideComposeSpinner();
-                $('#compose_list').html('<tr><td colspan="10" class="compose-status-danger" style="text-align:center;padding:20px;">Failed to load stack list. Please refresh the page.</td></tr>');
+                $('#compose_list').html('<tr><td colspan="13" class="compose-status-danger" style="text-align:center;padding:20px;">Failed to load stack list. Please refresh the page.</td></tr>');
 
                 // Reject the promise so callers can handle the error
                 try {
@@ -2205,7 +2214,7 @@ $(function() {
 
             composeLogger('initializing subscriber, composeListReady=' + composeListReady, null, 'user', 'debug', 'dockerload');
 
-            var composeDockerLoad = new NchanSubscriber('/sub/dockerload', {
+            var composeDockerLoad = new NchanSubscriber('/sub/composeinfo', {
                 subscriber: 'websocket',
                 reconnectTimeout: 5000
             });
@@ -2233,8 +2242,11 @@ $(function() {
 
             function clearContainerLoad(shortId) {
                 $('.compose-cpu-' + shortId).addClass('compose-text-muted').text('-');
-                $('#compose-cpu-' + shortId).css('width', '0');
-                $('.compose-mem-' + shortId).hide();
+                $('#compose-cpu-bar-' + shortId).css('width', '0');
+                $('.compose-mem-' + shortId).addClass('compose-text-muted').text('-');
+                $('#compose-mem-bar-' + shortId).css('width', '0');
+                $('.compose-netio-' + shortId).addClass('compose-text-muted').html('-');
+                $('.compose-blockio-' + shortId).addClass('compose-text-muted').html('-');
             }
 
             // Build a lightweight fingerprint of stack rows + their container ids.
@@ -2375,12 +2387,20 @@ $(function() {
                     var totalCpu = 0;
                     var totalMemUsedBytes = 0;
                     var totalMemLimitBytes = 0;
+                    var totalNetInBytes = 0;
+                    var totalNetOutBytes = 0;
+                    var totalBlockInBytes = 0;
+                    var totalBlockOutBytes = 0;
                     var matched = 0;
                     idList.forEach(function(ctId) {
                         if (ctId && composeLoadById[ctId]) {
                             totalCpu += composeLoadById[ctId].cpu;
                             totalMemUsedBytes += composeLoadById[ctId].memUsedBytes || 0;
                             totalMemLimitBytes += composeLoadById[ctId].memLimitBytes || 0;
+                            totalNetInBytes += composeLoadById[ctId].netInputBytes || 0;
+                            totalNetOutBytes += composeLoadById[ctId].netOutputBytes || 0;
+                            totalBlockInBytes += composeLoadById[ctId].blockInputBytes || 0;
+                            totalBlockOutBytes += composeLoadById[ctId].blockOutputBytes || 0;
                             matched++;
                         }
                     });
@@ -2396,13 +2416,20 @@ $(function() {
                             stackMemTotalBytes = composeSystemMemBytes;
                         }
                         var aggMem = formatMemUsageText(totalMemUsedBytes, stackMemTotalBytes);
-                        $('.compose-stack-cpu-' + entry.stackId).removeClass('compose-text-muted').text(aggCpu);
-                        $('#compose-stack-cpu-' + entry.stackId).css('width', Math.min(totalCpu, 100).toFixed(2) + '%');
-                        $('.compose-stack-mem-' + entry.stackId).show().text(aggMem);
+                        var aggMemPct = stackMemTotalBytes > 0 ? ((totalMemUsedBytes / stackMemTotalBytes) * 100).toFixed(2) + '%' : '-';
+                        $('.compose-stack-cpu-' + entry.stackId).removeClass('compose-text-muted').text(aggCpu + ' / 100%');
+                        $('#compose-stack-cpu-bar-' + entry.stackId).css('width', Math.min(totalCpu, 100).toFixed(2) + '%');
+                        $('.compose-stack-mem-' + entry.stackId).removeClass('compose-text-muted').text(aggMem);
+                        $('#compose-stack-mem-bar-' + entry.stackId).css('width', stackMemTotalBytes > 0 ? Math.min((totalMemUsedBytes / stackMemTotalBytes) * 100, 100).toFixed(2) + '%' : '0');
+                        $('.compose-stack-netio-' + entry.stackId).removeClass('compose-text-muted').html(formatInOutHtml(formatBytes(totalNetInBytes), formatBytes(totalNetOutBytes), 'in', 'out'));
+                        $('.compose-stack-blockio-' + entry.stackId).removeClass('compose-text-muted').html(formatInOutHtml(formatBytes(totalBlockInBytes), formatBytes(totalBlockOutBytes), 'read', 'write'));
                     } else {
                         $('.compose-stack-cpu-' + entry.stackId).addClass('compose-text-muted').text('-');
-                        $('#compose-stack-cpu-' + entry.stackId).css('width', '0');
-                        $('.compose-stack-mem-' + entry.stackId).hide();
+                        $('#compose-stack-cpu-bar-' + entry.stackId).css('width', '0');
+                        $('.compose-stack-mem-' + entry.stackId).addClass('compose-text-muted').text('-');
+                        $('#compose-stack-mem-bar-' + entry.stackId).css('width', '0');
+                        $('.compose-stack-netio-' + entry.stackId).addClass('compose-text-muted').html('-');
+                        $('.compose-stack-blockio-' + entry.stackId).addClass('compose-text-muted').html('-');
                     }
                 });
             }
@@ -2418,12 +2445,63 @@ $(function() {
                         var cpuRaw = parseFloat(parts[1]) || 0;
                         var cpuNorm = Math.round(Math.min(cpuRaw / Math.max(composeCpuCount, 1), 100) * 100) / 100;
                         var memPair = parseMemUsagePair(parts[2]);
+                        
+                        // Extended fields (optional, backward compatible)
+                        // Supports both:
+                        // 1) ID;CPU;MEM;MEMPCT;NET_IN;NET_OUT;BLK_IN;BLK_OUT
+                        // 2) ID;CPU;MEM;MEMPCT;NET_IO_PAIR;BLK_IO_PAIR
+                        var memPercent = 0;
+                        if (parts.length > 3) {
+                            memPercent = parseFloat(parts[3]) || 0;
+                        }
+                        if (memPercent <= 0 && memPair.limit > 0) {
+                            memPercent = (memPair.used / memPair.limit) * 100;
+                        }
+                        var netInput = null;
+                        var netOutput = null;
+                        var blockInput = null;
+                        var blockOutput = null;
+
+                        if (parts.length > 7) {
+                            // split format
+                            netInput = parts[4];
+                            netOutput = parts[5];
+                            blockInput = parts[6];
+                            blockOutput = parts[7];
+                        } else {
+                            // pair format: "in / out"
+                            if (parts.length > 4) {
+                                var netPair = String(parts[4] || '').split('/');
+                                netInput = (netPair[0] || '').trim();
+                                netOutput = (netPair[1] || '').trim();
+                            }
+                            if (parts.length > 5) {
+                                var blockPair = String(parts[5] || '').split('/');
+                                blockInput = (blockPair[0] || '').trim();
+                                blockOutput = (blockPair[1] || '').trim();
+                            }
+                        }
+                        var netInputBytes = parseMemValueToBytes(netInput || '0');
+                        var netOutputBytes = parseMemValueToBytes(netOutput || '0');
+                        var blockInputBytes = parseMemValueToBytes(blockInput || '0');
+                        var blockOutputBytes = parseMemValueToBytes(blockOutput || '0');
+                        
                         composeLoadById[parts[0]] = {
                             cpu: cpuNorm,
                             cpuText: formatCpuPercent(cpuNorm),
                             mem: formatMemUsageText(memPair.used, memPair.limit),
                             memUsedBytes: memPair.used,
                             memLimitBytes: memPair.limit,
+                            memPercent: memPercent,
+                            memPercentText: memPercent > 0 ? memPercent.toFixed(2) + '%' : '-',
+                            netInput: netInput || '-',
+                            netOutput: netOutput || '-',
+                            blockInput: blockInput || '-',
+                            blockOutput: blockOutput || '-',
+                            netInputBytes: netInputBytes,
+                            netOutputBytes: netOutputBytes,
+                            blockInputBytes: blockInputBytes,
+                            blockOutputBytes: blockOutputBytes,
                             ts: now
                         };
                     }
@@ -2443,9 +2521,12 @@ $(function() {
                 // Update per-container CPU & MEM elements in expanded detail tables
                 for (var shortId in composeLoadById) {
                     var info = composeLoadById[shortId];
-                    $('.compose-cpu-' + shortId).removeClass('compose-text-muted').text(info.cpuText);
-                    $('.compose-mem-' + shortId).show().text(info.mem);
-                    $('#compose-cpu-' + shortId).css('width', info.cpuText);
+                    $('.compose-cpu-' + shortId).removeClass('compose-text-muted').text(info.cpuText + ' / 100%');
+                    $('.compose-mem-' + shortId).removeClass('compose-text-muted').text(info.mem);
+                    $('.compose-netio-' + shortId).removeClass('compose-text-muted').html(formatInOutHtml(info.netInput, info.netOutput, 'in', 'out'));
+                    $('.compose-blockio-' + shortId).removeClass('compose-text-muted').html(formatInOutHtml(info.blockInput, info.blockOutput, 'read', 'write'));
+                    $('#compose-cpu-bar-' + shortId).css('width', info.cpuText);
+                    $('#compose-mem-bar-' + shortId).css('width', Math.min(info.memPercent || 0, 100).toFixed(2) + '%');
                 }
 
                 renderStackAggregates();
@@ -2485,9 +2566,12 @@ $(function() {
                     // shows current metrics without waiting for the next tick.
                     for (var shortId in composeLoadById) {
                         var info = composeLoadById[shortId];
-                        $('.compose-cpu-' + shortId).removeClass('compose-text-muted').text(info.cpuText);
-                        $('.compose-mem-' + shortId).show().text(info.mem);
-                        $('#compose-cpu-' + shortId).css('width', info.cpuText);
+                        $('.compose-cpu-' + shortId).removeClass('compose-text-muted').text(info.cpuText + ' / 100%');
+                        $('.compose-mem-' + shortId).removeClass('compose-text-muted').text(info.mem);
+                        $('.compose-netio-' + shortId).removeClass('compose-text-muted').html(formatInOutHtml(info.netInput, info.netOutput, 'in', 'out'));
+                        $('.compose-blockio-' + shortId).removeClass('compose-text-muted').html(formatInOutHtml(info.blockInput, info.blockOutput, 'read', 'write'));
+                        $('#compose-cpu-bar-' + shortId).css('width', info.cpuText);
+                        $('#compose-mem-bar-' + shortId).css('width', Math.min(info.memPercent || 0, 100).toFixed(2) + '%');
                     }
                     renderStackAggregates();
                 }
@@ -6705,7 +6789,10 @@ function renderContainerDetails(stackId, containers, project) {
     html += '<th class="cm-advanced ct-col-tag">Tag</th>';
     html += '<th class="cm-advanced ct-col-net">Network</th>';
     html += '<th class="cm-advanced ct-col-ip">Container IP</th>';
-    html += '<th class="cm-advanced ct-col-load">CPU &amp; Memory load</th>';
+    html += '<th class="cm-advanced ct-col-cpu">CPU</th>';
+    html += '<th class="cm-advanced ct-col-memory">Memory</th>';
+    html += '<th class="cm-advanced ct-col-net_io">Net I/O</th>';
+    html += '<th class="cm-advanced ct-col-block_io">Disk I/O</th>';
     html += '<th class="ct-col-cport">Container Port</th>';
     html += '<th class="ct-col-lport">LAN IP:Port</th>';
     html += '</tr></thead>';
@@ -6845,34 +6932,33 @@ function renderContainerDetails(stackId, containers, project) {
         html += '</td>';
 
         // Source (image name without tag)
-        html += '<td class="cm-advanced"><span class="docker_readmore compose-text-muted">' + composeEscapeHtml(imageSource) + '</span></td>';
+        html += '<td class="cm-advanced ct-col-source"><span class="docker_readmore compose-text-muted">' + composeEscapeHtml(imageSource) + '</span></td>';
 
         // Tag (image tag) — truncated with ellipsis via CSS if too long
-        html += '<td class="cm-advanced ct-col-tag-cell"><span class="ct-tag" title="' + composeEscapeAttr(imageTag) + '">' + composeEscapeHtml(imageTag) + '</span></td>';
+        html += '<td class="cm-advanced ct-col-tag ct-col-tag-cell"><span class="ct-tag" title="' + composeEscapeAttr(imageTag) + '">' + composeEscapeHtml(imageTag) + '</span></td>';
 
         // Network
-        html += '<td class="cm-advanced" style="white-space:nowrap;"><span class="docker_readmore">' + networkNames.map(composeEscapeHtml).join('<br>') + '</span></td>';
+        html += '<td class="cm-advanced ct-col-net" style="white-space:nowrap;"><span class="docker_readmore">' + networkNames.map(composeEscapeHtml).join('<br>') + '</span></td>';
 
         // Container IP
-        html += '<td class="cm-advanced" style="white-space:nowrap;"><span class="docker_readmore">' + ipAddresses.map(composeEscapeHtml).join('<br>') + '</span></td>';
+        html += '<td class="cm-advanced ct-col-ip" style="white-space:nowrap;"><span class="docker_readmore">' + ipAddresses.map(composeEscapeHtml).join('<br>') + '</span></td>';
 
-        // CPU & Memory load (advanced only) — populated by dockerload WebSocket
-        html += '<td class="cm-advanced compose-load-cell">';
-        if (state === 'running') {
-            html += '<span class="compose-cpu-' + containerId + '">0%</span>';
-            html += '<div class="usage-disk mm"><span id="compose-cpu-' + containerId + '" style="width:0"></span><span></span></div>';
-            html += '<br><span class="compose-mem-' + containerId + ' compose-text-muted">0B / 0B</span>';
-        } else {
-            html += '<span class="compose-cpu-' + containerId + ' compose-text-muted">-</span>';
-            html += '<span class="compose-mem-' + containerId + '" style="display:none"></span>';
-        }
+        html += '<td class="cm-advanced ct-col-cpu compose-load-cell">';
+        html += '<span class="compose-cpu-' + containerId + ' compose-text-muted">-</span>';
+        html += '<div class="usage-disk mm"><span id="compose-cpu-bar-' + containerId + '" style="width:0"></span><span></span></div>';
         html += '</td>';
+        html += '<td class="cm-advanced ct-col-memory compose-load-cell">';
+        html += '<span class="compose-mem-' + containerId + ' compose-text-muted">-</span>';
+        html += '<div class="usage-disk mm"><span id="compose-mem-bar-' + containerId + '" style="width:0"></span><span></span></div>';
+        html += '</td>';
+        html += '<td class="cm-advanced ct-col-net_io"><span class="compose-netio-' + containerId + ' compose-text-muted">-</span></td>';
+        html += '<td class="cm-advanced ct-col-block_io"><span class="compose-blockio-' + containerId + ' compose-text-muted">-</span></td>';
 
         // Container Port
         html += '<td style="white-space:nowrap;"><span class="docker_readmore">' + containerPorts.map(composeEscapeHtml).join('<br>') + '</span></td>';
 
         // LAN IP:Port
-        html += '<td style="white-space:nowrap;"><span class="docker_readmore">' + lanPorts.map(composeEscapeHtml).join('<br>') + '</span></td>';
+        html += '<td class="ct-col-lport-cell"><span>' + lanPorts.map(composeEscapeHtml).join('<br>') + '</span></td>';
 
         html += '</tr>';
     });
@@ -6880,6 +6966,10 @@ function renderContainerDetails(stackId, containers, project) {
     html += '</tbody></table>';
 
     $container.html(html);
+
+    if (window.composeColCustomizer && typeof window.composeColCustomizer.reapply === 'function') {
+        window.composeColCustomizer.reapply();
+    }
 
     // Update the parent stack row shortly after rendering so counts and status
     // reflect the latest state. Use a short timeout to avoid racing with other

@@ -309,39 +309,51 @@
 
   /* Column width distribution (totals ~100%) */
   .compose-ct-table .ct-col-name {
-    width: 13%;
+    width: 11%;
   }
 
   .compose-ct-table .ct-col-update {
-    width: 12%;
+    width: 9%;
   }
 
   .compose-ct-table .ct-col-source {
-    width: 14%;
+    width: 9%;
   }
 
   .compose-ct-table .ct-col-tag {
-    width: 10%;
+    width: 8%;
   }
 
   .compose-ct-table .ct-col-net {
-    width: 8%;
+    width: 6%;
   }
 
   .compose-ct-table .ct-col-ip {
+    width: 6%;
+  }
+
+  .compose-ct-table .ct-col-cpu {
     width: 8%;
   }
 
-  .compose-ct-table .ct-col-load {
+  .compose-ct-table .ct-col-memory {
     width: 12%;
   }
 
+  .compose-ct-table .ct-col-net_io {
+    width: 9%;
+  }
+
+  .compose-ct-table .ct-col-block_io {
+    width: 9%;
+  }
+
   .compose-ct-table .ct-col-cport {
-    width: 10%;
+    width: 6%;
   }
 
   .compose-ct-table .ct-col-lport {
-    width: 10%;
+    width: 9%;
   }
 
   /* Container name cell: allow wrapping for long names */
@@ -381,4 +393,220 @@
   /* Source data cells only — muted color (header inherits theme default) */
   .compose-ct-table td:nth-child(3) {
     color: var(--alt-text-color);
+  }
+
+  .compose-io-in,
+  .compose-io-out {
+    display: block;
+    line-height: 1.25;
+    white-space: nowrap;
+  }
+
+  .compose-io-icon {
+    width: 12px;
+    text-align: center;
+    margin-right: 4px;
+    opacity: 0.8;
+  }
+
+  .compose-io-in-icon {
+    color: var(--compose-status-info, #5aa9ff);
+  }
+
+  .compose-io-out-icon {
+    color: var(--compose-status-success, #7bcf4a);
+  }
+
+  .compose-ct-table th.ct-col-lport,
+  .compose-ct-table td.ct-col-lport-cell {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+
+  /* ============================================
+   Column Customizer Modal & Gear Icon
+   ============================================ */
+
+  .compose-col-gear-icon {
+    display: inline-block;
+    margin-left: 12px;
+    padding: 4px 8px;
+    cursor: pointer;
+    color: var(--brand-orange);
+    text-decoration: none;
+    transition: opacity 0.2s ease;
+  }
+
+  .compose-col-gear-icon:hover {
+    opacity: 0.7;
+  }
+
+  /* Column Customization Modal */
+  .compose-col-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 10002;
+  }
+
+  .compose-col-modal .compose-modal-overlay {
+    display: block;
+  }
+
+  .compose-col-modal .compose-modal-content {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--panel-box-shadow);
+    width: 90%;
+    max-width: 450px;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    z-index: 10003;
+  }
+
+  .compose-modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--alt-background-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: bold;
+    font-size: 1.1em;
+  }
+
+  .compose-modal-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--alt-text-color);
+    font-size: 1.2em;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .compose-modal-close:hover {
+    color: var(--brand-orange);
+  }
+
+  .compose-modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .compose-col-section {
+    margin-bottom: 24px;
+  }
+
+  .compose-col-section:last-child {
+    margin-bottom: 0;
+  }
+
+  .compose-col-section-title {
+    font-weight: bold;
+    color: var(--brand-orange);
+    margin-bottom: 12px;
+    font-size: 0.95em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .compose-col-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .compose-col-checkbox-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    gap: 8px;
+  }
+
+  .compose-col-checkbox-label:hover {
+    color: var(--brand-orange);
+  }
+
+  .compose-col-checkbox {
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--brand-orange);
+  }
+
+  .compose-modal-footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border-color);
+    background: var(--alt-background-color);
+    text-align: right;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .compose-modal-btn {
+    padding: 8px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--dynamix-tablesorter-tbody-row-alt-bg-color);
+    color: var(--text-color);
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: background 0.2s ease;
+  }
+
+  .compose-modal-btn:hover {
+    background: var(--border-color);
+  }
+
+  .compose-modal-btn-save {
+    background: var(--action-primary-bg);
+    color: var(--action-primary-color);
+    border-color: var(--action-primary-bg);
+  }
+
+  .compose-modal-btn-save:hover {
+    opacity: 0.9;
+  }
+
+  /* Column hiding via hide-col-* classes */
+  #compose_stacks.hide-col-cpu .col-cpu,
+  #compose_stacks.hide-col-cpu td.col-cpu,
+  #compose_stacks.hide-col-memory .col-memory,
+  #compose_stacks.hide-col-memory td.col-memory,
+  #compose_stacks.hide-col-net_io .col-net_io,
+  #compose_stacks.hide-col-net_io td.col-net_io,
+  #compose_stacks.hide-col-block_io .col-block_io,
+  #compose_stacks.hide-col-block_io td.col-block_io,
+  #compose_stacks.hide-col-description .col-description,
+  #compose_stacks.hide-col-description td.col-description,
+  #compose_stacks.hide-col-path .col-path,
+  #compose_stacks.hide-col-path td.col-path,
+  .compose-ct-table.hide-col-cpu .ct-col-cpu,
+  .compose-ct-table.hide-col-cpu td.ct-col-cpu,
+  .compose-ct-table.hide-col-memory .ct-col-memory,
+  .compose-ct-table.hide-col-memory td.ct-col-memory,
+  .compose-ct-table.hide-col-net_io .ct-col-net_io,
+  .compose-ct-table.hide-col-net_io td.ct-col-net_io,
+  .compose-ct-table.hide-col-block_io .ct-col-block_io,
+  .compose-ct-table.hide-col-block_io td.ct-col-block_io,
+  .compose-ct-table.hide-col-source .ct-col-source,
+  .compose-ct-table.hide-col-source td.ct-col-source,
+  .compose-ct-table.hide-col-tag .ct-col-tag,
+  .compose-ct-table.hide-col-tag td.ct-col-tag,
+  .compose-ct-table.hide-col-net .ct-col-net,
+  .compose-ct-table.hide-col-net td.ct-col-net,
+  .compose-ct-table.hide-col-ip .ct-col-ip,
+  .compose-ct-table.hide-col-ip td.ct-col-ip {
+    display: none !important;
   }

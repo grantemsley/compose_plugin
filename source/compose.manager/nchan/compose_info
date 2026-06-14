@@ -1,0 +1,60 @@
+#!/usr/bin/php -q
+<?php
+/* Compose-local nchan publisher for stack/container runtime metrics.
+ *
+ * Channel: composeinfo
+ * Payload: ID;CPUPerc;MemUsage;MemPerc;NetIO;BlockIO
+ *
+ * This is intentionally namespaced to Compose Manager so we can evolve
+ * metric fields without touching Docker manager's dockerload publisher.
+ */
+
+$docroot = $_SERVER['DOCUMENT_ROOT'] ?? '/usr/local/emhttp';
+if ($docroot === '') {
+    $docroot = '/usr/local/emhttp';
+}
+
+require_once "$docroot/webGui/include/publish.php";
+require_once "$docroot/plugins/compose.manager/include/Helpers.php";
+
+composeLogger('publisher starting', null, 'user', 'info', 'nchan');
+$statusFile = '/tmp/compose_info_nchan.status';
+@file_put_contents($statusFile, json_encode([
+    'state' => 'starting',
+    'ts' => time(),
+], JSON_UNESCAPED_SLASHES));
+$loopCount = 0;
+while (true) {
+    $output = shell_exec("docker stats --no-stream --format='{{.ID}};{{.CPUPerc}};{{.MemUsage}};{{.MemPerc}};{{.NetIO}};{{.BlockIO}}' 2>&1");
+
+    // Lightweight health log (first loop + then every 300 loops ~= 5 min)
+    if ($loopCount === 0 || ($loopCount % 300) === 0) {
+        $preview = trim((string)$output);
+        if (strlen($preview) > 140) {
+            $preview = substr($preview, 0, 140) . '...';
+        }
+        composeLogger('publisher heartbeat loop=' . $loopCount . ' sample=' . ($preview !== '' ? $preview : '<empty>'), null, 'user', 'debug', 'nchan');
+    }
+
+    // Continually publish and abort if no listeners.
+    publish('composeinfo', $output, 1, true);
+
+    // Visible runtime heartbeat for troubleshooting startup/loop health.
+    if (($loopCount % 5) === 0) {
+        @file_put_contents($statusFile, json_encode([
+            'state' => 'running',
+            'ts' => time(),
+            'loop' => $loopCount,
+            'sample' => substr(trim((string)$output), 0, 120),
+        ], JSON_UNESCAPED_SLASHES));
+    }
+    $loopCount++;
+
+    if ($output === null) {
+        // Slow down publishing if no containers are running.
+        composeLogger('docker stats returned null; slowing loop', null, 'user', 'debug', 'nchan');
+        sleep(10);
+    } else {
+        sleep(1);
+    }
+}
