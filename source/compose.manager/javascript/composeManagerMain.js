@@ -7097,6 +7097,13 @@ function updateParentStackFromContainers(stackId, project) {
 }
 
 // Attach context menu to container icon (like Docker tab's addDockerContainerContext)
+// Keep a context dropdown above the footer and extend the scrollable area so it stays reachable
+// (same fix as unraid/webgui#2639)
+function fixContextDropdownOverflow(elementId) {
+    $('#dropdown-' + elementId).css('z-index', 10001)
+        .append('<li class="compose-dropdown-spacer" aria-hidden="true" style="position:absolute;top:100%;left:0;width:1px;height:60px;pointer-events:none;list-style:none"></li>');
+}
+
 function addComposeContainerContext(elementId) {
     var $el = $('#' + elementId);
     var containerName = $el.data('name');
@@ -7227,6 +7234,7 @@ function addComposeContainerContext(elementId) {
     // Ensure stale menu bindings don't persist across state transitions
     $el.off('contextmenu');
     context.attach('#' + elementId, opts);
+    fixContextDropdownOverflow(elementId);
 }
 
 function containerAction(containerName, action, stackId) {
@@ -7709,6 +7717,7 @@ function addComposeStackContext(elementId) {
 
     context.destroy('#' + elementId);
     context.attach('#' + elementId, opts);
+    fixContextDropdownOverflow(elementId);
 }
 
 // Event delegation for docker-style container actions
