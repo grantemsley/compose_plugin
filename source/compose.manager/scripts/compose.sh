@@ -12,7 +12,7 @@ LOCK_TIMEOUT=${COMPOSE_LOCK_TIMEOUT:-30}
 LOCK_DIR="/var/run/compose.manager"
 
 SHORT=e:,c:,f:,p:,d:,o:,g:,s:,w:
-LONG=env,command:,file:,project_name:,project_dir:,override:,profile:,debug,recreate,stack-path:,workdir:
+LONG=env,command:,file:,project_name:,project_dir:,override:,profile:,debug,recreate,remove-orphans,stack-path:,workdir:
 OPTS=$(getopt -a -n compose --options $SHORT --longoptions $LONG -- "$@")
 
 eval set -- "$OPTS"
@@ -163,6 +163,10 @@ do
       cmd_args+=("--force-recreate")
       shift;
       ;;
+    --remove-orphans )
+      cmd_args+=("--remove-orphans")
+      shift;
+      ;;
     -s | --stack-path )
       stack_path="$2"
       shift 2
@@ -236,10 +240,10 @@ case $command in
 
   down)
     if [ "$debug" = true ]; then
-      log_msg "DEBUG" "${compose_base[*]} -p $name down"
+      log_msg "DEBUG" "${compose_base[*]} -p $name down ${cmd_args[*]}"
     fi
     
-    "${compose_base[@]}" -p "$name" down 2>&1
+    "${compose_base[@]}" -p "$name" down "${cmd_args[@]}" 2>&1
     exit_code=$?
     
     if [ $exit_code -eq 0 ]; then
