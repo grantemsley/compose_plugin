@@ -580,8 +580,113 @@ function pruneOverrideContentServices(string $overrideContent, array $validServi
     // Safety check: if ALL services in the override would be removed, don't prune.
     // This likely indicates a rename scenario rather than genuine orphans.
     // Wiping to "services: {}" would destroy user data (icons, webui labels, etc).
+    // Exception: if every orphaned service block is clearly auto-managed by this
+    // plugin, it is safe to remove all of them.
     if (count($removedRanges) === count($serviceRanges)) {
-        return ['content' => $overrideContent, 'removed' => [], 'changed' => false];
+        $allAutoManaged = false;
+        $singleServiceOrphan = count($removedRanges) === 1;
+
+        if (function_exists('yaml_parse')) {
+            $parsedOverride = @yaml_parse($overrideContent);
+            if (is_array($parsedOverride) && isset($parsedOverride['services']) && is_array($parsedOverride['services'])) {
+                $allowedLabelKeys = [
+                    'net.unraid.docker.managed' => true,
+                    'net.unraid.docker.icon' => true,
+                    'net.unraid.docker.webui' => true,
+                    'net.unraid.docker.shell' => true,
+                ];
+
+                $allAutoManaged = true;
+                foreach ($removedRanges as $range) {
+                    $serviceDef = $parsedOverride['services'][$range['name']] ?? null;
+                    if (!is_array($serviceDef)) {
+                        $allAutoManaged = false;
+                        break;
+                    }
+
+                    $serviceKeys = array_keys($serviceDef);
+                    if ($serviceKeys !== ['labels']) {
+                        $allAutoManaged = false;
+                        break;
+                    }
+
+                    $labels = $serviceDef['labels'] ?? null;
+                    if (!is_array($labels) || empty($labels)) {
+                        $allAutoManaged = false;
+                        break;
+                    }
+
+                    $hasManagedLabel = array_key_exists('net.unraid.docker.managed', $labels);
+                    if (!$hasManagedLabel && !$singleServiceOrphan) {
+                        $allAutoManaged = false;
+                        break;
+                    }
+
+                    foreach (array_keys($labels) as $labelKey) {
+                        if (!isset($allowedLabelKeys[(string) $labelKey])) {
+                            $allAutoManaged = false;
+                            break 2;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!$allAutoManaged) {
+            $allAutoManaged = true;
+            foreach ($removedRanges as $range) {
+                $serviceBlockLines = array_slice($lines, $range['start'], $range['end'] - $range['start'] + 1);
+                $serviceBlock = implode("\n", $serviceBlockLines);
+
+                if (strpos($serviceBlock, 'net.unraid.docker.managed') !== false) {
+                    continue;
+                }
+
+                if (!$singleServiceOrphan) {
+                    $allAutoManaged = false;
+                    break;
+                }
+
+                $hasOnlyAllowedLabels = false;
+                $sawLabelsSection = false;
+                foreach ($serviceBlockLines as $offset => $blockLine) {
+                    if ($offset === 0) {
+                        continue;
+                    }
+
+                    if (trim($blockLine) === '' || preg_match('/^\s*#/', $blockLine)) {
+                        continue;
+                    }
+
+                    if (preg_match('/^\s{4}labels\s*:\s*(?:#.*)?$/', $blockLine)) {
+                        $sawLabelsSection = true;
+                        $hasOnlyAllowedLabels = true;
+                        continue;
+                    }
+
+                    if (preg_match('/^\s{6}(net\.unraid\.docker\.(?:icon|webui|shell))\s*:\s*/', $blockLine)) {
+                        if (!$sawLabelsSection) {
+                            $hasOnlyAllowedLabels = false;
+                            break;
+                        }
+                        $hasOnlyAllowedLabels = true;
+                        continue;
+                    }
+
+                    $hasOnlyAllowedLabels = false;
+                    break;
+                }
+
+                if (!$hasOnlyAllowedLabels) {
+                    $allAutoManaged = false;
+                    break;
+                }
+            }
+        }
+
+        if (!$allAutoManaged) {
+            return ['content' => $overrideContent, 'removed' => [], 'changed' => false];
+        }
     }
 
     // Only prune specific orphaned services while preserving others
@@ -594,6 +699,10 @@ function pruneOverrideContentServices(string $overrideContent, array $validServi
 
     $newLines = [];
     foreach ($lines as $lineIndex => $line) {
+        if (count($removedRanges) === count($serviceRanges) && $lineIndex === $servicesStart) {
+            $newLines[] = 'services: {}';
+            continue;
+        }
         if (!isset($removeByLine[$lineIndex])) {
             $newLines[] = $line;
         }
