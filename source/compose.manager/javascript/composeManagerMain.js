@@ -3110,6 +3110,9 @@ function performComposeAction(opts) {
     }
 
     payload.background = background ? 1 : 0;
+    if (Object.prototype.hasOwnProperty.call(payload, 'removeOrphans')) {
+        payload.removeOrphans = payload.removeOrphans ? 1 : 0;
+    }
 
     $.post(requestUrl, payload, function(data) {
         var parsed = tryParseJson(data);
