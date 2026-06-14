@@ -36,11 +36,17 @@
 >
 
 <CHANGES>
-###2026.06.11.1526
-- Bug Fixes (deploy.sh, test.sh): update file permissions to make scripts executable
-- Bug Fixes (Exec.php): update dockerVersionsInstalled check to verify plugin directory existence and cleanup tests
+###2026.06.14.1451
+- Features (tests): add tests for pruning auto-managed and legacy labels only orphans
+- Features: add 'Remove Orphans by Default' option and integrate into compose actions
+- Bug Fixes: enhance logging for stack management and settings handling
+- Bug Fixes: add support for --remove-orphans flag in compose command
+- Bug Fixes: add support for removeOrphans flag in performComposeAction
+- Bug Fixes: delay stack refresh after prompt to ensure proper UI feedback
+- Bug Fixes (cache): add endpoint to retrieve persistent container cache and update loading method
+- Refactoring: update echoComposeCommand and echoComposeCommandMultiple to use options array
 - [PR #120](https://github.com/mstrhakr/compose_plugin/pull/120)
-- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.06.06...v2026.06.11.1526)
+- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.06.06...v2026.06.14.1451)
 </CHANGES>
 
 <!-- The 'pre-install' script. -->
