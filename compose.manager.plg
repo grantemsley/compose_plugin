@@ -36,17 +36,11 @@
 >
 
 <CHANGES>
-###2026.06.14.1451
-- Features (tests): add tests for pruning auto-managed and legacy labels only orphans
-- Features: add 'Remove Orphans by Default' option and integrate into compose actions
-- Bug Fixes: enhance logging for stack management and settings handling
-- Bug Fixes: add support for --remove-orphans flag in compose command
-- Bug Fixes: add support for removeOrphans flag in performComposeAction
-- Bug Fixes: delay stack refresh after prompt to ensure proper UI feedback
-- Bug Fixes (cache): add endpoint to retrieve persistent container cache and update loading method
-- Refactoring: update echoComposeCommand and echoComposeCommandMultiple to use options array
+###2026.06.14.1530
+- Chores: update changelog for v2026.06.06 [skip ci]
+- Add support for additional compose files per stack
 - [PR #120](https://github.com/mstrhakr/compose_plugin/pull/120)
-- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.06.06...v2026.06.14.1451)
+- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.06.06...v2026.06.14.1530)
 </CHANGES>
 
 <!-- The 'pre-install' script. -->
