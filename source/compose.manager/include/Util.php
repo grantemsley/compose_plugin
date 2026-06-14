@@ -1536,6 +1536,15 @@ class StackInfo
             if ($this->invalidIndirectPath !== null) {
                 // Stack has a broken indirect reference — allow degraded construction
                 // so the user can fix it in the Settings editor.
+                composeLogger('Preparing degraded stack load due to invalid indirect path', [
+                    'project' => $this->projectFolder,
+                    'projectPath' => $this->path,
+                    'indirectMode' => $this->indirectMode,
+                    'indirectPath' => $this->indirectPath,
+                    'invalidIndirectPath' => $this->invalidIndirectPath,
+                    'composeSource' => $this->composeSource,
+                    'composeFilePath' => $this->composeFilePath,
+                ], 'user', 'debug', 'stack');
                 composeLogger("Stack $this->projectFolder has an invalid indirect path; loading in degraded mode", null, 'user', 'warning', 'stack');
                 $this->overrideInfo = OverrideInfo::fromStackInfo($this);
                 return;
@@ -1625,6 +1634,16 @@ class StackInfo
                 || Path::hasTraversal($indirectPath)
             ) {
                 // Path is structurally invalid — ignore it and keep stack local without mutating files.
+                composeLogger('Invalid indirect metadata rejected during structural validation', [
+                    'project' => $this->projectFolder,
+                    'indirectFile' => $this->path . '/indirect',
+                    'rawIndirectPath' => $indirectPath,
+                    'isEmpty' => ($indirectPath === ''),
+                    'hasNewline' => Path::hasNewline($indirectPath),
+                    'hasSeparator' => Path::hasSeparator($indirectPath),
+                    'hasWindowsStylePath' => Path::hasWindowsStylePath($indirectPath),
+                    'hasTraversal' => Path::hasTraversal($indirectPath),
+                ], 'user', 'debug', 'stack');
                 composeLogger("Ignoring structurally invalid indirect path at $this->path/indirect: " . sanitizeLogText($indirectPath), null, 'user', 'warning', 'stack');
                 return false;
             }
@@ -1712,6 +1731,9 @@ class StackInfo
         $sanitizedProjectString = compose_manager_sanitize_project_name($rawProjectString, $wasEmpty);
 
         if ($wasEmpty) {
+            composeLogger('Project name sanitization produced empty output; fallback name will be used', [
+                'input' => $rawProjectString,
+            ], 'user', 'debug', 'stack');
             composeLogger("Sanitized project string is empty after processing; defaulting to 'compose'", ['input' => $rawProjectString], 'user', 'warning', 'stack');
         }
 
@@ -1733,6 +1755,11 @@ class StackInfo
             // If no display name is set, initialize it from the project folder name.
             $displayName = $this->projectFolder;
             $this->writeMetadata('name', $displayName);
+            composeLogger('Missing display name metadata detected; initializing from project folder', [
+                'project' => $this->projectFolder,
+                'displayName' => $displayName,
+                'metadataFile' => $this->path . '/name',
+            ], 'user', 'debug', 'stack');
             composeLogger("Initialized missing display name from project folder: '$displayName'", ['project' => $this->projectFolder, 'displayName' => $displayName], 'user', 'warning', 'stack');
         }
         $this->displayName = $displayName;
@@ -1813,6 +1840,11 @@ class StackInfo
             return realpath($rawEnvPath) ?: $rawEnvPath;
         }
 
+        composeLogger('Explicit envpath is set but not resolvable to a file; falling back to default env resolution', [
+            'project' => $this->projectFolder,
+            'envpath' => $rawEnvPath,
+            'composeSource' => $this->composeSource,
+        ], 'user', 'debug', 'stack');
         composeLogger("Ignoring invalid envpath for stack $this->projectFolder: file not found", ['envpath' => $rawEnvPath], 'user', 'warning', 'stack');
         return null;
     }

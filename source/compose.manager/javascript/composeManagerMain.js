@@ -1336,13 +1336,13 @@ function checkPendingRechecks(callback) {
                         hadPendingRechecks = true;
                         composeLogger('checkPendingRechecks:found', {
                             pendingStacks: pendingStacks
-                        }, 'user', 'info', 'update-check');
+                        }, 'user', 'debug', 'update-check');
 
                         // Check each pending stack
                         pendingStacks.forEach(function(stackName) {
                             composeLogger('Running recheck for recently updated stack', {
                                 stackName: stackName
-                            }, 'user', 'info', 'update-check');
+                            }, 'user', 'debug', 'update-check');
                             checkStackUpdates(stackName);
                         });
                     }
@@ -1376,11 +1376,11 @@ function checkAutoUpdateIfNeeded(stacks) {
     // If we have a lastChecked time and it's within the interval, don't check
     if (latestCheck > 0 && (now - latestCheck) < intervalSeconds) {
         needsCheck = false;
-        composeLogger('Last check was ' + Math.round((now - latestCheck) / 60) + ' minutes ago, interval is ' + Math.round(intervalSeconds / 60) + ' minutes. Skipping.', null, 'user', 'info', 'update-check');
+        composeLogger('Last check was ' + Math.round((now - latestCheck) / 60) + ' minutes ago, interval is ' + Math.round(intervalSeconds / 60) + ' minutes. Skipping.', null, 'user', 'debug', 'update-check');
     }
 
     if (needsCheck) {
-        composeLogger('Running automatic update check...', null, 'user', 'info', 'update-check');
+        composeLogger('Running automatic update check...', null, 'user', 'debug', 'update-check');
         checkAllUpdates();
     }
 }
@@ -1712,7 +1712,7 @@ function updateStackUpdateUI(stackName, stackInfo) {
                 stackName: stackName,
                 loading: !!stackDetailsLoading[stackId],
                 justRendered: !!stackDetailsJustRendered[stackId]
-            }, 'user', 'info', 'update-check');
+            }, 'user', 'debug', 'update-check');
         } else {
             loadStackContainerDetails(stackId, stackName);
         }
@@ -2003,12 +2003,12 @@ $(function() {
         composeListLoadStartedAt = Date.now();
         composeLoadlist().then(function(loadMode) {
             composeListReady = true;
-            composeLogger('compose list finished loading', {
+            composeLogger('compose list ready', {
                 rows: $('#compose_stacks tr.compose-sortable').length,
                 elapsedMs: Date.now() - composeListLoadStartedAt,
                 mode: loadMode || 'standard',
                 composeListReady: true
-            }, 'user', 'debug', 'dockerload');
+            }, 'user', 'info', 'dockerload');
 
             // Start the dockerload socket now that the DOM has rows with data-ctids.
             if (typeof window.composeDockerLoadToggle === 'function') {
@@ -2065,7 +2065,7 @@ $(function() {
                         }
                     };
                     window.loadlist._composeTabHooked = true;
-                    composeLogger('hooked loadlist() for cross-widget sync, tabbed=' + isTabbed, null, 'user', 'info', 'hookLoadlist');
+                    composeLogger('hooked loadlist() for cross-widget sync, tabbed=' + isTabbed, null, 'user', 'debug', 'hookLoadlist');
                     return true;
                 }
                 return false;
@@ -2113,7 +2113,7 @@ $(function() {
             // AJAX navigation preserves window globals but old closures/sockets
             // become stale).  Always create a fresh subscriber.
             if (window._composeDockerLoad) {
-                composeLogger('tearing down previous subscriber', null, 'user', 'info', 'dockerload');
+                composeLogger('tearing down previous subscriber', null, 'user', 'debug', 'dockerload');
                 try {
                     window._composeDockerLoad.stop();
                 } catch (e) {}
@@ -2129,7 +2129,7 @@ $(function() {
             }
             $(document).off('composeListRefreshed.dockerload');
 
-            composeLogger('initializing subscriber, composeListReady=' + composeListReady, null, 'user', 'info', 'dockerload');
+            composeLogger('initializing subscriber, composeListReady=' + composeListReady, null, 'user', 'debug', 'dockerload');
 
             var composeDockerLoad = new NchanSubscriber('/sub/dockerload', {
                 subscriber: 'websocket',
@@ -2244,11 +2244,11 @@ $(function() {
 
             window.composeDockerLoadToggle = function(enable) {
                 if (enable && !composeDockerLoadRunning) {
-                    composeLogger('starting WebSocket', null, 'user', 'info', 'dockerload');
+                    composeLogger('starting WebSocket', null, 'user', 'debug', 'dockerload');
                     composeDockerLoad.start();
                     composeDockerLoadRunning = true;
                 } else if (!enable && composeDockerLoadRunning) {
-                    composeLogger('stopping WebSocket', null, 'user', 'info', 'dockerload');
+                    composeLogger('stopping WebSocket', null, 'user', 'debug', 'dockerload');
                     composeDockerLoad.stop();
                     composeDockerLoadRunning = false;
                 }
@@ -2449,7 +2449,7 @@ $(function() {
                 composeLogger('auto-starting socket', {
                     'listReady': composeListReady,
                     'advanced': isComposeAdvancedMode()
-                }, 'user', 'info', 'dockerload');
+                }, 'user', 'debug', 'dockerload');
                 composeDockerLoad.start();
                 composeDockerLoadRunning = true;
             } else {
@@ -2469,7 +2469,7 @@ $(function() {
             var composeDockerLoadInitTimer = setInterval(function() {
                 composeDockerLoadInitAttempts++;
                 if (initComposeDockerLoadSubscriber()) {
-                    composeLogger('subscriber initialized on retry #' + composeDockerLoadInitAttempts, null, 'user', 'info', 'dockerload');
+                    composeLogger('subscriber initialized on retry #' + composeDockerLoadInitAttempts, null, 'user', 'debug', 'dockerload');
                     clearInterval(composeDockerLoadInitTimer);
                 } else if (composeDockerLoadInitAttempts >= 40) {
                     composeLogger('subscriber init gave up after ' + composeDockerLoadInitAttempts + ' attempts', null, 'user', 'warn', 'dockerload');
@@ -3443,7 +3443,7 @@ function processPendingUpdateChecks() {
                 deferredStacks.push(stackName);
                 composeLogger('Deferring pending update check while action is in progress', {
                     stack: stackName
-                }, 'user', 'info', 'update-check');
+                }, 'user', 'debug', 'update-check');
             } else {
                 checkStackUpdates(stackName);
             }
@@ -4949,6 +4949,13 @@ function loadSettingsData(project, projectName) {
                 var invalidIndirectPath = response.invalidIndirectPath || '';
                 var indirectMode = response.indirectMode || '';
                 if (!externalComposePath && !externalComposeFilePath && invalidIndirectPath) {
+                    composeLogger('settings-invalid-indirect-warning-show', {
+                        project: project,
+                        invalidIndirectPath: invalidIndirectPath,
+                        indirectMode: indirectMode,
+                        externalComposePath: externalComposePath,
+                        externalComposeFilePath: externalComposeFilePath
+                    }, 'user', 'debug', 'stack-settings');
                     // Pre-populate with the broken path so the user can fix it
                     if (indirectMode === 'file') {
                         $('#settings-external-compose-path').val('');
@@ -4966,6 +4973,14 @@ function loadSettingsData(project, projectName) {
                     $('#settings-invalid-indirect-warning').show();
                     $('#settings-external-compose-info').hide();
                 } else {
+                    if ($('#settings-invalid-indirect-warning').is(':visible')) {
+                        composeLogger('settings-invalid-indirect-warning-hide', {
+                            project: project,
+                            invalidIndirectPath: invalidIndirectPath,
+                            externalComposePath: externalComposePath,
+                            externalComposeFilePath: externalComposeFilePath
+                        }, 'user', 'debug', 'stack-settings');
+                    }
                     $('#settings-external-compose-path').val(externalComposePath);
                     $('#settings-external-compose-file').val(externalComposeFilePath);
                     editorModal.originalSettings['external-compose-path'] = externalComposePath;
@@ -6398,7 +6413,7 @@ function loadStackContainerDetails(stackId, project) {
                 stackId: stackId,
                 project: project,
                 containers: containers.length
-            }, 'user', 'info', 'container-details');
+            }, 'user', 'debug', 'container-details');
             renderContainerDetails(stackId, containers, project);
             $('#details-row-' + stackId).stop(true, true).slideDown(200, finishLoad);
             return true;
@@ -6435,7 +6450,7 @@ function loadStackContainerDetails(stackId, project) {
     composeLogger('start', {
         stackId: stackId,
         project: project
-    }, 'user', 'info', 'container-details');
+    }, 'user', 'debug', 'container-details');
 
     // Show loading state
     $container.html('<div class="stack-details-loading"><i class="fa fa-spinner fa-spin"></i> Loading container details...</div>');
@@ -6722,7 +6737,7 @@ function renderContainerDetails(stackId, containers, project) {
             composeLogger('just-rendered', {
                 stackId: stackId,
                 project: project
-            }, 'user', 'info', 'container-details');
+            }, 'user', 'debug', 'container-details');
             // Clear the flag after a short window
             setTimeout(function() {
                 try {
