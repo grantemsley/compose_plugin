@@ -574,6 +574,9 @@ function composeLoadlist() {
                                 var $rowChunk = $(rowResp.html);
                                 $('#compose-load-progress-row').before($rowChunk);
                                 initializeProgressiveLoadedRows($rowChunk);
+                                if (typeof window.composeDockerLoadRenderCached === 'function' && isComposeAdvancedMode()) {
+                                    window.composeDockerLoadRenderCached();
+                                }
                                 // Enforce top-down UX: wait for this stack's expansion/details work before next stack.
                                 waitForExpansion = composeDefaultExpandQueue;
                             } else {
@@ -744,6 +747,9 @@ function initializeProgressiveLoadedRows($rowChunk) {
     $(document).trigger('composeListRefreshed');
     if (typeof window.composeDockerLoadToggle === 'function' && isComposeAdvancedMode()) {
         window.composeDockerLoadToggle(true);
+    }
+    if (typeof window.composeDockerLoadRenderCached === 'function' && isComposeAdvancedMode()) {
+        window.composeDockerLoadRenderCached();
     }
 }
 
@@ -1885,6 +1891,33 @@ function loadPersistentContainerCache() {
     });
 }
 
+function loadComposeLoadSnapshot() {
+    return new Promise(function(resolve) {
+        $.ajax({
+            url: caURL,
+            method: 'POST',
+            dataType: 'json',
+            data: {
+                action: 'getComposeLoadSnapshot'
+            }
+        })
+            .done(function(response) {
+                var snapshot = (response && response.snapshot && typeof response.snapshot === 'object') ? response.snapshot : {};
+                window.composeLoadSnapshotRaw = typeof snapshot.raw === 'string' ? snapshot.raw : '';
+                window.composeLoadSnapshotTs = Number(snapshot.ts || 0);
+                if (typeof window.composeDockerLoadSeedSnapshot === 'function' && window.composeLoadSnapshotRaw) {
+                    window.composeDockerLoadSeedSnapshot(window.composeLoadSnapshotRaw, window.composeLoadSnapshotTs);
+                }
+                resolve(snapshot);
+            })
+            .fail(function() {
+                window.composeLoadSnapshotRaw = '';
+                window.composeLoadSnapshotTs = 0;
+                resolve({});
+            });
+    });
+}
+
 function getPersistentContainerInfo(project, service) {
     if (!project || !service || !persistentContainerCache[project]) return null;
     return persistentContainerCache[project][service] || null;
@@ -2083,6 +2116,8 @@ $(function() {
     // Load the persistent container cache before the stack list.
     // This ensures dialog merge logic can use last-known container metadata.
     loadPersistentContainerCache().then(function() {
+        return loadComposeLoadSnapshot();
+    }).then(function() {
         composeListLoadStartedAt = Date.now();
         composeLoadlist().then(function(loadMode) {
             composeListReady = true;
@@ -2318,6 +2353,14 @@ $(function() {
                 composeStackIndex = null;
                 composeStackSignature = newSignature;
 
+                // During progressive initial load, the DOM only contains a prefix of
+                // the total stack list. Preserve preloaded snapshot/SSE cache entries
+                // for rows that have not been inserted yet; otherwise later rows lose
+                // their warm-start metrics before they ever render.
+                if (!composeListReady) {
+                    return;
+                }
+
                 // Keep live load values for unchanged containers; drop removed ids.
                 var currentIds = getComposeContainerIdSetFromDom();
                 Object.keys(composeLoadById).forEach(function(id) {
@@ -2339,6 +2382,107 @@ $(function() {
                     composeDockerLoadRunning = false;
                 }
             };
+
+            function renderComposeLoadCache() {
+                if (!isComposeLoadVisible()) {
+                    return;
+                }
+
+                for (var shortId in composeLoadById) {
+                    var info = composeLoadById[shortId];
+                    $('.compose-cpu-' + shortId).removeClass('compose-text-muted').text(info.cpuText + ' / 100%');
+                    $('.compose-mem-' + shortId).removeClass('compose-text-muted').text(info.mem);
+                    $('.compose-netio-' + shortId).removeClass('compose-text-muted').html(formatInOutHtml(info.netInput, info.netOutput, 'in', 'out'));
+                    $('.compose-blockio-' + shortId).removeClass('compose-text-muted').html(formatInOutHtml(info.blockInput, info.blockOutput, 'read', 'write'));
+                    $('#compose-cpu-bar-' + shortId).css('width', info.cpuText);
+                    $('#compose-mem-bar-' + shortId).css('width', Math.min(info.memPercent || 0, 100).toFixed(2) + '%');
+                }
+
+                renderStackAggregates();
+            }
+
+            window.composeDockerLoadRenderCached = renderComposeLoadCache;
+
+            function ingestComposeLoadPayload(msg, now) {
+                var data = String(msg || '').split('\n');
+                var i = 0;
+                var row = data[i];
+                while (row) {
+                    var parts = row.split(';');
+                    if (parts.length >= 3) {
+                        var cpuRaw = parseFloat(parts[1]) || 0;
+                        var cpuNorm = Math.round(Math.min(cpuRaw / Math.max(composeCpuCount, 1), 100) * 100) / 100;
+                        var memPair = parseMemUsagePair(parts[2]);
+
+                        var memPercent = 0;
+                        if (parts.length > 3) {
+                            memPercent = parseFloat(parts[3]) || 0;
+                        }
+                        if (memPercent <= 0 && memPair.limit > 0) {
+                            memPercent = (memPair.used / memPair.limit) * 100;
+                        }
+                        var netInput = null;
+                        var netOutput = null;
+                        var blockInput = null;
+                        var blockOutput = null;
+
+                        if (parts.length > 7) {
+                            netInput = parts[4];
+                            netOutput = parts[5];
+                            blockInput = parts[6];
+                            blockOutput = parts[7];
+                        } else {
+                            if (parts.length > 4) {
+                                var netPair = String(parts[4] || '').split('/');
+                                netInput = (netPair[0] || '').trim();
+                                netOutput = (netPair[1] || '').trim();
+                            }
+                            if (parts.length > 5) {
+                                var blockPair = String(parts[5] || '').split('/');
+                                blockInput = (blockPair[0] || '').trim();
+                                blockOutput = (blockPair[1] || '').trim();
+                            }
+                        }
+                        var netInputBytes = parseMemValueToBytes(netInput || '0');
+                        var netOutputBytes = parseMemValueToBytes(netOutput || '0');
+                        var blockInputBytes = parseMemValueToBytes(blockInput || '0');
+                        var blockOutputBytes = parseMemValueToBytes(blockOutput || '0');
+
+                        composeLoadById[parts[0]] = {
+                            cpu: cpuNorm,
+                            cpuText: formatCpuPercent(cpuNorm),
+                            mem: formatMemUsageText(memPair.used, memPair.limit),
+                            memUsedBytes: memPair.used,
+                            memLimitBytes: memPair.limit,
+                            memPercent: memPercent,
+                            memPercentText: memPercent > 0 ? memPercent.toFixed(2) + '%' : '-',
+                            netInput: netInput || '-',
+                            netOutput: netOutput || '-',
+                            blockInput: blockInput || '-',
+                            blockOutput: blockOutput || '-',
+                            netInputBytes: netInputBytes,
+                            netOutputBytes: netOutputBytes,
+                            blockInputBytes: blockInputBytes,
+                            blockOutputBytes: blockOutputBytes,
+                            ts: now
+                        };
+                    }
+                    i++;
+                    row = data[i];
+                }
+            }
+
+            window.composeDockerLoadSeedSnapshot = function(raw, ts) {
+                if (!raw) return;
+                ingestComposeLoadPayload(raw, ts ? ts * 1000 : Date.now());
+                if (isComposeLoadVisible()) {
+                    renderComposeLoadCache();
+                }
+            };
+
+            if (window.composeLoadSnapshotRaw) {
+                window.composeDockerLoadSeedSnapshot(window.composeLoadSnapshotRaw, window.composeLoadSnapshotTs);
+            }
 
             function pruneStaleLoadEntries(now) {
                 var staleIds = [];
@@ -2436,78 +2580,10 @@ $(function() {
 
             composeDockerLoad.on('message', function(msg) {
                 var now = Date.now();
-                var data = msg.split('\n');
-                var i = 0;
-                var row = data[i];
-                while (row) {
-                    var parts = row.split(';');
-                    if (parts.length >= 3) {
-                        var cpuRaw = parseFloat(parts[1]) || 0;
-                        var cpuNorm = Math.round(Math.min(cpuRaw / Math.max(composeCpuCount, 1), 100) * 100) / 100;
-                        var memPair = parseMemUsagePair(parts[2]);
-                        
-                        // Extended fields (optional, backward compatible)
-                        // Supports both:
-                        // 1) ID;CPU;MEM;MEMPCT;NET_IN;NET_OUT;BLK_IN;BLK_OUT
-                        // 2) ID;CPU;MEM;MEMPCT;NET_IO_PAIR;BLK_IO_PAIR
-                        var memPercent = 0;
-                        if (parts.length > 3) {
-                            memPercent = parseFloat(parts[3]) || 0;
-                        }
-                        if (memPercent <= 0 && memPair.limit > 0) {
-                            memPercent = (memPair.used / memPair.limit) * 100;
-                        }
-                        var netInput = null;
-                        var netOutput = null;
-                        var blockInput = null;
-                        var blockOutput = null;
+                ingestComposeLoadPayload(msg, now);
 
-                        if (parts.length > 7) {
-                            // split format
-                            netInput = parts[4];
-                            netOutput = parts[5];
-                            blockInput = parts[6];
-                            blockOutput = parts[7];
-                        } else {
-                            // pair format: "in / out"
-                            if (parts.length > 4) {
-                                var netPair = String(parts[4] || '').split('/');
-                                netInput = (netPair[0] || '').trim();
-                                netOutput = (netPair[1] || '').trim();
-                            }
-                            if (parts.length > 5) {
-                                var blockPair = String(parts[5] || '').split('/');
-                                blockInput = (blockPair[0] || '').trim();
-                                blockOutput = (blockPair[1] || '').trim();
-                            }
-                        }
-                        var netInputBytes = parseMemValueToBytes(netInput || '0');
-                        var netOutputBytes = parseMemValueToBytes(netOutput || '0');
-                        var blockInputBytes = parseMemValueToBytes(blockInput || '0');
-                        var blockOutputBytes = parseMemValueToBytes(blockOutput || '0');
-                        
-                        composeLoadById[parts[0]] = {
-                            cpu: cpuNorm,
-                            cpuText: formatCpuPercent(cpuNorm),
-                            mem: formatMemUsageText(memPair.used, memPair.limit),
-                            memUsedBytes: memPair.used,
-                            memLimitBytes: memPair.limit,
-                            memPercent: memPercent,
-                            memPercentText: memPercent > 0 ? memPercent.toFixed(2) + '%' : '-',
-                            netInput: netInput || '-',
-                            netOutput: netOutput || '-',
-                            blockInput: blockInput || '-',
-                            blockOutput: blockOutput || '-',
-                            netInputBytes: netInputBytes,
-                            netOutputBytes: netOutputBytes,
-                            blockInputBytes: blockInputBytes,
-                            blockOutputBytes: blockOutputBytes,
-                            ts: now
-                        };
-                    }
-                    i++;
-                    row = data[i];
-                }
+                window.composeLoadSnapshotRaw = msg;
+                window.composeLoadSnapshotTs = Math.floor(now / 1000);
 
                 pruneStaleLoadEntries(now);
 
@@ -2518,18 +2594,7 @@ $(function() {
                     return;
                 }
 
-                // Update per-container CPU & MEM elements in expanded detail tables
-                for (var shortId in composeLoadById) {
-                    var info = composeLoadById[shortId];
-                    $('.compose-cpu-' + shortId).removeClass('compose-text-muted').text(info.cpuText + ' / 100%');
-                    $('.compose-mem-' + shortId).removeClass('compose-text-muted').text(info.mem);
-                    $('.compose-netio-' + shortId).removeClass('compose-text-muted').html(formatInOutHtml(info.netInput, info.netOutput, 'in', 'out'));
-                    $('.compose-blockio-' + shortId).removeClass('compose-text-muted').html(formatInOutHtml(info.blockInput, info.blockOutput, 'read', 'write'));
-                    $('#compose-cpu-bar-' + shortId).css('width', info.cpuText);
-                    $('#compose-mem-bar-' + shortId).css('width', Math.min(info.memPercent || 0, 100).toFixed(2) + '%');
-                }
-
-                renderStackAggregates();
+                renderComposeLoadCache();
             });
 
             composeDockerLoad.on('error', function(code, desc) {
@@ -2564,16 +2629,7 @@ $(function() {
 
                     // Immediately render the cached load data so the UI
                     // shows current metrics without waiting for the next tick.
-                    for (var shortId in composeLoadById) {
-                        var info = composeLoadById[shortId];
-                        $('.compose-cpu-' + shortId).removeClass('compose-text-muted').text(info.cpuText + ' / 100%');
-                        $('.compose-mem-' + shortId).removeClass('compose-text-muted').text(info.mem);
-                        $('.compose-netio-' + shortId).removeClass('compose-text-muted').html(formatInOutHtml(info.netInput, info.netOutput, 'in', 'out'));
-                        $('.compose-blockio-' + shortId).removeClass('compose-text-muted').html(formatInOutHtml(info.blockInput, info.blockOutput, 'read', 'write'));
-                        $('#compose-cpu-bar-' + shortId).css('width', info.cpuText);
-                        $('#compose-mem-bar-' + shortId).css('width', Math.min(info.memPercent || 0, 100).toFixed(2) + '%');
-                    }
-                    renderStackAggregates();
+                    renderComposeLoadCache();
                 }
             };
             document.addEventListener('visibilitychange', window._composeDockerLoadVisHandler);
@@ -2600,10 +2656,9 @@ $(function() {
                 });
             }
 
-            // Only auto-start the socket if the stack list is already
-            // loaded (composeListReady is true).  Otherwise the
-            // composeLoadlist().then() callback will start it.
-            if (composeListReady && isComposeAdvancedMode()) {
+            // Auto-start the socket immediately in advanced view so the
+            // cache can warm while progressive row loading is still in flight.
+            if (isComposeAdvancedMode()) {
                 composeLogger('auto-starting socket', {
                     'listReady': composeListReady,
                     'advanced': isComposeAdvancedMode()
@@ -6969,6 +7024,9 @@ function renderContainerDetails(stackId, containers, project) {
 
     if (window.composeColCustomizer && typeof window.composeColCustomizer.reapply === 'function') {
         window.composeColCustomizer.reapply();
+    }
+    if (window.composeDockerLoadRenderCached && typeof window.composeDockerLoadRenderCached === 'function') {
+        window.composeDockerLoadRenderCached();
     }
 
     // Update the parent stack row shortly after rendering so counts and status

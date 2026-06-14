@@ -19,6 +19,7 @@ require_once "$docroot/plugins/compose.manager/include/Helpers.php";
 
 composeLogger('publisher starting', null, 'user', 'info', 'nchan');
 $statusFile = '/tmp/compose_info_nchan.status';
+$snapshotFile = '/tmp/compose_info_nchan.snapshot.json';
 @file_put_contents($statusFile, json_encode([
     'state' => 'starting',
     'ts' => time(),
@@ -38,6 +39,11 @@ while (true) {
 
     // Continually publish and abort if no listeners.
     publish('composeinfo', $output, 1, true);
+
+    @file_put_contents($snapshotFile, json_encode([
+        'ts' => time(),
+        'raw' => (string)$output,
+    ], JSON_UNESCAPED_SLASHES));
 
     // Visible runtime heartbeat for troubleshooting startup/loop health.
     if (($loopCount % 5) === 0) {

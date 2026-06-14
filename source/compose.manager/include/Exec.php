@@ -259,6 +259,14 @@ switch ($_POST['action']) {
         $cache = is_file($cacheFile) ? json_decode(file_get_contents($cacheFile), true) : [];
         echo json_encode(['result' => 'success', 'cache' => is_array($cache) ? $cache : []]);
         break;
+    case 'getComposeLoadSnapshot':
+        $snapshotFile = '/tmp/compose_info_nchan.snapshot.json';
+        $snapshot = is_file($snapshotFile) ? json_decode((string)file_get_contents($snapshotFile), true) : [];
+        echo json_encode([
+            'result' => 'success',
+            'snapshot' => is_array($snapshot) ? $snapshot : [],
+        ]);
+        break;
     case 'addStack':
         // Validate optional indirect inputs (folder or specific compose file)
         $indirectDir = isset($_POST['stackPath']) ? trim($_POST['stackPath']) : '';
