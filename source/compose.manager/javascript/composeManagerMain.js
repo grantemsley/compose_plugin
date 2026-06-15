@@ -1324,6 +1324,10 @@ function applyDefaultExpansionToRows($rows) {
                 return null;
             });
         });
+
+        composeDefaultExpandQueue = composeDefaultExpandQueue.then(function() {
+            updateStackToggleAllButtonState();
+        });
     });
 }
 
@@ -6615,6 +6619,75 @@ function toggleStackDetails(stackId) {
             loadStackContainerDetails(stackId, project);
         }
     }
+
+    updateStackToggleAllButtonState();
+}
+
+function getComposeStackIds() {
+    return $('#compose_stacks tr.compose-sortable[id^="stack-row-"]').map(function() {
+        return this.id.replace('stack-row-', '');
+    }).get();
+}
+
+function isStackExpanded(stackId) {
+    var $detailsRow = $('#details-row-' + stackId);
+    var isVisible = $detailsRow.is(':visible');
+
+    // Keep JS expansion state aligned with the live DOM. During async detail loads,
+    // preserve the expanded intent until the row is rendered and shown.
+    if (isVisible) {
+        expandedStacks[stackId] = true;
+        return true;
+    }
+
+    if (!stackDetailsLoading[stackId]) {
+        expandedStacks[stackId] = false;
+    }
+
+    return !!expandedStacks[stackId];
+}
+
+function updateStackToggleAllButtonState() {
+    var $button = $('#compose-stack-toggle-all');
+    if (!$button.length) return;
+
+    var stackIds = getComposeStackIds();
+    var expandedCount = 0;
+
+    stackIds.forEach(function(stackId) {
+        if (isStackExpanded(stackId)) {
+            expandedCount++;
+        }
+    });
+
+    var hasStacks = stackIds.length > 0;
+    var allExpanded = hasStacks && expandedCount === stackIds.length;
+
+    $button.prop('disabled', !hasStacks);
+    $button.attr('title', allExpanded ? 'Collapse all stacks' : 'Expand all stacks');
+    $button.attr('aria-label', allExpanded ? 'Collapse all stacks' : 'Expand all stacks');
+    $button.toggleClass('is-expanded', allExpanded);
+}
+
+function toggleAllStackDetails(forceExpand) {
+    var stackIds = getComposeStackIds();
+    if (!stackIds.length) return;
+
+    var anyCollapsed = stackIds.some(function(stackId) {
+        return !isStackExpanded(stackId);
+    });
+    var shouldExpand = typeof forceExpand === 'boolean' ? forceExpand : anyCollapsed;
+
+    stackIds.forEach(function(stackId) {
+        var expanded = isStackExpanded(stackId);
+        if (shouldExpand && !expanded) {
+            toggleStackDetails(stackId);
+        } else if (!shouldExpand && expanded) {
+            toggleStackDetails(stackId);
+        }
+    });
+
+    updateStackToggleAllButtonState();
 }
 
 function loadStackContainerDetails(stackId, project) {
@@ -6738,6 +6811,8 @@ function loadStackContainerDetails(stackId, project) {
 
     return stackDetailsLoadPromises[stackId];
 }
+
+$(document).on('compose-list-loaded', updateStackToggleAllButtonState);
 
 function renderContainerDetails(stackId, containers, project) {
     var $container = $('#details-container-' + stackId);

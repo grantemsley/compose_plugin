@@ -122,6 +122,50 @@ if ($cpuCount <= 0) {
         padding: 0;
     }
 
+    #compose_stacks thead th.col-arrow .compose-stack-toggle-all {
+        width: 24px;
+        height: 24px;
+        margin: 0 auto;
+        padding: 0;
+        border: 0;
+        background: none;
+        appearance: none;
+        -webkit-appearance: none;
+        border-radius: 4px;
+        color: var(--dynamix-tablesorter-thead-th-text-color);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        line-height: 1;
+        opacity: 0.95;
+    }
+
+    #compose_stacks thead th.col-arrow .compose-stack-toggle-all i {
+        transition: transform 0.2s ease;
+        transform: rotate(0deg);
+    }
+
+    #compose_stacks thead th.col-arrow .compose-stack-toggle-all.is-expanded i {
+        transform: rotate(180deg);
+    }
+
+    #compose_stacks thead th.col-arrow .compose-stack-toggle-all:hover {
+        color: var(--orange-text, var(--brand-orange));
+        opacity: 1;
+    }
+
+    #compose_stacks thead th.col-arrow .compose-stack-toggle-all:focus-visible {
+        outline: 1px solid var(--brand-orange);
+        outline-offset: 2px;
+    }
+
+    #compose_stacks thead th.col-arrow .compose-stack-toggle-all:disabled {
+        cursor: default;
+        opacity: 0.45;
+    }
+
     #compose_stacks td.col-arrow {
         text-align: center;
         white-space: nowrap;
@@ -348,7 +392,11 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         <table id="compose_stacks" class="tablesorter shift" style="table-layout:fixed;width:100%">
             <thead>
                 <tr>
-                    <th class="col-arrow"></th>
+                    <th class="col-arrow">
+                        <div type="button" class="compose-stack-toggle-all" id="compose-stack-toggle-all" role="button" tabindex="0" onclick="toggleAllStackDetails(); return false;" title="Expand all stacks" aria-label="Expand all stacks">
+                            <i class="fa fa-angle-double-down"></i>
+                        </div>
+                    </th>
                     <th class="col-icon"></th>
                     <th class="col-name">Stack</th>
                     <th class="col-update">Update</th>
