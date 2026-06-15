@@ -73,7 +73,22 @@ if ($cpuCount <= 0) {
     /* Table structure — always fixed layout */
     #compose_stacks {
         width: 100%;
-        table-layout: fixed
+        table-layout: fixed;
+        /* Single source of truth for stack-table column widths. */
+        --cm-col-arrow-px: 24px;
+        --cm-col-icon-px: 48px;
+        --cm-col-fixed-px: calc(var(--cm-col-arrow-px) + var(--cm-col-icon-px));
+        --cm-col-name-frac: 0.203539823;
+        --cm-col-update-frac: 0.141592920;
+        --cm-col-containers-frac: 0.070796460;
+        --cm-col-uptime-frac: 0.079646018;
+        --cm-col-cpu-frac: 0.088495575;
+        --cm-col-memory-frac: 0.115044248;
+        --cm-col-net-io-frac: 0.000000000;
+        --cm-col-block-io-frac: 0.000000000;
+        --cm-col-description-frac: 0.123893805;
+        --cm-col-path-frac: 0.106194690;
+        --cm-col-autostart-frac: 0.070796460;
     }
 
     /* Stabilize header row height across basic/advanced toggle transitions */
@@ -89,9 +104,13 @@ if ($cpuCount <= 0) {
         text-align: left;
     }
 
-    /* Clip overflowing content in fixed-layout cells */
+    /* Clip overflowing content in fixed-layout cells.
+       border-box is REQUIRED so the percentage column widths below include
+       their own padding; otherwise padding is added on top of the computed
+       width and the columns overflow/shrink, leaving a gap at the right. */
     #compose_stacks th,
     #compose_stacks td {
+        box-sizing: border-box;
         overflow: hidden;
         text-overflow: ellipsis
     }
@@ -99,7 +118,7 @@ if ($cpuCount <= 0) {
     /* Basic-view column widths (7 visible columns)
    Arrow + Icon are fixed px (small fixed content); rest are % of table. */
     #compose_stacks thead th.col-arrow {
-        width: 15px;
+        width: var(--cm-col-arrow-px);
         padding: 0;
     }
 
@@ -117,81 +136,52 @@ if ($cpuCount <= 0) {
     }
 
     #compose_stacks thead th.col-icon {
-        width: 30px;
+        width: var(--cm-col-icon-px);
         padding: 0;
     }
 
     #compose_stacks thead th.col-name {
-        width: 12%;
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-name-frac));
     }
 
     #compose_stacks thead th.col-update {
-        width: 25%;
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-update-frac));
     }
 
     #compose_stacks thead th.col-containers {
-        width: 25%;
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-containers-frac));
     }
 
     #compose_stacks thead th.col-uptime {
-        width: 25%;
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-uptime-frac));
     }
 
     #compose_stacks thead th.col-autostart {
-        width: 15%;
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-autostart-frac));
     }
 
-    /* Advanced-view column widths with optional metric columns. */
-    #compose_stacks.cm-advanced-view thead th.col-arrow {
-        width: 15px;
+    #compose_stacks thead th.col-cpu {
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-cpu-frac))
     }
 
-    #compose_stacks.cm-advanced-view thead th.col-icon {
-        width: 30px;
+    #compose_stacks thead th.col-memory {
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-memory-frac))
     }
 
-    #compose_stacks.cm-advanced-view thead th.col-name {
-        width: 12%;
+    #compose_stacks thead th.col-net_io {
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-net-io-frac))
     }
 
-    #compose_stacks.cm-advanced-view thead th.col-update {
-        width: 8%
+    #compose_stacks thead th.col-block_io {
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-block-io-frac))
     }
 
-    #compose_stacks.cm-advanced-view thead th.col-containers {
-        width: 4%
+    #compose_stacks thead th.col-description {
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-description-frac))
     }
 
-    #compose_stacks.cm-advanced-view thead th.col-uptime {
-        width: 5%
-    }
-
-    #compose_stacks.cm-advanced-view thead th.col-cpu {
-        width: 8%
-    }
-
-    #compose_stacks.cm-advanced-view thead th.col-memory {
-        width: 12%
-    }
-
-    #compose_stacks.cm-advanced-view thead th.col-net_io {
-        width: 9%
-    }
-
-    #compose_stacks.cm-advanced-view thead th.col-block_io {
-        width: 9%
-    }
-
-    #compose_stacks.cm-advanced-view thead th.col-description {
-        width: 15%
-    }
-
-    #compose_stacks.cm-advanced-view thead th.col-path {
-        width: 15%
-    }
-
-    #compose_stacks.cm-advanced-view thead th.col-autostart {
-        width: 8%
+    #compose_stacks thead th.col-path {
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-path-frac))
     }
 
     /* Center the Containers column */
@@ -213,19 +203,6 @@ if ($cpuCount <= 0) {
         padding: 8px 0;
         text-align: center;
         vertical-align: middle
-    }
-
-    /* Advanced/basic visibility — CSS-only so no flash of hidden content */
-    #compose_stacks .cm-advanced {
-        display: none
-    }
-
-    #compose_stacks.cm-advanced-view .cm-advanced {
-        display: table-cell
-    }
-
-    #compose_stacks.cm-advanced-view div.cm-advanced {
-        display: block
     }
 
     /* Detail row */

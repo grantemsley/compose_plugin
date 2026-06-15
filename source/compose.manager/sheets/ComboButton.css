@@ -302,6 +302,7 @@
 
   .compose-ct-table th,
   .compose-ct-table td {
+    box-sizing: border-box;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -425,21 +426,41 @@
   }
 
   /* ============================================
-   Column Customizer Modal & Gear Icon
+   Column Customizer Launcher + Modal
    ============================================ */
 
-  .compose-col-gear-icon {
-    display: inline-block;
-    margin-left: 12px;
-    padding: 4px 8px;
-    cursor: pointer;
-    color: var(--brand-orange);
-    text-decoration: none;
-    transition: opacity 0.2s ease;
+  .compose-col-launcher-wrap {
+    text-align: right;
+    margin-bottom: 6px;
   }
 
-  .compose-col-gear-icon:hover {
-    opacity: 0.7;
+  .compose-col-launcher {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--dynamix-tablesorter-tbody-row-alt-bg-color);
+    color: var(--link-text-color, var(--text-color));
+    text-decoration: none;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.9em;
+    line-height: 1.2;
+    transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+  }
+
+  .compose-col-launcher i {
+    color: var(--brand-orange);
+  }
+
+  .compose-col-launcher:hover,
+  .compose-col-launcher:focus {
+    border-color: var(--brand-orange);
+    color: var(--brand-orange);
+    background: var(--action-hover-bg);
+    text-decoration: none;
   }
 
   /* Column Customization Modal */

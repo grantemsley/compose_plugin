@@ -503,6 +503,12 @@ function composeLoadlist() {
                     return;
                 }
 
+                // Ensure hidden-column classes and table geometry are applied
+                // before progressive rows begin rendering.
+                if (window.composeColCustomizer && typeof window.composeColCustomizer.reapply === 'function') {
+                    window.composeColCustomizer.reapply();
+                }
+
                 // Warm expansion settings once so progressive row insertions can expand immediately.
                 ensureComposeDefaultExpandSettings();
 
@@ -519,6 +525,12 @@ function composeLoadlist() {
                     '</td>' +
                     '</tr>';
                 $('#compose_list').html(progressHtml);
+
+                // The progress row uses a static full-width colspan; clamp it to the
+                // live column count so hidden columns don't reserve width.
+                if (window.composeColCustomizer && typeof window.composeColCustomizer.syncColspans === 'function') {
+                    window.composeColCustomizer.syncColspans();
+                }
 
                 // Prime cached update status early so rows can render status as soon as they land.
                 if (!savedUpdateStatusLoaded) {
@@ -743,6 +755,12 @@ function initializeProgressiveLoadedRows($rowChunk) {
     // Apply default expansion policy per row as soon as it is inserted.
     applyDefaultExpansionToRows($rows);
 
+    // Newly inserted rows include detail rows with a static full-width colspan;
+    // clamp it to the live column count so hidden columns don't reserve width.
+    if (window.composeColCustomizer && typeof window.composeColCustomizer.syncColspans === 'function') {
+        window.composeColCustomizer.syncColspans();
+    }
+
     // Notify dockerload/hide-from-docker listeners so new rows can receive live updates now.
     $(document).trigger('composeListRefreshed');
     if (typeof window.composeDockerLoadToggle === 'function' && isComposeAdvancedMode()) {
@@ -759,8 +777,9 @@ function initializeProgressiveLoadedRows($rowChunk) {
     var editor = composeBootstrap.editorModalCss || '';
     if (base && !$('link[href="' + base + '"]').length)
         $('head').append($('<link rel="stylesheet" type="text/css" />').attr('href', base));
-    if (editor && !$('link[href="' + editor + '"]').length)
+    if (editor && !$('link[href="' + editor + '"]').length) {
         $('head').append($('<link rel="stylesheet" type="text/css" />').attr('href', editor));
+    }
 })();
 
 function basename(path) {
@@ -1939,82 +1958,14 @@ function processWebUIUrl(url) {
 }
 
 function isComposeAdvancedMode() {
-    return $.cookie('compose_listview_mode') === 'advanced';
+    return true;
 }
 
-// Apply advanced/basic view based on cookie (used after async load)
-// Scoped to compose_stacks to avoid affecting Docker tab when tabs are joined.
-// When animate=true (user clicked toggle), run a simple symmetric transition.
-// When false (page load), instant class toggle.
+// Legacy compatibility shim. Basic/advanced toggle was removed in favor of
+// column customizer visibility controls.
 function applyListView(animate) {
-    // Sync the dockerload WebSocket with the view mode.
     if (typeof window.composeDockerLoadToggle === 'function') {
-        window.composeDockerLoadToggle(isComposeAdvancedMode());
-    }
-    var advanced = isComposeAdvancedMode();
-    var $table = $('#compose_stacks');
-    var $advanced = $table.find('.cm-advanced');
-
-    var setClass = function(enabled) {
-        if (enabled) {
-            $table.addClass('cm-advanced-view');
-        } else {
-            $table.removeClass('cm-advanced-view');
-        }
-    };
-
-    if (!animate) {
-        setClass(advanced);
-        $table.css({
-            height: '',
-            overflow: ''
-        });
-        $advanced.css({
-            opacity: '',
-            display: ''
-        });
-    } else {
-        if (advanced) {
-            // basic -> advanced: enable class first, then fade in advanced cells
-            setClass(true);
-            $table.css({
-                height: $table.outerHeight(),
-                overflow: 'hidden'
-            });
-            $advanced.stop(true, true).css({
-                opacity: 0
-            }).animate({
-                opacity: 1
-            }, 300, function() {
-                $table.css({
-                    height: '',
-                    overflow: ''
-                });
-                $advanced.css({
-                    opacity: '',
-                    display: ''
-                });
-            });
-        } else {
-            // advanced -> basic: fade out then disable class to avoid flicker
-            $table.css({
-                height: $table.outerHeight(),
-                overflow: 'hidden'
-            });
-            $advanced.stop(true, true).animate({
-                opacity: 0
-            }, 300, function() {
-                setClass(false);
-                $table.css({
-                    height: '',
-                    overflow: ''
-                });
-                $advanced.css({
-                    opacity: '',
-                    display: ''
-                });
-            });
-        }
+        window.composeDockerLoadToggle(true);
     }
 
     // Apply readmore to descriptions — exclude container detail rows; destroy first to avoid nested wrappers
@@ -2064,47 +2015,8 @@ $(function() {
         }
     });
 
-    // Add Advanced View toggle (like Docker tab)
-    // Use compose-specific class to avoid conflict with Docker tab's advancedview when tabs are joined
-    var toggleHtml = '<span class="status compose-view-toggle"><span><input type="checkbox" class="compose-advancedview"></span></span>';
-
-    // In tabbed mode we must keep the toggle inside the compose content pane
-    // so it does not leak into the global tab bar, and in standalone mode it
-    // also appears above the compose stacks table.
-    var $toggleContainer = $('<div class="ToggleViewMode"></div>').html(toggleHtml);
-    var $tableWrapper = $('#compose_stacks').closest('.TableContainer');
-    if ($tableWrapper.length) {
-        $tableWrapper.before($toggleContainer);
-    } else if ($('#compose_stacks').length) {
-        $('#compose_stacks').before($toggleContainer);
-    } else if ($('.tabs').length) {
-        // Fallback for unusual layout: inject into tabs as a last resort
-        $('.tabs').append($toggleContainer);
-    } else {
-        $('body').prepend($toggleContainer);
-    }
-
-
-    // Initialize the Advanced/Basic view toggle.
-    // labels_placement:'left' puts both labels to the left of the slider.
-    // The plugin shows only the active label: "Basic View" (white) when
-    // unchecked, "Advanced View" (blue / class 'on') when checked.
-    var isAdvanced = $.cookie('compose_listview_mode') === 'advanced';
-    $('.compose-advancedview').switchButton({
-        labels_placement: 'left',
-        on_label: 'Advanced View',
-        off_label: 'Basic View',
-        checked: isAdvanced
-    });
-    // Apply the current cookie state immediately so columns match the toggle.
+    // Refresh per-row UI helpers after initial DOM is ready.
     applyListView();
-    $('.compose-advancedview').change(function() {
-        // Persist selection and apply view consistently via applyListView()
-        $.cookie('compose_listview_mode', $('.compose-advancedview').is(':checked') ? 'advanced' : 'basic', {
-            expires: 3650
-        });
-        applyListView(true);
-    });
 
     // ebox observer removed; pending update checks are now processed from
     // refreshStackRow and processPendingComposeReloads directly.

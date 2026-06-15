@@ -51,6 +51,34 @@
         service: $.extend({}, defaults.service)
     };
 
+    var STACK_WIDTH_WEIGHTS = {
+        name: 23,
+        update: 16,
+        containers: 8,
+        uptime: 9,
+        cpu: 10,
+        memory: 13,
+        net_io: 10,
+        block_io: 10,
+        description: 14,
+        path: 12,
+        autostart: 8
+    };
+
+    var STACK_DEFAULT_VISIBLE = {
+        name: true,
+        update: true,
+        containers: true,
+        uptime: true,
+        autostart: true,
+        cpu: true,
+        memory: true,
+        net_io: false,
+        block_io: false,
+        description: true,
+        path: true
+    };
+
     function normalizePrefs(incoming) {
         var out = {
             stack: $.extend({}, defaults.stack),
@@ -74,6 +102,66 @@
         var $tables = $(selector);
         Object.keys(prefs[scope]).forEach(function(col) {
             $tables.toggleClass('hide-col-' + col, !prefs[scope][col]);
+        });
+        if (scope === 'stack') {
+            applyStackWidthMath();
+            syncStackColspans();
+        }
+        forceTableLayoutReflow($tables);
+    }
+
+    // Number of physically rendered stack columns (arrow, icon, and the five
+    // always-on columns are fixed; the rest depend on visibility prefs).
+    function getVisibleStackColCount() {
+        var count = 7; // arrow, icon, name, update, containers, uptime, autostart
+        Object.keys(STACK_COLS).forEach(function(col) {
+            if (prefs.stack[col]) count++;
+        });
+        return count;
+    }
+
+    // Full-width rows (detail rows, progress/empty/error rows) are authored with
+    // a static colspan that assumes every column exists. Under table-layout:fixed
+    // an oversized colspan keeps the display:none columns' slots alive, so they
+    // steal width from the visible columns. Clamp colspan to the live column count.
+    function syncStackColspans() {
+        var count = getVisibleStackColCount();
+        $('#compose_stacks').find('td[colspan]').attr('colspan', count);
+    }
+
+    function applyStackWidthMath() {
+        var $table = $('#compose_stacks');
+        if (!$table.length) return;
+
+        var visible = $.extend({}, STACK_DEFAULT_VISIBLE);
+        Object.keys(STACK_COLS).forEach(function(col) {
+            visible[col] = !!prefs.stack[col];
+        });
+
+        var totalWeight = 0;
+        Object.keys(STACK_WIDTH_WEIGHTS).forEach(function(col) {
+            if (visible[col]) {
+                totalWeight += STACK_WIDTH_WEIGHTS[col];
+            }
+        });
+        if (totalWeight <= 0) return;
+
+        var tableEl = $table[0];
+        Object.keys(STACK_WIDTH_WEIGHTS).forEach(function(col) {
+            var fraction = visible[col] ? (STACK_WIDTH_WEIGHTS[col] / totalWeight) : 0;
+            var cssVar = '--cm-col-' + col.replace(/_/g, '-') + '-frac';
+            tableEl.style.setProperty(cssVar, String(fraction));
+        });
+    }
+
+    function forceTableLayoutReflow($tables) {
+        if (!$tables || !$tables.length) return;
+
+        // Toggling display on columns already triggers a fixed-layout recompute;
+        // we only need a read to flush it synchronously. No width mutation (that
+        // caused a visible "snap"). Column widths come purely from CSS vars.
+        $tables.each(function() {
+            if (this) void this.offsetWidth;
         });
     }
 
@@ -180,7 +268,7 @@
                 applyScope(scope);
             });
 
-            this.addHeaderGearIcon();
+            this.addToolbarButton();
             fetchPrefs(function() {
                 syncModalFromPrefs();
                 applyAll();
@@ -189,6 +277,10 @@
 
         reapply: function() {
             applyAll();
+        },
+
+        syncColspans: function() {
+            syncStackColspans();
         },
 
         openModal: function() {
@@ -210,11 +302,28 @@
             });
         },
 
-        addHeaderGearIcon: function() {
-            var $autostart = $('#compose_stacks thead th.col-autostart');
-            if (!$autostart.length || $autostart.find('.compose-col-gear-icon').length) return;
-            var gearHtml = '<a href="#" class="compose-col-gear-icon" title="Customize columns" onclick="event.preventDefault(); composeColCustomizer.openModal();"><i class="fa fa-sliders fa-rotate-90"></i></a>';
-            $autostart.append(gearHtml);
+        addToolbarButton: function() {
+            if ($('#compose-col-launcher-wrap').length) return;
+
+            var launcherHtml = '' +
+                '<div id="compose-col-launcher-wrap" class="ToggleViewMode compose-col-launcher-wrap">' +
+                '<a href="#" class="compose-col-launcher" title="Customize visible columns" onclick="event.preventDefault(); composeColCustomizer.openModal();">' +
+                '<i class="fa fa-sliders fa-rotate-90" aria-hidden="true"></i>' +
+                '<span>Columns</span>' +
+                '</a>' +
+                '</div>';
+
+            var $launcher = $(launcherHtml);
+            var $tableWrapper = $('#compose_stacks').closest('.TableContainer');
+            if ($tableWrapper.length) {
+                $tableWrapper.before($launcher);
+            } else if ($('#compose_stacks').length) {
+                $('#compose_stacks').before($launcher);
+            } else if ($('.tabs').length) {
+                $('.tabs').append($launcher);
+            } else {
+                $('body').prepend($launcher);
+            }
         }
     };
 
