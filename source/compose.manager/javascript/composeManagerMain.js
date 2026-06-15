@@ -769,6 +769,8 @@ function initializeProgressiveLoadedRows($rowChunk) {
     if (typeof window.composeDockerLoadRenderCached === 'function' && isComposeAdvancedMode()) {
         window.composeDockerLoadRenderCached();
     }
+
+    updateStackToggleAllButtonState();
 }
 
 // Load external stylesheets (non-critical styles — critical ones are inline above)
@@ -1349,6 +1351,7 @@ function expandStackDetailsSequential(stackId) {
         return Promise.resolve();
     }
 
+    stackDetailsDesiredExpanded[stackId] = true;
     $expandIcon.addClass('expanded');
     expandedStacks[stackId] = true;
 
@@ -4584,6 +4587,13 @@ var stackDetailsPrefetchPromises = {};
 var stackDetailsPrefetchCache = {};
 // Suppress immediate refresh after a render to avoid loops
 var stackDetailsJustRendered = {};
+// Track user intent during async loads so late responses do not reopen collapsed rows.
+var stackDetailsDesiredExpanded = {};
+// Batch/safeguard toggle-all updates under rapid clicking.
+var stackToggleAllBatching = false;
+var stackToggleAllBusy = false;
+var stackToggleAllQueuedForceExpand = null;
+var stackToggleAllQueuedToggle = false;
 
 function prefetchStackDetailsInBackground(projects) {
     if (!Array.isArray(projects) || projects.length === 0) return;
@@ -6601,10 +6611,12 @@ function toggleStackDetails(stackId) {
 
     if (expandedStacks[stackId]) {
         // Collapse
+        stackDetailsDesiredExpanded[stackId] = false;
         $detailsRow.slideUp(200);
         $expandIcon.removeClass('expanded');
         expandedStacks[stackId] = false;
     } else {
+        stackDetailsDesiredExpanded[stackId] = true;
         $expandIcon.addClass('expanded');
         expandedStacks[stackId] = true;
 
@@ -6620,7 +6632,9 @@ function toggleStackDetails(stackId) {
         }
     }
 
-    updateStackToggleAllButtonState();
+    if (!stackToggleAllBatching) {
+        updateStackToggleAllButtonState();
+    }
 }
 
 function getComposeStackIds() {
@@ -6630,12 +6644,18 @@ function getComposeStackIds() {
 }
 
 function isStackExpanded(stackId) {
+    if (stackDetailsDesiredExpanded[stackId] === false) {
+        expandedStacks[stackId] = false;
+        return false;
+    }
+
     var $detailsRow = $('#details-row-' + stackId);
     var isVisible = $detailsRow.is(':visible');
 
     // Keep JS expansion state aligned with the live DOM. During async detail loads,
     // preserve the expanded intent until the row is rendered and shown.
     if (isVisible) {
+        stackDetailsDesiredExpanded[stackId] = true;
         expandedStacks[stackId] = true;
         return true;
     }
@@ -6670,6 +6690,16 @@ function updateStackToggleAllButtonState() {
 }
 
 function toggleAllStackDetails(forceExpand) {
+    if (stackToggleAllBusy) {
+        if (typeof forceExpand === 'boolean') {
+            stackToggleAllQueuedForceExpand = forceExpand;
+            stackToggleAllQueuedToggle = false;
+        } else {
+            stackToggleAllQueuedToggle = true;
+        }
+        return;
+    }
+
     var stackIds = getComposeStackIds();
     if (!stackIds.length) return;
 
@@ -6677,6 +6707,9 @@ function toggleAllStackDetails(forceExpand) {
         return !isStackExpanded(stackId);
     });
     var shouldExpand = typeof forceExpand === 'boolean' ? forceExpand : anyCollapsed;
+
+    stackToggleAllBusy = true;
+    stackToggleAllBatching = true;
 
     stackIds.forEach(function(stackId) {
         var expanded = isStackExpanded(stackId);
@@ -6687,11 +6720,33 @@ function toggleAllStackDetails(forceExpand) {
         }
     });
 
+    stackToggleAllBatching = false;
+
     updateStackToggleAllButtonState();
+
+    // Allow animations/state to settle, then replay only the latest queued intent.
+    setTimeout(function() {
+        stackToggleAllBusy = false;
+
+        var queuedForceExpand = stackToggleAllQueuedForceExpand;
+        var queuedToggle = stackToggleAllQueuedToggle;
+        stackToggleAllQueuedForceExpand = null;
+        stackToggleAllQueuedToggle = false;
+
+        if (typeof queuedForceExpand === 'boolean') {
+            toggleAllStackDetails(queuedForceExpand);
+        } else if (queuedToggle) {
+            toggleAllStackDetails();
+        }
+    }, 240);
 }
 
 function loadStackContainerDetails(stackId, project) {
     var $container = $('#details-container-' + stackId);
+
+    if (typeof stackDetailsDesiredExpanded[stackId] === 'undefined') {
+        stackDetailsDesiredExpanded[stackId] = !!expandedStacks[stackId] || $('#details-row-' + stackId).is(':visible');
+    }
 
     function renderFromResponse(response, finishLoad) {
         if (response && response.result === 'success') {
@@ -6711,7 +6766,15 @@ function loadStackContainerDetails(stackId, project) {
                 containers: containers.length
             }, 'user', 'debug', 'container-details');
             renderContainerDetails(stackId, containers, project);
-            $('#details-row-' + stackId).stop(true, true).slideDown(200, finishLoad);
+
+            if (stackDetailsDesiredExpanded[stackId] === false) {
+                expandedStacks[stackId] = false;
+                $('#details-row-' + stackId).stop(true, true).hide();
+                finishLoad();
+            } else {
+                expandedStacks[stackId] = true;
+                $('#details-row-' + stackId).stop(true, true).slideDown(200, finishLoad);
+            }
             return true;
         }
         return false;
@@ -6740,6 +6803,7 @@ function loadStackContainerDetails(stackId, project) {
         function finishLoad() {
             stackDetailsLoading[stackId] = false;
             delete stackDetailsLoadPromises[stackId];
+            updateStackToggleAllButtonState();
             resolve();
         }
 
