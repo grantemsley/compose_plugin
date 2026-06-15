@@ -170,14 +170,109 @@
         applyScope('service');
     }
 
-    function buildChecklist(scope, map) {
-        var html = '';
+    function getScopeMap(scope) {
+        return scope === 'stack' ? STACK_COLS : SERVICE_COLS;
+    }
+
+    function scopeSelectId(scope, side) {
+        return '#compose-col-' + scope + '-' + side;
+    }
+
+    function renderScopeTransfer(scope) {
+        var map = getScopeMap(scope);
+        var $hidden = $(scopeSelectId(scope, 'hidden'));
+        var $visible = $(scopeSelectId(scope, 'visible'));
+
+        if (!$hidden.length || !$visible.length) return;
+
+        var hiddenHtml = '';
+        var visibleHtml = '';
+
         Object.keys(map).forEach(function(col) {
-            html += '<label class="compose-col-checkbox-label">';
-            html += '<input type="checkbox" class="compose-col-checkbox" data-type="' + scope + '" data-col="' + col + '">';
-            html += '<span>' + map[col] + '</span>';
-            html += '</label>';
+            var optionHtml = '<option value="' + col + '">' + map[col] + '</option>';
+            if (prefs[scope] && prefs[scope][col]) {
+                visibleHtml += optionHtml;
+            } else {
+                hiddenHtml += optionHtml;
+            }
         });
+
+        if (!hiddenHtml) {
+            hiddenHtml = '<option value="" disabled>(none)</option>';
+        }
+        if (!visibleHtml) {
+            visibleHtml = '<option value="" disabled>(none)</option>';
+        }
+
+        $hidden.html(hiddenHtml);
+        $visible.html(visibleHtml);
+    }
+
+    function renderTransferLists() {
+        renderScopeTransfer('stack');
+        renderScopeTransfer('service');
+    }
+
+    function setScopeColumnVisibility(scope, keys, isVisible) {
+        if (!keys || !keys.length || !prefs[scope]) return;
+
+        keys.forEach(function(col) {
+            if (Object.prototype.hasOwnProperty.call(prefs[scope], col)) {
+                prefs[scope][col] = isVisible;
+            }
+        });
+
+        applyScope(scope);
+        renderScopeTransfer(scope);
+    }
+
+    function getSelectedTransferKeys(scope, side) {
+        var values = $(scopeSelectId(scope, side)).val();
+        if (!values) return [];
+        return Array.isArray(values) ? values : [values];
+    }
+
+    function moveSelected(scope, toVisible) {
+        var side = toVisible ? 'hidden' : 'visible';
+        var keys = getSelectedTransferKeys(scope, side).filter(function(key) {
+            return key !== '';
+        });
+        setScopeColumnVisibility(scope, keys, toVisible);
+    }
+
+    function moveAll(scope, toVisible) {
+        var map = getScopeMap(scope);
+        var keys = [];
+
+        Object.keys(map).forEach(function(col) {
+            var currentlyVisible = !!(prefs[scope] && prefs[scope][col]);
+            if (toVisible && !currentlyVisible) keys.push(col);
+            if (!toVisible && currentlyVisible) keys.push(col);
+        });
+
+        setScopeColumnVisibility(scope, keys, toVisible);
+    }
+
+    function buildTransferSection(scope, title) {
+        var html = '<div class="compose-col-section">';
+        html += '<div class="compose-col-section-title">' + title + '</div>';
+        html += '<div class="compose-transfer-wrap">';
+        html += '<div class="compose-transfer-col">';
+        html += '<label for="compose-col-' + scope + '-hidden">Hidden</label>';
+        html += '<select id="compose-col-' + scope + '-hidden" class="compose-transfer-select" multiple></select>';
+        html += '</div>';
+        html += '<div class="compose-transfer-actions">';
+        html += '<div class="compose-transfer-btn" role="button" tabindex="0" data-scope="' + scope + '" data-action="selected-right" title="Show selected" aria-label="Show selected">&gt;</div>';
+        html += '<div class="compose-transfer-btn" role="button" tabindex="0" data-scope="' + scope + '" data-action="all-right" title="Show all" aria-label="Show all">&gt;&gt;</div>';
+        html += '<div class="compose-transfer-btn" role="button" tabindex="0" data-scope="' + scope + '" data-action="selected-left" title="Hide selected" aria-label="Hide selected">&lt;</div>';
+        html += '<div class="compose-transfer-btn" role="button" tabindex="0" data-scope="' + scope + '" data-action="all-left" title="Hide all" aria-label="Hide all">&lt;&lt;</div>';
+        html += '</div>';
+        html += '<div class="compose-transfer-col">';
+        html += '<label for="compose-col-' + scope + '-visible">Visible</label>';
+        html += '<select id="compose-col-' + scope + '-visible" class="compose-transfer-select" multiple></select>';
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
         return html;
     }
 
@@ -189,8 +284,8 @@
         html += '<button class="compose-modal-close" type="button" onclick="composeColCustomizer.closeModal();"><i class="fa fa-times"></i></button>';
         html += '</div>';
         html += '<div class="compose-modal-body">';
-        html += '<div class="compose-col-section"><div class="compose-col-section-title">Stack Columns</div><div class="compose-col-checklist" id="compose-stack-cols">' + buildChecklist('stack', STACK_COLS) + '</div></div>';
-        html += '<div class="compose-col-section"><div class="compose-col-section-title">Service Columns</div><div class="compose-col-checklist" id="compose-service-cols">' + buildChecklist('service', SERVICE_COLS) + '</div></div>';
+        html += buildTransferSection('stack', 'Stack Columns');
+        html += buildTransferSection('service', 'Service Columns');
         html += '</div>';
         html += '<div class="compose-modal-footer">';
         html += '<button class="compose-modal-btn compose-modal-btn-save" type="button" onclick="composeColCustomizer.saveAndClose();">Save</button>';
@@ -200,12 +295,7 @@
     }
 
     function syncModalFromPrefs() {
-        $('.compose-col-checkbox').each(function() {
-            var scope = $(this).data('type');
-            var col = $(this).data('col');
-            var checked = !!(prefs[scope] && prefs[scope][col]);
-            $(this).prop('checked', checked);
-        });
+        renderTransferLists();
     }
 
     function fetchPrefs(cb) {
@@ -260,12 +350,22 @@
                 $('body').append(buildModal());
             }
 
-            $(document).on('change', '.compose-col-checkbox', function() {
-                var scope = $(this).data('type');
-                var col = $(this).data('col');
-                if (!prefs[scope] || !Object.prototype.hasOwnProperty.call(prefs[scope], col)) return;
-                prefs[scope][col] = $(this).is(':checked');
-                applyScope(scope);
+            $(document).on('click', '.compose-transfer-btn', function() {
+                var scope = $(this).data('scope');
+                var action = $(this).data('action');
+
+                if (!scope || !action) return;
+
+                if (action === 'selected-right') moveSelected(scope, true);
+                if (action === 'all-right') moveAll(scope, true);
+                if (action === 'selected-left') moveSelected(scope, false);
+                if (action === 'all-left') moveAll(scope, false);
+            });
+
+            $(document).on('keydown', '.compose-transfer-btn', function(e) {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                $(this).trigger('click');
             });
 
             this.addToolbarButton();
