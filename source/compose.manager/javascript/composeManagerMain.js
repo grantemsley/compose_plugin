@@ -358,6 +358,26 @@ function mergeStackUpdateStatus(stackInfo, prevStatus) {
 
 // Timers for async operations (plugin-specific to avoid collision with Unraid's global timers)
 var composeTimers = {};
+var composeListRefreshedDebounceTimer = null;
+
+function triggerComposeListRefreshedDebounced(delayMs) {
+    var waitMs = typeof delayMs === 'number' ? delayMs : 150;
+    if (composeListRefreshedDebounceTimer) {
+        clearTimeout(composeListRefreshedDebounceTimer);
+    }
+    composeListRefreshedDebounceTimer = setTimeout(function() {
+        composeListRefreshedDebounceTimer = null;
+        $(document).trigger('composeListRefreshed');
+    }, waitMs);
+}
+
+function flushComposeListRefreshedDebounce() {
+    if (composeListRefreshedDebounceTimer) {
+        clearTimeout(composeListRefreshedDebounceTimer);
+        composeListRefreshedDebounceTimer = null;
+    }
+    $(document).trigger('composeListRefreshed');
+}
 
 function showComposeSpinner() {
     var $spinner = $('div.spinner.fixed');
@@ -402,7 +422,7 @@ function composeLoadlist() {
             clearTimeout(composeTimers.load);
 
             // Signal load subscribers (e.g. dockerload cache) that the list changed
-            $(document).trigger('composeListRefreshed');
+            flushComposeListRefreshedDebounce();
 
             // Initialize UI components for the newly loaded content
             initStackListUI();
@@ -817,8 +837,9 @@ function initializeProgressiveLoadedRows($rowChunk) {
         window.composeColCustomizer.syncColspans();
     }
 
-    // Notify dockerload/hide-from-docker listeners so new rows can receive live updates now.
-    $(document).trigger('composeListRefreshed');
+    // Notify dockerload/hide-from-docker listeners; debounce to avoid
+    // repeated expensive invalidation work during progressive append bursts.
+    triggerComposeListRefreshedDebounced(150);
     if (typeof window.composeDockerLoadToggle === 'function') {
         window.composeDockerLoadToggle(composeShouldEnableDockerLoad());
     }
