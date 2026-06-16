@@ -3,7 +3,7 @@
 // Supports both IEC (KiB, MiB, GiB, TiB) and SI (kB, MB, GB, TB) suffixes.
 function parseMemValueToBytes(memVal) {
     if (!memVal) return 0;
-    var cleaned = String(memVal).trim();
+    var cleaned = sanitizeStatsValue(memVal);
     if (!cleaned) return 0;
     var match = cleaned.match(/([\d.]+)\s*([kmgt]?i?b)?/i);
     if (!match) return 0;
@@ -32,6 +32,15 @@ function parseMemValueToBytes(memVal) {
         default:
             return num;
     }
+}
+
+// Remove terminal escape residue from docker stats fields (for example trailing "[K").
+function sanitizeStatsValue(raw) {
+    var value = String(raw || '');
+    value = value.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '');
+    value = value.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+    value = value.replace(/\[[A-Za-z]$/g, '');
+    return value.trim();
 }
 
 // Parse docker stats memory string "used / limit" into bytes.
@@ -2483,20 +2492,20 @@ $(function() {
                         var blockOutput = null;
 
                         if (parts.length > 7) {
-                            netInput = parts[4];
-                            netOutput = parts[5];
-                            blockInput = parts[6];
-                            blockOutput = parts[7];
+                            netInput = sanitizeStatsValue(parts[4]);
+                            netOutput = sanitizeStatsValue(parts[5]);
+                            blockInput = sanitizeStatsValue(parts[6]);
+                            blockOutput = sanitizeStatsValue(parts[7]);
                         } else {
                             if (parts.length > 4) {
                                 var netPair = String(parts[4] || '').split('/');
-                                netInput = (netPair[0] || '').trim();
-                                netOutput = (netPair[1] || '').trim();
+                                netInput = sanitizeStatsValue(netPair[0] || '');
+                                netOutput = sanitizeStatsValue(netPair[1] || '');
                             }
                             if (parts.length > 5) {
                                 var blockPair = String(parts[5] || '').split('/');
-                                blockInput = (blockPair[0] || '').trim();
-                                blockOutput = (blockPair[1] || '').trim();
+                                blockInput = sanitizeStatsValue(blockPair[0] || '');
+                                blockOutput = sanitizeStatsValue(blockPair[1] || '');
                             }
                         }
                         var netInputBytes = parseMemValueToBytes(netInput || '0');
