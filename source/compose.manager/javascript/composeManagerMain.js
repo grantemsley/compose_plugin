@@ -2260,6 +2260,10 @@ $(function() {
             if (window._composeDockerLoadStaleTimer) {
                 clearInterval(window._composeDockerLoadStaleTimer);
             }
+            if (window._composeDockerLoadRenderTimer) {
+                clearTimeout(window._composeDockerLoadRenderTimer);
+                window._composeDockerLoadRenderTimer = null;
+            }
             if (window._composeDockerLoadVisHandler) {
                 document.removeEventListener('visibilitychange', window._composeDockerLoadVisHandler);
             }
@@ -2285,6 +2289,8 @@ $(function() {
             var composeStackSignature = '';
             var composeLoadById = {};
             var composeLoadStaleMs = 15000;
+            var composeLoadRenderMinIntervalMs = 120;
+            var composeLoadLastRenderMs = 0;
 
             function isComposeLoadVisible() {
                 if (!composeHasVisibleLoadColumns()) return false;
@@ -2417,6 +2423,32 @@ $(function() {
                 }
 
                 renderStackAggregates();
+                composeLoadLastRenderMs = Date.now();
+            }
+
+            function scheduleComposeLoadRender(forceImmediate) {
+                if (!isComposeLoadVisible()) {
+                    return;
+                }
+                if (forceImmediate) {
+                    if (window._composeDockerLoadRenderTimer) {
+                        clearTimeout(window._composeDockerLoadRenderTimer);
+                        window._composeDockerLoadRenderTimer = null;
+                    }
+                    renderComposeLoadCache();
+                    return;
+                }
+                if (window._composeDockerLoadRenderTimer) {
+                    return;
+                }
+
+                var now = Date.now();
+                var elapsed = now - composeLoadLastRenderMs;
+                var delay = Math.max(0, composeLoadRenderMinIntervalMs - elapsed);
+                window._composeDockerLoadRenderTimer = setTimeout(function() {
+                    window._composeDockerLoadRenderTimer = null;
+                    renderComposeLoadCache();
+                }, delay);
             }
 
             window.composeDockerLoadRenderCached = renderComposeLoadCache;
@@ -2500,7 +2532,7 @@ $(function() {
                 if (!raw) return;
                 ingestComposeLoadPayload(raw, ts ? ts * 1000 : Date.now());
                 if (isComposeLoadVisible()) {
-                    renderComposeLoadCache();
+                    scheduleComposeLoadRender(true);
                 }
             };
 
@@ -2618,7 +2650,7 @@ $(function() {
                     return;
                 }
 
-                renderComposeLoadCache();
+                scheduleComposeLoadRender(false);
             });
 
             composeDockerLoad.on('error', function(code, desc) {
@@ -2653,7 +2685,7 @@ $(function() {
 
                     // Immediately render the cached load data so the UI
                     // shows current metrics without waiting for the next tick.
-                    renderComposeLoadCache();
+                    scheduleComposeLoadRender(true);
                 }
             };
             document.addEventListener('visibilitychange', window._composeDockerLoadVisHandler);
