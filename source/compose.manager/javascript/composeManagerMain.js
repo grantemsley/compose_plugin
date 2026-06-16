@@ -568,6 +568,11 @@ function composeLoadlist() {
 
                 var completed = 0;
                 var queueIndex = 0;
+                var commitIndex = 0;
+                var activeRequests = 0;
+                var maxParallelRequests = 4;
+                var pendingRowsByIndex = {};
+                var commitInProgress = false;
                 var stackLoadTimers = {};
 
                 function updateProgress() {
@@ -578,80 +583,106 @@ function composeLoadlist() {
                     }
                 }
 
-                function loadNextProjectSequentially() {
-                    if (queueIndex >= projects.length) {
-                        return;
-                    }
-
-                    var project = projects[queueIndex];
-                    queueIndex++;
+                function queueProjectRequest(index) {
+                    var project = projects[index];
                     stackLoadTimers[project] = Date.now();
 
                     composeLogger('progressive stack load start', {
                         project: project,
-                        position: queueIndex,
+                        position: index + 1,
                         total: projects.length
                     }, 'user', 'debug', 'composeLoadlist');
 
+                    activeRequests++;
                     $.get('/plugins/compose.manager/include/ComposeList.php', {
                             mode: 'row',
                             project: project
                         })
                         .done(function(rowRaw) {
-                            var waitForExpansion = Promise.resolve();
                             var rowResp = tryParseJson(rowRaw);
-                            if (rowResp && rowResp.result === 'success' && rowResp.html) {
-                                var elapsedMs = Date.now() - (stackLoadTimers[project] || Date.now());
-                                composeLogger('progressive stack load success', {
-                                    project: project,
-                                    position: queueIndex,
-                                    total: projects.length,
-                                    elapsedMs: elapsedMs
-                                }, 'user', 'debug', 'composeLoadlist');
-                                var $rowChunk = $(rowResp.html);
-                                $('#compose-load-progress-row').before($rowChunk);
-                                initializeProgressiveLoadedRows($rowChunk);
-                                if (typeof window.composeDockerLoadRenderCached === 'function' && composeShouldEnableDockerLoad()) {
-                                    window.composeDockerLoadRenderCached();
-                                }
-                                // Enforce top-down UX: wait for this stack's expansion/details work before next stack.
-                                waitForExpansion = composeDefaultExpandQueue;
-                            } else {
-                                var badRespElapsedMs = Date.now() - (stackLoadTimers[project] || Date.now());
-                                composeLogger('progressive stack load invalid response', {
-                                    project: project,
-                                    position: queueIndex,
-                                    total: projects.length,
-                                    elapsedMs: badRespElapsedMs,
-                                    response: rowResp
-                                }, 'user', 'warn', 'composeLoadlist');
-                                $('#compose-load-progress-row').before('<tr><td colspan="13" class="compose-status-danger" style="padding:8px 12px;">Failed to load ' + composeEscapeHtml(project) + '.</td></tr>');
-                            }
-
-                            waitForExpansion.finally(function() {
-                                delete stackLoadTimers[project];
-                                completed++;
-                                updateProgress();
-                                loadNextProjectSequentially();
-                            });
+                            var elapsedMs = Date.now() - (stackLoadTimers[project] || Date.now());
+                            pendingRowsByIndex[index] = {
+                                ok: !!(rowResp && rowResp.result === 'success' && rowResp.html),
+                                rowResp: rowResp,
+                                project: project,
+                                position: index + 1,
+                                elapsedMs: elapsedMs
+                            };
                         })
                         .fail(function() {
                             var failElapsedMs = Date.now() - (stackLoadTimers[project] || Date.now());
-                            composeLogger('progressive stack load failed', {
+                            pendingRowsByIndex[index] = {
+                                ok: false,
+                                rowResp: null,
                                 project: project,
-                                position: queueIndex,
-                                total: projects.length,
+                                position: index + 1,
                                 elapsedMs: failElapsedMs
-                            }, 'user', 'warn', 'composeLoadlist');
+                            };
+                        })
+                        .always(function() {
+                            activeRequests--;
                             delete stackLoadTimers[project];
-                            $('#compose-load-progress-row').before('<tr><td colspan="13" class="compose-status-danger" style="padding:8px 12px;">Failed to load ' + composeEscapeHtml(project) + '.</td></tr>');
-                            completed++;
-                            updateProgress();
-                            loadNextProjectSequentially();
+                            flushCommittedRowsInOrder();
+                            dispatchProjectRequests();
                         });
                 }
 
-                loadNextProjectSequentially();
+                function dispatchProjectRequests() {
+                    while (activeRequests < maxParallelRequests && queueIndex < projects.length) {
+                        queueProjectRequest(queueIndex);
+                        queueIndex++;
+                    }
+                }
+
+                function flushCommittedRowsInOrder() {
+                    if (commitInProgress) {
+                        return;
+                    }
+
+                    if (!Object.prototype.hasOwnProperty.call(pendingRowsByIndex, commitIndex)) {
+                        return;
+                    }
+
+                    var entry = pendingRowsByIndex[commitIndex];
+                    delete pendingRowsByIndex[commitIndex];
+                    commitInProgress = true;
+
+                    var waitForExpansion = Promise.resolve();
+                    if (entry.ok) {
+                        composeLogger('progressive stack load success', {
+                            project: entry.project,
+                            position: entry.position,
+                            total: projects.length,
+                            elapsedMs: entry.elapsedMs
+                        }, 'user', 'debug', 'composeLoadlist');
+
+                        var $rowChunk = $(entry.rowResp.html);
+                        $('#compose-load-progress-row').before($rowChunk);
+                        initializeProgressiveLoadedRows($rowChunk);
+                        if (typeof window.composeDockerLoadRenderCached === 'function' && composeShouldEnableDockerLoad()) {
+                            window.composeDockerLoadRenderCached();
+                        }
+                        waitForExpansion = composeDefaultExpandQueue;
+                    } else {
+                        composeLogger('progressive stack load failed', {
+                            project: entry.project,
+                            position: entry.position,
+                            total: projects.length,
+                            elapsedMs: entry.elapsedMs
+                        }, 'user', 'warn', 'composeLoadlist');
+                        $('#compose-load-progress-row').before('<tr><td colspan="13" class="compose-status-danger" style="padding:8px 12px;">Failed to load ' + composeEscapeHtml(entry.project) + '.</td></tr>');
+                    }
+
+                    waitForExpansion.finally(function() {
+                        commitIndex++;
+                        completed++;
+                        commitInProgress = false;
+                        updateProgress();
+                        flushCommittedRowsInOrder();
+                    });
+                }
+
+                dispatchProjectRequests();
             })
             .fail(function(xhr, status, error) {
                 composeLogger('failed', {
