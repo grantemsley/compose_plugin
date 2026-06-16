@@ -48,6 +48,31 @@ function parseMemUsagePair(memStr) {
         limit: limit
     };
 }
+
+// Remove terminal control bytes and normalize docker IDs used as DOM keys.
+function composeNormalizeContainerKey(rawId) {
+    var value = String(rawId || '');
+    // Strip ANSI CSI sequences and remaining control bytes.
+    value = value.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '');
+    value = value.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+    value = value.trim();
+
+    // Prefer canonical hex ID if present.
+    var hexMatch = value.match(/[a-f0-9]{12,64}/i);
+    if (hexMatch && hexMatch[0]) {
+        return hexMatch[0].toLowerCase();
+    }
+    return value;
+}
+
+// Safe fragment for jQuery/CSS selector concatenation.
+function composeEscapeSelectorFragment(value) {
+    var normalized = composeNormalizeContainerKey(value);
+    if (typeof CSS !== 'undefined' && CSS && typeof CSS.escape === 'function') {
+        return CSS.escape(normalized);
+    }
+    return normalized.replace(/([!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, '\\$1');
+}
     function updateAddStackDefaultComposeDiscoveryState() {
         var $checkbox = $('#compose-stack-use-default-compose-files');
         var $notice = $('#compose-stack-default-compose-files-disabled-note');
@@ -586,7 +611,7 @@ function composeLoadlist() {
                                 var $rowChunk = $(rowResp.html);
                                 $('#compose-load-progress-row').before($rowChunk);
                                 initializeProgressiveLoadedRows($rowChunk);
-                                if (typeof window.composeDockerLoadRenderCached === 'function' && isComposeAdvancedMode()) {
+                                if (typeof window.composeDockerLoadRenderCached === 'function' && composeShouldEnableDockerLoad()) {
                                     window.composeDockerLoadRenderCached();
                                 }
                                 // Enforce top-down UX: wait for this stack's expansion/details work before next stack.
@@ -763,10 +788,10 @@ function initializeProgressiveLoadedRows($rowChunk) {
 
     // Notify dockerload/hide-from-docker listeners so new rows can receive live updates now.
     $(document).trigger('composeListRefreshed');
-    if (typeof window.composeDockerLoadToggle === 'function' && isComposeAdvancedMode()) {
-        window.composeDockerLoadToggle(true);
+    if (typeof window.composeDockerLoadToggle === 'function') {
+        window.composeDockerLoadToggle(composeShouldEnableDockerLoad());
     }
-    if (typeof window.composeDockerLoadRenderCached === 'function' && isComposeAdvancedMode()) {
+    if (typeof window.composeDockerLoadRenderCached === 'function' && composeShouldEnableDockerLoad()) {
         window.composeDockerLoadRenderCached();
     }
 
@@ -1907,10 +1932,12 @@ function loadPersistentContainerCache() {
             }
         })
             .done(function(response) {
+                composeLogger('Loaded persistent container cache', response, 'user', 'debug', 'load-cache');
                 persistentContainerCache = (response && response.cache) ? response.cache : {};
                 resolve(persistentContainerCache);
             })
             .fail(function() {
+                composeLogger('Failed to load persistent container cache', null, 'user', 'error', 'load-cache');
                 persistentContainerCache = {};
                 resolve(persistentContainerCache);
             });
@@ -1928,6 +1955,7 @@ function loadComposeLoadSnapshot() {
             }
         })
             .done(function(response) {
+                composeLogger('Loaded compose load snapshot', response, 'user', 'debug', 'load-snapshot');
                 var snapshot = (response && response.snapshot && typeof response.snapshot === 'object') ? response.snapshot : {};
                 window.composeLoadSnapshotRaw = typeof snapshot.raw === 'string' ? snapshot.raw : '';
                 window.composeLoadSnapshotTs = Number(snapshot.ts || 0);
@@ -1937,6 +1965,7 @@ function loadComposeLoadSnapshot() {
                 resolve(snapshot);
             })
             .fail(function() {
+                composeLogger('Failed to load compose load snapshot', null, 'user', 'error', 'load-snapshot');
                 window.composeLoadSnapshotRaw = '';
                 window.composeLoadSnapshotTs = 0;
                 resolve({});
@@ -1968,11 +1997,32 @@ function isComposeAdvancedMode() {
     return true;
 }
 
+function composeHasVisibleLoadColumns() {
+    var selector = [
+        '#compose_stacks td.col-cpu',
+        '#compose_stacks td.col-memory',
+        '#compose_stacks td.col-net_io',
+        '#compose_stacks td.col-block_io',
+        '#compose_stacks td.ct-col-cpu',
+        '#compose_stacks td.ct-col-memory',
+        '#compose_stacks td.ct-col-net_io',
+        '#compose_stacks td.ct-col-block_io'
+    ].join(',');
+    return $(selector).filter(':visible').length > 0;
+}
+
+function composeShouldEnableDockerLoad() {
+    if (document.visibilityState === 'hidden') {
+        return false;
+    }
+    return composeHasVisibleLoadColumns();
+}
+
 // Legacy compatibility shim. Basic/advanced toggle was removed in favor of
 // column customizer visibility controls.
 function applyListView(animate) {
     if (typeof window.composeDockerLoadToggle === 'function') {
-        window.composeDockerLoadToggle(true);
+        window.composeDockerLoadToggle(composeShouldEnableDockerLoad());
     }
 
     // Apply readmore to descriptions — exclude container detail rows; destroy first to avoid nested wrappers
@@ -2045,14 +2095,15 @@ $(function() {
                 elapsedMs: Date.now() - composeListLoadStartedAt,
                 mode: loadMode || 'standard',
                 composeListReady: true
-            }, 'user', 'info', 'dockerload');
+            }, 'user', 'info', 'composeLoadlist');
 
             // Start the dockerload socket now that the DOM has rows with data-ctids.
             if (typeof window.composeDockerLoadToggle === 'function') {
-                composeLogger('triggering composeDockerLoadToggle, advancedMode=' + isComposeAdvancedMode(), null, 'user', 'debug', 'dockerload');
-                window.composeDockerLoadToggle(isComposeAdvancedMode());
+                var shouldRunComposeStats = composeShouldEnableDockerLoad();
+                composeLogger('triggering composeDockerLoadToggle, enabled=' + shouldRunComposeStats, null, 'user', 'debug', 'composeLiveStats');
+                window.composeDockerLoadToggle(shouldRunComposeStats);
             } else {
-                composeLogger('composeDockerLoadToggle not available yet at composeLoadlist completion', null, 'user', 'debug', 'dockerload');
+                composeLogger('composeDockerLoadToggle not available yet at composeLoadlist completion', null, 'user', 'debug', 'composeLiveStats');
             }
 
         });
@@ -2137,9 +2188,8 @@ $(function() {
         })();
 
         // ── CPU & Memory load via dockerload Nchan channel ─────────────
-        // Only runs in advanced view (load column is hidden in basic view).
         // composeDockerLoadToggle(true/false) is called from applyListView()
-        // so the socket starts/stops whenever the user switches view modes.
+        // and column visibility handlers so the socket follows visible load columns.
         function initComposeDockerLoadSubscriber() {
             if (typeof NchanSubscriber !== 'function') {
                 composeLogger('NchanSubscriber not available yet', null, 'user', 'debug', 'dockerload');
@@ -2185,7 +2235,7 @@ $(function() {
             var composeLoadStaleMs = 15000;
 
             function isComposeLoadVisible() {
-                if (!isComposeAdvancedMode()) return false;
+                if (!composeHasVisibleLoadColumns()) return false;
                 if (document.visibilityState === 'hidden') return false;
                 var $table = $('#compose_stacks');
                 if (!$table.length) return false;
@@ -2195,12 +2245,13 @@ $(function() {
             }
 
             function clearContainerLoad(shortId) {
-                $('.compose-cpu-' + shortId).addClass('compose-text-muted').text('-');
-                $('#compose-cpu-bar-' + shortId).css('width', '0');
-                $('.compose-mem-' + shortId).addClass('compose-text-muted').text('-');
-                $('#compose-mem-bar-' + shortId).css('width', '0');
-                $('.compose-netio-' + shortId).addClass('compose-text-muted').html('-');
-                $('.compose-blockio-' + shortId).addClass('compose-text-muted').html('-');
+                var selectorId = composeEscapeSelectorFragment(shortId);
+                $('.compose-cpu-' + selectorId).addClass('compose-text-muted').text('-');
+                $('#compose-cpu-bar-' + selectorId).css('width', '0');
+                $('.compose-mem-' + selectorId).addClass('compose-text-muted').text('-');
+                $('#compose-mem-bar-' + selectorId).css('width', '0');
+                $('.compose-netio-' + selectorId).addClass('compose-text-muted').html('-');
+                $('.compose-blockio-' + selectorId).addClass('compose-text-muted').html('-');
             }
 
             // Build a lightweight fingerprint of stack rows + their container ids.
@@ -2241,11 +2292,6 @@ $(function() {
                     });
                 });
                 composeStackSignature = getComposeStackSignatureFromDom();
-                // During progressive initial load, row count changes rapidly.
-                // Avoid flooding debug logs until composeListReady is true.
-                if (composeListReady) {
-                    composeLogger('buildComposeStackIndex complete, stacks=' + composeStackIndex.length, null, 'user', 'debug', 'dockerload');
-                }
             }
 
             // Invalidate only when stack/container structure changed.
@@ -2309,12 +2355,13 @@ $(function() {
 
                 for (var shortId in composeLoadById) {
                     var info = composeLoadById[shortId];
-                    $('.compose-cpu-' + shortId).removeClass('compose-text-muted').text(info.cpuText + ' / 100%');
-                    $('.compose-mem-' + shortId).removeClass('compose-text-muted').text(info.mem);
-                    $('.compose-netio-' + shortId).removeClass('compose-text-muted').html(formatInOutHtml(info.netInput, info.netOutput, 'in', 'out'));
-                    $('.compose-blockio-' + shortId).removeClass('compose-text-muted').html(formatInOutHtml(info.blockInput, info.blockOutput, 'read', 'write'));
-                    $('#compose-cpu-bar-' + shortId).css('width', info.cpuText);
-                    $('#compose-mem-bar-' + shortId).css('width', Math.min(info.memPercent || 0, 100).toFixed(2) + '%');
+                    var selectorId = composeEscapeSelectorFragment(shortId);
+                    $('.compose-cpu-' + selectorId).removeClass('compose-text-muted').text(info.cpuText + ' / 100%');
+                    $('.compose-mem-' + selectorId).removeClass('compose-text-muted').text(info.mem);
+                    $('.compose-netio-' + selectorId).removeClass('compose-text-muted').html(formatInOutHtml(info.netInput, info.netOutput, 'in', 'out'));
+                    $('.compose-blockio-' + selectorId).removeClass('compose-text-muted').html(formatInOutHtml(info.blockInput, info.blockOutput, 'read', 'write'));
+                    $('#compose-cpu-bar-' + selectorId).css('width', info.cpuText);
+                    $('#compose-mem-bar-' + selectorId).css('width', Math.min(info.memPercent || 0, 100).toFixed(2) + '%');
                 }
 
                 renderStackAggregates();
@@ -2329,6 +2376,12 @@ $(function() {
                 while (row) {
                     var parts = row.split(';');
                     if (parts.length >= 3) {
+                        var normalizedId = composeNormalizeContainerKey(parts[0]);
+                        if (!normalizedId) {
+                            i++;
+                            row = data[i];
+                            continue;
+                        }
                         var cpuRaw = parseFloat(parts[1]) || 0;
                         var cpuNorm = Math.round(Math.min(cpuRaw / Math.max(composeCpuCount, 1), 100) * 100) / 100;
                         var memPair = parseMemUsagePair(parts[2]);
@@ -2367,7 +2420,7 @@ $(function() {
                         var blockInputBytes = parseMemValueToBytes(blockInput || '0');
                         var blockOutputBytes = parseMemValueToBytes(blockOutput || '0');
 
-                        composeLoadById[parts[0]] = {
+                        composeLoadById[normalizedId] = {
                             cpu: cpuNorm,
                             cpuText: formatCpuPercent(cpuNorm),
                             mem: formatMemUsageText(memPair.used, memPair.limit),
@@ -2564,7 +2617,7 @@ $(function() {
                     if ($loadTabPanel[0].style.display !== 'none' && composeDockerLoadRunning) {
                         composeLogger('compose tab became visible — invalidating stack index', {
                             'listReady': composeListReady,
-                            'advanced': isComposeAdvancedMode()
+                            'loadColumnsVisible': composeHasVisibleLoadColumns()
                         }, 'user', 'debug', 'dockerload');
                         composeStackIndex = null;
                     }
@@ -2575,19 +2628,19 @@ $(function() {
                 });
             }
 
-            // Auto-start the socket immediately in advanced view so the
+            // Auto-start the socket immediately when load columns are visible so the
             // cache can warm while progressive row loading is still in flight.
-            if (isComposeAdvancedMode()) {
+            if (composeShouldEnableDockerLoad()) {
                 composeLogger('auto-starting socket', {
                     'listReady': composeListReady,
-                    'advanced': isComposeAdvancedMode()
+                    'loadColumnsVisible': composeHasVisibleLoadColumns()
                 }, 'user', 'debug', 'dockerload');
                 composeDockerLoad.start();
                 composeDockerLoadRunning = true;
             } else {
                 composeLogger('deferring socket start', {
                     'listReady': composeListReady,
-                    'advanced': isComposeAdvancedMode()
+                    'loadColumnsVisible': composeHasVisibleLoadColumns()
                 }, 'user', 'debug', 'dockerload');
             }
             return true;
@@ -7050,15 +7103,16 @@ function renderContainerDetails(stackId, containers, project) {
         html += '<td class="cm-advanced ct-col-ip" style="white-space:nowrap;"><span class="docker_readmore">' + ipAddresses.map(composeEscapeHtml).join('<br>') + '</span></td>';
 
         html += '<td class="cm-advanced ct-col-cpu compose-load-cell">';
-        html += '<span class="compose-cpu-' + containerId + ' compose-text-muted">-</span>';
-        html += '<div class="usage-disk mm"><span id="compose-cpu-bar-' + containerId + '" style="width:0"></span><span></span></div>';
+        var normalizedContainerId = composeNormalizeContainerKey(containerId);
+        html += '<span class="compose-cpu-' + normalizedContainerId + ' compose-text-muted">-</span>';
+        html += '<div class="usage-disk mm"><span id="compose-cpu-bar-' + normalizedContainerId + '" style="width:0"></span><span></span></div>';
         html += '</td>';
         html += '<td class="cm-advanced ct-col-memory compose-load-cell">';
-        html += '<span class="compose-mem-' + containerId + ' compose-text-muted">-</span>';
-        html += '<div class="usage-disk mm"><span id="compose-mem-bar-' + containerId + '" style="width:0"></span><span></span></div>';
+        html += '<span class="compose-mem-' + normalizedContainerId + ' compose-text-muted">-</span>';
+        html += '<div class="usage-disk mm"><span id="compose-mem-bar-' + normalizedContainerId + '" style="width:0"></span><span></span></div>';
         html += '</td>';
-        html += '<td class="cm-advanced ct-col-net_io"><span class="compose-netio-' + containerId + ' compose-text-muted">-</span></td>';
-        html += '<td class="cm-advanced ct-col-block_io"><span class="compose-blockio-' + containerId + ' compose-text-muted">-</span></td>';
+        html += '<td class="cm-advanced ct-col-net_io"><span class="compose-netio-' + normalizedContainerId + ' compose-text-muted">-</span></td>';
+        html += '<td class="cm-advanced ct-col-block_io"><span class="compose-blockio-' + normalizedContainerId + ' compose-text-muted">-</span></td>';
 
         // Container Port
         html += '<td style="white-space:nowrap;"><span class="docker_readmore">' + containerPorts.map(composeEscapeHtml).join('<br>') + '</span></td>';
