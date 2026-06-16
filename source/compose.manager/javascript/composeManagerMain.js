@@ -816,8 +816,8 @@ function initializeProgressiveLoadedRows($rowChunk) {
         });
     });
 
-    // Apply the currently selected basic/advanced mode to new rows.
-    applyListView(false);
+    // Skip full-table applyListView here; new rows already get row-local
+    // readmore/context/toggle setup above, and global apply runs at finalize.
 
     // Apply cached update status immediately for new rows when available.
     $rows.each(function() {
