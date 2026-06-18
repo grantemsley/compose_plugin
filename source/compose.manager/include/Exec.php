@@ -189,8 +189,12 @@ switch ($_POST['action']) {
                 'lport' => true,
             ],
         ];
+        $defaultOrder = [
+            'stackOrder' => array_keys(array_filter($defaults['stack'])),
+            'serviceOrder' => array_keys(array_filter($defaults['service'])),
+        ];
 
-        $visibility = $defaults;
+        $visibility = array_merge($defaults, $defaultOrder);
         if (is_file($prefFile)) {
             $raw = @file_get_contents($prefFile);
             $saved = json_decode((string)$raw, true);
@@ -202,6 +206,28 @@ switch ($_POST['action']) {
                             $visibility[$scope][$key] = (bool)$saved[$scope][$key];
                         }
                     }
+                }
+
+                foreach (['stackOrder', 'serviceOrder'] as $orderKey) {
+                    if (!isset($saved[$orderKey]) || !is_array($saved[$orderKey])) continue;
+
+                    $scope = $orderKey === 'stackOrder' ? 'stack' : 'service';
+                    $allowed = array_keys($defaults[$scope]);
+                    $normalizedOrder = [];
+
+                    foreach ($saved[$orderKey] as $col) {
+                        if (in_array($col, $allowed, true) && $visibility[$scope][$col] && !in_array($col, $normalizedOrder, true)) {
+                            $normalizedOrder[] = $col;
+                        }
+                    }
+
+                    foreach ($allowed as $col) {
+                        if ($visibility[$scope][$col] && !in_array($col, $normalizedOrder, true)) {
+                            $normalizedOrder[] = $col;
+                        }
+                    }
+
+                    $visibility[$orderKey] = $normalizedOrder;
                 }
             }
         }
@@ -238,6 +264,10 @@ switch ($_POST['action']) {
                 'lport' => true,
             ],
         ];
+        $defaultOrder = [
+            'stackOrder' => array_keys(array_filter($defaults['stack'])),
+            'serviceOrder' => array_keys(array_filter($defaults['service'])),
+        ];
 
         $raw = $_POST['visibility'] ?? '';
         $parsed = json_decode((string)$raw, true);
@@ -246,7 +276,7 @@ switch ($_POST['action']) {
             break;
         }
 
-        $normalized = $defaults;
+        $normalized = array_merge($defaults, $defaultOrder);
         foreach (['stack', 'service'] as $scope) {
             if (!isset($parsed[$scope]) || !is_array($parsed[$scope])) continue;
             foreach ($defaults[$scope] as $key => $defaultVal) {
@@ -254,6 +284,27 @@ switch ($_POST['action']) {
                     $normalized[$scope][$key] = (bool)$parsed[$scope][$key];
                 }
             }
+        }
+
+        foreach (['stackOrder', 'serviceOrder'] as $orderKey) {
+            $scope = $orderKey === 'stackOrder' ? 'stack' : 'service';
+            $allowed = array_keys($defaults[$scope]);
+            $savedOrder = isset($parsed[$orderKey]) && is_array($parsed[$orderKey]) ? $parsed[$orderKey] : [];
+            $normalizedOrder = [];
+
+            foreach ($savedOrder as $col) {
+                if (in_array($col, $allowed, true) && $normalized[$scope][$col] && !in_array($col, $normalizedOrder, true)) {
+                    $normalizedOrder[] = $col;
+                }
+            }
+
+            foreach ($allowed as $col) {
+                if ($normalized[$scope][$col] && !in_array($col, $normalizedOrder, true)) {
+                    $normalizedOrder[] = $col;
+                }
+            }
+
+            $normalized[$orderKey] = $normalizedOrder;
         }
 
         if (!is_dir($prefDir)) {

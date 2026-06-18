@@ -546,7 +546,7 @@
 
   .compose-transfer-wrap {
     display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    grid-template-columns: 1fr auto 1fr auto;
     gap: 6px;
     align-items: stretch;
   }
@@ -584,6 +584,14 @@
     min-width: 22px;
   }
 
+  .compose-reorder-actions {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-width: 22px;
+  }
+
   .compose-transfer-btn {
     min-width: 22px;
     height: 20px;
@@ -608,6 +616,34 @@
   }
 
   .compose-transfer-btn:focus-visible {
+    outline: 1px solid var(--brand-orange);
+    outline-offset: 1px;
+  }
+
+  .compose-reorder-btn {
+    min-width: 22px;
+    height: 20px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    line-height: 1;
+    font-size: 14px;
+    color: var(--brand-orange);
+    cursor: pointer;
+    border-radius: 3px;
+    user-select: none;
+  }
+
+  .compose-reorder-btn:hover {
+    background: color-mix(in srgb, var(--brand-orange) 16%, transparent);
+  }
+
+  .compose-reorder-btn:focus-visible {
     outline: 1px solid var(--brand-orange);
     outline-offset: 1px;
   }
@@ -673,6 +709,11 @@
     }
 
     .compose-transfer-actions {
+      flex-direction: row;
+      flex-wrap: wrap;
+    }
+
+    .compose-reorder-actions {
       flex-direction: row;
       flex-wrap: wrap;
     }

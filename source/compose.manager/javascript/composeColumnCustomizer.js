@@ -64,7 +64,9 @@
 
     var prefs = {
         stack: $.extend({}, defaults.stack),
-        service: $.extend({}, defaults.service)
+        service: $.extend({}, defaults.service),
+        stackOrder: Object.keys(defaults.stack).filter(function(key) { return defaults.stack[key]; }),
+        serviceOrder: Object.keys(defaults.service).filter(function(key) { return defaults.service[key]; })
     };
 
     var STACK_WIDTH_WEIGHTS = {
@@ -87,10 +89,55 @@
         autostart: true
     };
 
+    var STACK_CELL_CLASS_MAP = {
+        update: 'col-update',
+        containers: 'col-containers',
+        uptime: 'col-uptime',
+        health: 'col-health',
+        cpu: 'col-cpu',
+        memory: 'col-memory',
+        net_io: 'col-net_io',
+        block_io: 'col-block_io',
+        description: 'col-description',
+        path: 'col-path'
+    };
+
+    var SERVICE_HEADER_CLASS_MAP = {
+        update: 'ct-col-update',
+        health: 'ct-col-health',
+        cpu: 'ct-col-cpu',
+        memory: 'ct-col-memory',
+        net_io: 'ct-col-net_io',
+        block_io: 'ct-col-block_io',
+        source: 'ct-col-source',
+        tag: 'ct-col-tag',
+        net: 'ct-col-net',
+        ip: 'ct-col-ip',
+        cport: 'ct-col-cport',
+        lport: 'ct-col-lport'
+    };
+
+    var SERVICE_BODY_CLASS_MAP = {
+        update: 'ct-updatecolumn',
+        health: 'ct-col-health',
+        cpu: 'ct-col-cpu',
+        memory: 'ct-col-memory',
+        net_io: 'ct-col-net_io',
+        block_io: 'ct-col-block_io',
+        source: 'ct-col-source',
+        tag: 'ct-col-tag',
+        net: 'ct-col-net',
+        ip: 'ct-col-ip',
+        cport: 'ct-col-cport-cell',
+        lport: 'ct-col-lport-cell'
+    };
+
     function normalizePrefs(incoming) {
         var out = {
             stack: $.extend({}, defaults.stack),
-            service: $.extend({}, defaults.service)
+            service: $.extend({}, defaults.service),
+            stackOrder: Object.keys(defaults.stack).filter(function(key) { return defaults.stack[key]; }),
+            serviceOrder: Object.keys(defaults.service).filter(function(key) { return defaults.service[key]; })
         };
         if (!incoming || typeof incoming !== 'object') return out;
 
@@ -102,12 +149,41 @@
                 }
             });
         });
+
+        // Handle order arrays
+        var scopeMap = { stack: 'stackOrder', service: 'serviceOrder' };
+        ['stack', 'service'].forEach(function(scope) {
+            var orderKey = scopeMap[scope];
+            if (Array.isArray(incoming[orderKey])) {
+                var visibleCols = [];
+                incoming[orderKey].forEach(function(col) {
+                    if (out[scope].hasOwnProperty(col) && out[scope][col]) {
+                        visibleCols.push(col);
+                    }
+                });
+                // Ensure all visible columns are in the order, add missing ones at end
+                Object.keys(out[scope]).forEach(function(col) {
+                    if (out[scope][col] && visibleCols.indexOf(col) === -1) {
+                        visibleCols.push(col);
+                    }
+                });
+                out[orderKey] = visibleCols;
+            }
+        });
+
         return out;
     }
 
     function applyScope(scope) {
         var selector = scope === 'stack' ? '#compose_stacks' : '.compose-ct-table';
         var $tables = $(selector);
+
+        if (scope === 'stack') {
+            reorderStackTable();
+        } else {
+            reorderServiceTables();
+        }
+
         Object.keys(prefs[scope]).forEach(function(col) {
             $tables.toggleClass('hide-col-' + col, !prefs[scope][col]);
         });
@@ -174,6 +250,83 @@
         });
     }
 
+    function getScopeRenderOrder(scope) {
+        var map = getScopeMap(scope);
+        var orderKey = scope === 'stack' ? 'stackOrder' : 'serviceOrder';
+        var order = Array.isArray(prefs[orderKey]) ? prefs[orderKey].slice() : [];
+
+        Object.keys(map).forEach(function(col) {
+            if (order.indexOf(col) === -1) {
+                order.push(col);
+            }
+        });
+
+        return order;
+    }
+
+    function reorderStackTable() {
+        var order = getScopeRenderOrder('stack');
+
+        $('#compose_stacks tr').each(function() {
+            var $row = $(this);
+            if ($row.children('[colspan]').length) return;
+
+            var $autostart = $row.children('.col-autostart').first();
+            if (!$autostart.length) return;
+
+            order.forEach(function(col) {
+                var className = STACK_CELL_CLASS_MAP[col];
+                if (!className) return;
+
+                var $cell = $row.children('.' + className).first();
+                if ($cell.length) {
+                    $autostart.before($cell);
+                }
+            });
+        });
+    }
+
+    function reorderServiceTables() {
+        var order = getScopeRenderOrder('service');
+
+        $('.compose-ct-table').each(function() {
+            var $table = $(this);
+
+            $table.find('tr').each(function() {
+                var $row = $(this);
+                var $anchor = $row.children('.ct-col-name, .ct-name').first();
+                if (!$anchor.length) return;
+
+                order.forEach(function(col) {
+                    var className = $row.closest('thead').length ? SERVICE_HEADER_CLASS_MAP[col] : SERVICE_BODY_CLASS_MAP[col];
+                    if (!className) return;
+
+                    var $cell = $row.children('.' + className).first();
+                    if ($cell.length) {
+                        $anchor.after($cell);
+                        $anchor = $cell;
+                    }
+                });
+            });
+        });
+    }
+
+    function setTransferSelection(scope, side, values, shouldFocus) {
+        var normalizedValues = Array.isArray(values) ? values.filter(Boolean) : (values ? [values] : []);
+        var $select = $(scopeSelectId(scope, side));
+        if (!$select.length) return;
+
+        $select.val(normalizedValues);
+        $select.find('option').prop('selected', false);
+        normalizedValues.forEach(function(value) {
+            $select.find('option[value="' + value + '"]').prop('selected', true);
+        });
+
+        if (shouldFocus) {
+            $select.trigger('focus');
+        }
+    }
+
     function applyAll() {
         applyScope('stack');
         applyScope('service');
@@ -196,12 +349,22 @@
 
         var hiddenHtml = '';
         var visibleHtml = '';
+        var hiddenSelection = getSelectedTransferKeys(scope, 'hidden');
+        var visibleSelection = getSelectedTransferKeys(scope, 'visible');
+        var order = getScopeRenderOrder(scope);
 
-        Object.keys(map).forEach(function(col) {
-            var optionHtml = '<option value="' + col + '">' + map[col] + '</option>';
+        // Build visible list in order
+        order.forEach(function(col) {
             if (prefs[scope] && prefs[scope][col]) {
+                var optionHtml = '<option value="' + col + '">' + map[col] + '</option>';
                 visibleHtml += optionHtml;
-            } else {
+            }
+        });
+
+        // Build hidden list
+        Object.keys(map).forEach(function(col) {
+            if (!prefs[scope] || !prefs[scope][col]) {
+                var optionHtml = '<option value="' + col + '">' + map[col] + '</option>';
                 hiddenHtml += optionHtml;
             }
         });
@@ -215,6 +378,8 @@
 
         $hidden.html(hiddenHtml);
         $visible.html(visibleHtml);
+        setTransferSelection(scope, 'hidden', hiddenSelection, false);
+        setTransferSelection(scope, 'visible', visibleSelection, false);
     }
 
     function renderTransferLists() {
@@ -225,14 +390,58 @@
     function setScopeColumnVisibility(scope, keys, isVisible) {
         if (!keys || !keys.length || !prefs[scope]) return;
 
+        var orderKey = scope === 'stack' ? 'stackOrder' : 'serviceOrder';
+        var order = prefs[orderKey] || [];
+
         keys.forEach(function(col) {
             if (Object.prototype.hasOwnProperty.call(prefs[scope], col)) {
                 prefs[scope][col] = isVisible;
+                // Update order: add if visible and not in order, remove if hidden
+                var idx = order.indexOf(col);
+                if (isVisible && idx === -1) {
+                    order.push(col);
+                } else if (!isVisible && idx !== -1) {
+                    order.splice(idx, 1);
+                }
             }
         });
 
         applyScope(scope);
         renderScopeTransfer(scope);
+    }
+
+    function moveColumnInOrder(scope, direction) {
+        var orderKey = scope === 'stack' ? 'stackOrder' : 'serviceOrder';
+        var order = prefs[orderKey] || [];
+        var selectedValues = getSelectedTransferKeys(scope, 'visible');
+        if (!selectedValues.length) return;
+
+        var col = selectedValues[0];
+        var idx = order.indexOf(col);
+        if (idx === -1) return;
+
+        var newIdx;
+        if (direction === 'up' && idx > 0) {
+            newIdx = idx - 1;
+        } else if (direction === 'down' && idx < order.length - 1) {
+            newIdx = idx + 1;
+        } else {
+            return;
+        }
+
+        // Swap positions
+        var temp = order[idx];
+        order[idx] = order[newIdx];
+        order[newIdx] = temp;
+
+        if (scope === 'stack') {
+            reorderStackTable();
+        } else {
+            reorderServiceTables();
+        }
+        applyScope(scope);
+        renderScopeTransfer(scope);
+        setTransferSelection(scope, 'visible', [col], true);
     }
 
     function getSelectedTransferKeys(scope, side) {
@@ -247,6 +456,7 @@
             return key !== '';
         });
         setScopeColumnVisibility(scope, keys, toVisible);
+        setTransferSelection(scope, toVisible ? 'visible' : 'hidden', keys, false);
     }
 
     function moveAll(scope, toVisible) {
@@ -279,6 +489,10 @@
         html += '<div class="compose-transfer-col">';
         html += '<label for="compose-col-' + scope + '-visible">Visible</label>';
         html += '<select id="compose-col-' + scope + '-visible" class="compose-transfer-select" multiple></select>';
+        html += '</div>';
+        html += '<div class="compose-reorder-actions">';
+        html += '<div class="compose-reorder-btn" role="button" tabindex="0" data-scope="' + scope + '" data-action="move-up" title="Move up" aria-label="Move selected column up">&uarr;</div>';
+        html += '<div class="compose-reorder-btn" role="button" tabindex="0" data-scope="' + scope + '" data-action="move-down" title="Move down" aria-label="Move selected column down">&darr;</div>';
         html += '</div>';
         html += '</div>';
         html += '</div>';
@@ -371,7 +585,17 @@
                 if (action === 'all-left') moveAll(scope, false);
             });
 
-            $(document).on('keydown', '.compose-transfer-btn', function(e) {
+            $(document).on('click', '.compose-reorder-btn', function() {
+                var scope = $(this).data('scope');
+                var action = $(this).data('action');
+
+                if (!scope || !action) return;
+
+                if (action === 'move-up') moveColumnInOrder(scope, 'up');
+                if (action === 'move-down') moveColumnInOrder(scope, 'down');
+            });
+
+            $(document).on('keydown', '.compose-transfer-btn, .compose-reorder-btn', function(e) {
                 if (e.key !== 'Enter' && e.key !== ' ') return;
                 e.preventDefault();
                 $(this).trigger('click');
