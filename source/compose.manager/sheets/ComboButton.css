@@ -317,8 +317,12 @@
     width: 9%;
   }
 
+  .compose-ct-table .ct-col-health {
+    width: 8%;
+  }
+
   .compose-ct-table .ct-col-source {
-    width: 9%;
+    width: 8%;
   }
 
   .compose-ct-table .ct-col-tag {
@@ -338,15 +342,15 @@
   }
 
   .compose-ct-table .ct-col-memory {
-    width: 12%;
+    width: 11%;
   }
 
   .compose-ct-table .ct-col-net_io {
-    width: 9%;
+    width: 8%;
   }
 
   .compose-ct-table .ct-col-block_io {
-    width: 9%;
+    width: 8%;
   }
 
   .compose-ct-table .ct-col-cport {
@@ -354,7 +358,7 @@
   }
 
   .compose-ct-table .ct-col-lport {
-    width: 9%;
+    width: 8%;
   }
 
   /* Container name cell: allow wrapping for long names */
@@ -384,15 +388,15 @@
   }
 
   /* Source column: allow wrapping, left-aligned */
-  .compose-ct-table th:nth-child(3),
-  .compose-ct-table td:nth-child(3) {
+  .compose-ct-table th.ct-col-source,
+  .compose-ct-table td.ct-col-source {
     white-space: normal;
     word-break: break-all;
     text-align: left !important;
   }
 
   /* Source data cells only — muted color (header inherits theme default) */
-  .compose-ct-table td:nth-child(3) {
+  .compose-ct-table td.ct-col-source {
     color: var(--alt-text-color);
   }
 
@@ -675,8 +679,16 @@
   }
 
   /* Column hiding via hide-col-* classes */
+  #compose_stacks.hide-col-update .col-update,
+  #compose_stacks.hide-col-update td.col-update,
+  #compose_stacks.hide-col-containers .col-containers,
+  #compose_stacks.hide-col-containers td.col-containers,
   #compose_stacks.hide-col-cpu .col-cpu,
   #compose_stacks.hide-col-cpu td.col-cpu,
+  #compose_stacks.hide-col-uptime .col-uptime,
+  #compose_stacks.hide-col-uptime td.col-uptime,
+  #compose_stacks.hide-col-health .col-health,
+  #compose_stacks.hide-col-health td.col-health,
   #compose_stacks.hide-col-memory .col-memory,
   #compose_stacks.hide-col-memory td.col-memory,
   #compose_stacks.hide-col-net_io .col-net_io,
@@ -687,8 +699,14 @@
   #compose_stacks.hide-col-description td.col-description,
   #compose_stacks.hide-col-path .col-path,
   #compose_stacks.hide-col-path td.col-path,
+  #compose_stacks.hide-col-autostart .col-autostart,
+  #compose_stacks.hide-col-autostart td.col-autostart,
+  .compose-ct-table.hide-col-update .ct-col-update,
+  .compose-ct-table.hide-col-update td.ct-updatecolumn,
   .compose-ct-table.hide-col-cpu .ct-col-cpu,
   .compose-ct-table.hide-col-cpu td.ct-col-cpu,
+  .compose-ct-table.hide-col-health .ct-col-health,
+  .compose-ct-table.hide-col-health td.ct-col-health,
   .compose-ct-table.hide-col-memory .ct-col-memory,
   .compose-ct-table.hide-col-memory td.ct-col-memory,
   .compose-ct-table.hide-col-net_io .ct-col-net_io,
@@ -702,6 +720,10 @@
   .compose-ct-table.hide-col-net .ct-col-net,
   .compose-ct-table.hide-col-net td.ct-col-net,
   .compose-ct-table.hide-col-ip .ct-col-ip,
-  .compose-ct-table.hide-col-ip td.ct-col-ip {
+  .compose-ct-table.hide-col-ip td.ct-col-ip,
+  .compose-ct-table.hide-col-cport .ct-col-cport,
+  .compose-ct-table.hide-col-cport td.ct-col-cport-cell,
+  .compose-ct-table.hide-col-lport .ct-col-lport,
+  .compose-ct-table.hide-col-lport td.ct-col-lport-cell {
     display: none !important;
   }

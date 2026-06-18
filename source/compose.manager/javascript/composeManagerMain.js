@@ -252,6 +252,72 @@ function formatInOutHtml(inVal, outVal, inLabel, outLabel) {
         '<span class="compose-io-out"><i class="fa fa-arrow-up compose-io-icon compose-io-out-icon" title="' + outTitle + '"></i> ' + outText + '</span>';
 }
 
+function composeNormalizeHealthStatus(rawHealth, state) {
+    var health = String(rawHealth || '').toLowerCase().trim();
+    var normalizedState = String(state || '').toLowerCase().trim();
+
+    if (health === 'healthy' || health === 'unhealthy' || health === 'starting') {
+        return health;
+    }
+    if (normalizedState !== 'running') {
+        return 'stopped';
+    }
+    return 'none';
+}
+
+function composeHealthMeta(status) {
+    var normalized = composeNormalizeHealthStatus(status, 'running');
+    switch (normalized) {
+        case 'healthy':
+            return { icon: 'check-circle', textClass: 'green-text', label: 'healthy' };
+        case 'unhealthy':
+            return { icon: 'times-circle', textClass: 'red-text', label: 'unhealthy' };
+        case 'starting':
+            return { icon: 'refresh fa-spin', textClass: 'orange-text', label: 'starting' };
+        case 'stopped':
+            return { icon: 'stop-circle', textClass: 'grey-text', label: 'stopped' };
+        case 'none':
+            return { icon: 'minus-circle', textClass: 'compose-text-muted', label: 'n/a' };
+        default:
+            return { icon: 'question-circle', textClass: 'compose-text-muted', label: 'unknown' };
+    }
+}
+
+function composeRenderHealthBadge(status, state) {
+    var normalized = composeNormalizeHealthStatus(status, state);
+    var meta = composeHealthMeta(normalized);
+    return '<span class="' + meta.textClass + '" style="white-space:nowrap;"><i class="fa fa-' + meta.icon + ' fa-fw"></i> ' + meta.label + '</span>';
+}
+
+function composeAggregateStackHealth(containers) {
+    var list = Array.isArray(containers) ? containers : [];
+    if (list.length === 0) {
+        return 'stopped';
+    }
+
+    var runningStates = [];
+    list.forEach(function(ct) {
+        var state = String((ct && ct.state) || '').toLowerCase().trim();
+        if (state === 'running') {
+            runningStates.push(composeNormalizeHealthStatus(ct ? ct.health : '', state));
+        }
+    });
+
+    if (runningStates.length === 0) {
+        return 'stopped';
+    }
+    if (runningStates.indexOf('unhealthy') !== -1) {
+        return 'unhealthy';
+    }
+    if (runningStates.indexOf('starting') !== -1) {
+        return 'starting';
+    }
+    if (runningStates.indexOf('healthy') !== -1) {
+        return 'healthy';
+    }
+    return 'none';
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Standard factory functions for container and stack identity objects
 // ═══════════════════════════════════════════════════════════════════
@@ -286,6 +352,7 @@ function createContainerInfo(raw) {
         icon: raw.icon || raw.Icon || '',
         shell: raw.shell || raw.Shell || '/bin/bash',
         webUI: raw.webUI || raw.WebUI || '',
+        health: raw.health || raw.Health || '',
         ports: raw.ports || raw.Ports || [],
         networks: raw.networks || raw.Networks || [],
         volumes: raw.volumes || raw.Volumes || [],
@@ -543,7 +610,7 @@ function composeLoadlist() {
                     composeLogger('Invalid stack meta response', {
                         response: metaRaw
                     }, 'user', 'error', 'composeLoadlist');
-                    $('#compose_list').html('<tr><td colspan="13" class="compose-status-danger" style="text-align:center;padding:20px;">Failed to load stack list. Please refresh the page.</td></tr>');
+                    $('#compose_list').html('<tr><td colspan="14" class="compose-status-danger" style="text-align:center;padding:20px;">Failed to load stack list. Please refresh the page.</td></tr>');
                     clearTimeout(composeTimers.load);
                     hideComposeSpinner();
                     reject(new Error('Invalid stack list response'));
@@ -552,7 +619,7 @@ function composeLoadlist() {
 
                 var projects = meta.projects;
                 if (projects.length === 0) {
-                    $('#compose_list').html('<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--alt-text-color);">No Docker Compose stacks found. Click \"Add New Stack\" to create one.</td></tr>');
+                    $('#compose_list').html('<tr><td colspan="14" style="text-align:center;padding:20px;color:var(--alt-text-color);">No Docker Compose stacks found. Click \"Add New Stack\" to create one.</td></tr>');
                     finalizeComposeLoadlist('');
                     return;
                 }
@@ -571,7 +638,7 @@ function composeLoadlist() {
                 prefetchStackDetailsInBackground(projects);
 
                 var progressHtml = '<tr id="compose-load-progress-row">' +
-                    '<td colspan="13" style="text-align:center;padding:12px;border:none;background:transparent;">' +
+                    '<td colspan="14" style="text-align:center;padding:12px;border:none;background:transparent;">' +
                     '<span class="compose-text-muted" style="display:inline-flex;align-items:center;gap:8px;">' +
                     '<i class="fa fa-refresh fa-spin"></i>' +
                     '<span>Loading stacks... <span id="compose-load-progress-count">0/' + projects.length + '</span></span>' +
@@ -699,7 +766,7 @@ function composeLoadlist() {
                             total: projects.length,
                             elapsedMs: entry.elapsedMs
                         }, 'user', 'warn', 'composeLoadlist');
-                        $('#compose-load-progress-row').before('<tr><td colspan="13" class="compose-status-danger" style="padding:8px 12px;">Failed to load ' + composeEscapeHtml(entry.project) + '.</td></tr>');
+                        $('#compose-load-progress-row').before('<tr><td colspan="14" class="compose-status-danger" style="padding:8px 12px;">Failed to load ' + composeEscapeHtml(entry.project) + '.</td></tr>');
                     }
 
                     waitForExpansion.finally(function() {
@@ -720,7 +787,7 @@ function composeLoadlist() {
                 }, 'user', 'error', 'composeLoadlist');
                 clearTimeout(composeTimers.load);
                 hideComposeSpinner();
-                $('#compose_list').html('<tr><td colspan="13" class="compose-status-danger" style="text-align:center;padding:20px;">Failed to load stack list. Please refresh the page.</td></tr>');
+                $('#compose_list').html('<tr><td colspan="14" class="compose-status-danger" style="text-align:center;padding:20px;">Failed to load stack list. Please refresh the page.</td></tr>');
 
                 // Reject the promise so callers can handle the error
                 try {
@@ -837,6 +904,15 @@ function initializeProgressiveLoadedRows($rowChunk) {
     });
     updateUpdateAllButton();
 
+    // If background prefetch already has this stack, hydrate parent-row summary
+    // immediately (health, containers, uptime/state) without waiting for expansion.
+    $rows.each(function() {
+        var $row = $(this);
+        var project = $row.data('project');
+        if (!project || !stackDetailsPrefetchCache[project]) return;
+        applyStackSummaryFromResponse(project, stackDetailsPrefetchCache[project]);
+    });
+
     // Apply default expansion policy per row as soon as it is inserted.
     applyDefaultExpansionToRows($rows);
 
@@ -857,6 +933,26 @@ function initializeProgressiveLoadedRows($rowChunk) {
     }
 
     updateStackToggleAllButtonState();
+}
+
+function applyStackSummaryFromResponse(project, response) {
+    if (!project || !response || response.result !== 'success') return;
+
+    var $stackRow = $('#compose_stacks tr.compose-sortable[data-project="' + project + '"]');
+    if (!$stackRow.length) return;
+
+    var rowId = String($stackRow.attr('id') || '');
+    var stackId = rowId.indexOf('stack-row-') === 0 ? rowId.substring('stack-row-'.length) : '';
+    if (!stackId) return;
+
+    var containers = (response.containers || []).map(createContainerInfo).filter(Boolean);
+    mergeUpdateStatus(containers, project);
+    stackContainersCache[stackId] = containers;
+    if (response.startedAt) {
+        stackStartedAtCache[stackId] = response.startedAt;
+    }
+
+    updateParentStackFromContainers(stackId, project);
 }
 
 // Load external stylesheets (non-critical styles — critical ones are inline above)
@@ -4767,6 +4863,9 @@ function prefetchStackDetailsInBackground(projects) {
                         var parsed = tryParseJson(data);
                         if (parsed && parsed.result === 'success') {
                             stackDetailsPrefetchCache[project] = parsed;
+                            // If the row already exists, bubble prefetched summary
+                            // data into parent columns during initial progressive load.
+                            applyStackSummaryFromResponse(project, parsed);
                         }
                         resolve();
                     }).fail(function() {
@@ -7037,6 +7136,7 @@ function renderContainerDetails(stackId, containers, project) {
     html += '<thead><tr>';
     html += '<th class="ct-col-name">Container</th>';
     html += '<th class="ct-col-update">Update</th>';
+    html += '<th class="ct-col-health">Health</th>';
     html += '<th class="cm-advanced ct-col-source">Source</th>';
     html += '<th class="cm-advanced ct-col-tag">Tag</th>';
     html += '<th class="cm-advanced ct-col-net">Network</th>';
@@ -7183,6 +7283,9 @@ function renderContainerDetails(stackId, containers, project) {
         }
         html += '</td>';
 
+        // Health column
+        html += '<td class="ct-col-health">' + composeRenderHealthBadge(container.health || '', state) + '</td>';
+
         // Source (image name without tag)
         html += '<td class="cm-advanced ct-col-source"><span class="docker_readmore compose-text-muted">' + composeEscapeHtml(imageSource) + '</span></td>';
 
@@ -7208,7 +7311,7 @@ function renderContainerDetails(stackId, containers, project) {
         html += '<td class="cm-advanced ct-col-block_io"><span class="compose-blockio-' + normalizedContainerId + ' compose-text-muted">-</span></td>';
 
         // Container Port
-        html += '<td style="white-space:nowrap;"><span class="docker_readmore">' + containerPorts.map(composeEscapeHtml).join('<br>') + '</span></td>';
+        html += '<td class="ct-col-cport-cell" style="white-space:nowrap;"><span class="docker_readmore">' + containerPorts.map(composeEscapeHtml).join('<br>') + '</span></td>';
 
         // LAN IP:Port
         html += '<td class="ct-col-lport-cell"><span>' + lanPorts.map(composeEscapeHtml).join('<br>') + '</span></td>';
@@ -7427,6 +7530,13 @@ function updateParentStackFromContainers(stackId, project) {
                 uptimeClass = 'green-text';
             }
             $uptimeCell.html('<span class="' + uptimeClass + '">' + uptimeText + '</span>');
+        } catch (e) {}
+
+        // Update stack health from cached container health states.
+        try {
+            var $healthCell = $stackRow.find('td.col-health');
+            var healthStatus = composeAggregateStackHealth(stackInfo.containers);
+            $healthCell.html(composeRenderHealthBadge(healthStatus, anyRunning ? 'running' : 'exited'));
         } catch (e) {}
 
         // Re-apply view mode (advanced/basic) to ensure column content visibility

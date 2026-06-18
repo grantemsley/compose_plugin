@@ -254,6 +254,11 @@ foreach ($stackInfos as $stackInfo) {
     $uptimeClass = $isrunning ? 'green-text' : 'grey-text';
     $o .= "<td class='col-uptime'><span class='$uptimeClass'>$uptimeDisplay</span></td>";
 
+    // Health column (updated from detailed inspect data by frontend; initial fallback here)
+    $healthDisplay = $isrunning ? 'n/a' : 'stopped';
+    $healthClass = $isrunning ? 'compose-text-muted' : 'grey-text';
+    $o .= "<td class='col-health'><span class='$healthClass'>$healthDisplay</span></td>";
+
     // Metric columns (advanced only)
     $o .= "<td class='cm-advanced col-cpu compose-load-cell'>";
     $o .= "<span class='compose-stack-cpu-$id compose-text-muted'>-</span>";
@@ -287,7 +292,7 @@ foreach ($stackInfos as $stackInfo) {
 
     // Expandable details row
     $o .= "<tr class='stack-details-row' id='details-row-$id' style='display:none;'>";
-    $o .= "<td colspan='13' class='stack-details-cell' style='padding:0 0 0 60px;background:var(--dynamix-tablesorter-tbody-row-bg-color);'>";
+    $o .= "<td colspan='14' class='stack-details-cell' style='padding:0 0 0 60px;background:var(--dynamix-tablesorter-tbody-row-bg-color);'>";
     $o .= "<div class='stack-details-container' id='details-container-$id' style='padding:8px 16px;'>";
     $o .= "<i class='fa fa-spinner fa-spin compose-spinner'></i> Loading containers...";
     $o .= "</div>";
@@ -297,7 +302,7 @@ foreach ($stackInfos as $stackInfo) {
 
 // If no stacks found, show a message
 if ($mode !== 'row' && $stackCount === 0) {
-    $o = "<tr><td colspan='13' style='text-align:center;padding:20px;color:var(--alt-text-color);'>No Docker Compose stacks found. Click 'Add New Stack' to create one.</td></tr>";
+    $o = "<tr><td colspan='14' style='text-align:center;padding:20px;color:var(--alt-text-color);'>No Docker Compose stacks found. Click 'Add New Stack' to create one.</td></tr>";
 }
 
 // Output the HTML

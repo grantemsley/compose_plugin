@@ -1150,6 +1150,7 @@ class OverrideInfo
  * @property array $volumes Volume mounts [{source, destination, type}]
  * @property string $created ISO datetime when container was created
  * @property string $startedAt ISO datetime when container was started
+ * @property string $health Container health status (healthy/unhealthy/starting/empty)
  * @method static ContainerInfo fromDockerInspect(array $raw) Create a ContainerInfo from a docker inspect + compose ps result array
  * @method static ContainerInfo fromUpdateResponse(array $raw) Create a ContainerInfo from an update-check response element
  * 
@@ -1196,6 +1197,8 @@ class ContainerInfo
     public string $created = '';
     /** @var string ISO datetime when container was started */
     public string $startedAt = '';
+    /** @var string Container health status (healthy/unhealthy/starting/empty) */
+    public string $health = '';
 
     private function __construct() {}
 
@@ -1242,6 +1245,7 @@ class ContainerInfo
         $info->volumes = $raw['Volumes'] ?? $raw['volumes'] ?? [];
         $info->created = $raw['Created'] ?? $raw['created'] ?? '';
         $info->startedAt = $raw['StartedAt'] ?? $raw['startedAt'] ?? '';
+        $info->health = strtolower((string)($raw['Health'] ?? $raw['health'] ?? ''));
 
         // Normalize update status (accept PascalCase or camelCase)
         $info->updateStatus = $raw['updateStatus'] ?? $raw['UpdateStatus'] ?? $raw['status'] ?? 'unknown';
@@ -1337,6 +1341,7 @@ class ContainerInfo
             'volumes' => $this->volumes,
             'created' => $this->created,
             'startedAt' => $this->startedAt,
+            'health' => $this->health,
         ];
     }
 

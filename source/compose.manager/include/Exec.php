@@ -163,6 +163,10 @@ switch ($_POST['action']) {
         $prefFile = '/boot/config/plugins/compose.manager/column_visibility.json';
         $defaults = [
             'stack' => [
+                'update' => true,
+                'containers' => true,
+                'uptime' => true,
+                'health' => true,
                 'cpu' => true,
                 'memory' => true,
                 'net_io' => false,
@@ -171,6 +175,8 @@ switch ($_POST['action']) {
                 'path' => true,
             ],
             'service' => [
+                'update' => true,
+                'health' => true,
                 'cpu' => true,
                 'memory' => true,
                 'net_io' => false,
@@ -179,6 +185,8 @@ switch ($_POST['action']) {
                 'tag' => true,
                 'net' => true,
                 'ip' => true,
+                'cport' => true,
+                'lport' => true,
             ],
         ];
 
@@ -204,6 +212,10 @@ switch ($_POST['action']) {
         $prefDir = dirname($prefFile);
         $defaults = [
             'stack' => [
+                'update' => true,
+                'containers' => true,
+                'uptime' => true,
+                'health' => true,
                 'cpu' => true,
                 'memory' => true,
                 'net_io' => false,
@@ -212,6 +224,8 @@ switch ($_POST['action']) {
                 'path' => true,
             ],
             'service' => [
+                'update' => true,
+                'health' => true,
                 'cpu' => true,
                 'memory' => true,
                 'net_io' => false,
@@ -220,6 +234,8 @@ switch ($_POST['action']) {
                 'tag' => true,
                 'net' => true,
                 'ip' => true,
+                'cport' => true,
+                'lport' => true,
             ],
         ];
 
@@ -1354,6 +1370,7 @@ switch ($_POST['action']) {
                         $rawContainer['Image'] = $inspect['Config']['Image'] ?? '';
                         $rawContainer['Created'] = $inspect['Created'] ?? '';
                         $rawContainer['StartedAt'] = $inspect['State']['StartedAt'] ?? '';
+                        $rawContainer['Health'] = $inspect['State']['Health']['Status'] ?? '';
 
                         // Get ports (raw bindings - IP resolved below after network detection)
                         $ports = [];

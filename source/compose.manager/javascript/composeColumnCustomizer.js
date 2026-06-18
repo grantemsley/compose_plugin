@@ -6,6 +6,10 @@
     'use strict';
 
     var STACK_COLS = {
+        update: 'Update',
+        containers: 'Containers',
+        uptime: 'Uptime',
+        health: 'Health',
         cpu: 'CPU %',
         memory: 'Memory',
         net_io: 'Network I/O',
@@ -15,6 +19,8 @@
     };
 
     var SERVICE_COLS = {
+        update: 'Update',
+        health: 'Health',
         cpu: 'CPU %',
         memory: 'Memory',
         net_io: 'Network I/O',
@@ -22,11 +28,17 @@
         source: 'Source',
         tag: 'Tag',
         net: 'Network',
-        ip: 'IP'
+        ip: 'IP',
+        cport: 'Container Port',
+        lport: 'LAN IP:Port'
     };
 
     var defaults = {
         stack: {
+            update: true,
+            containers: true,
+            uptime: true,
+            health: true,
             cpu: true,
             memory: true,
             net_io: false,
@@ -35,6 +47,8 @@
             path: true
         },
         service: {
+            update: true,
+            health: true,
             cpu: true,
             memory: true,
             net_io: false,
@@ -42,7 +56,9 @@
             source: true,
             tag: true,
             net: true,
-            ip: true
+            ip: true,
+            cport: true,
+            lport: true
         }
     };
 
@@ -56,6 +72,7 @@
         update: 16,
         containers: 8,
         uptime: 9,
+        health: 9,
         cpu: 10,
         memory: 13,
         net_io: 10,
@@ -67,16 +84,7 @@
 
     var STACK_DEFAULT_VISIBLE = {
         name: true,
-        update: true,
-        containers: true,
-        uptime: true,
-        autostart: true,
-        cpu: true,
-        memory: true,
-        net_io: false,
-        block_io: false,
-        description: true,
-        path: true
+        autostart: true
     };
 
     function normalizePrefs(incoming) {
@@ -110,10 +118,11 @@
         forceTableLayoutReflow($tables);
     }
 
-    // Number of physically rendered stack columns (arrow, icon, and the five
-    // always-on columns are fixed; the rest depend on visibility prefs).
+    // Number of physically rendered stack columns. Arrow, icon, name and
+    // autostart are structural and always visible; all other stack columns are
+    // user-toggleable.
     function getVisibleStackColCount() {
-        var count = 7; // arrow, icon, name, update, containers, uptime, autostart
+        var count = 4; // arrow, icon, name, autostart
         Object.keys(STACK_COLS).forEach(function(col) {
             if (prefs.stack[col]) count++;
         });

@@ -78,17 +78,18 @@ if ($cpuCount <= 0) {
         --cm-col-arrow-px: 24px;
         --cm-col-icon-px: 48px;
         --cm-col-fixed-px: calc(var(--cm-col-arrow-px) + var(--cm-col-icon-px));
-        --cm-col-name-frac: 0.203539823;
-        --cm-col-update-frac: 0.141592920;
-        --cm-col-containers-frac: 0.070796460;
-        --cm-col-uptime-frac: 0.079646018;
-        --cm-col-cpu-frac: 0.088495575;
-        --cm-col-memory-frac: 0.115044248;
+        --cm-col-name-frac: 0.188524590;
+        --cm-col-update-frac: 0.131147541;
+        --cm-col-containers-frac: 0.065573770;
+        --cm-col-uptime-frac: 0.073770492;
+        --cm-col-health-frac: 0.073770492;
+        --cm-col-cpu-frac: 0.081967213;
+        --cm-col-memory-frac: 0.106557377;
         --cm-col-net-io-frac: 0.000000000;
         --cm-col-block-io-frac: 0.000000000;
-        --cm-col-description-frac: 0.123893805;
-        --cm-col-path-frac: 0.106194690;
-        --cm-col-autostart-frac: 0.070796460;
+        --cm-col-description-frac: 0.114754098;
+        --cm-col-path-frac: 0.098360656;
+        --cm-col-autostart-frac: 0.065573770;
     }
 
     /* Stabilize header row height across basic/advanced toggle transitions */
@@ -198,6 +199,10 @@ if ($cpuCount <= 0) {
 
     #compose_stacks thead th.col-uptime {
         width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-uptime-frac));
+    }
+
+    #compose_stacks thead th.col-health {
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-health-frac));
     }
 
     #compose_stacks thead th.col-autostart {
@@ -402,6 +407,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                     <th class="col-update">Update</th>
                     <th class="col-containers">Containers</th>
                     <th class="col-uptime">Uptime</th>
+                    <th class="col-health">Health</th>
                     <th class="cm-advanced col-cpu">CPU</th>
                     <th class="cm-advanced col-memory">Memory</th>
                     <th class="cm-advanced col-net_io">Net I/O</th>
@@ -413,7 +419,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             </thead>
             <tbody id="compose_list">
                 <tr>
-                    <td colspan='13'></td>
+                    <td colspan='14'></td>
                 </tr>
             </tbody>
         </table>

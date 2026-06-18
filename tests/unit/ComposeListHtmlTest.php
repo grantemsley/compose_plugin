@@ -141,7 +141,7 @@ class ComposeListHtmlTest extends TestCase
         $source = $this->getPageSource();
         $this->assertStringContainsString('No Docker Compose stacks found', $source);
         $this->assertStringContainsString('Add New Stack', $source);
-        $this->assertStringContainsString("colspan='13'", $source);
+        $this->assertStringContainsString("colspan='14'", $source);
     }
 
     // ===========================================
