@@ -36,15 +36,18 @@
 >
 
 <CHANGES>
-###2026.06.15.1000
-- Features: refactor column customization UI with transfer lists and responsive design
-- Features: enhance stack toggle functionality with batching and user intent tracking
-- Features: add expand/collapse all functionality for compose stacks
-- Features: promote col customizer and remove basic/advanced toggle
-- Features: Implement snapshot loading for compose metrics and enhance data publishing to ensure data shows during progressive loading
-- Features: Add column visibility customization for stack and service tables
+###2026.06.18.1637
+- Features (compose): enhance column customization with reorder functionality and UI updates
+- Features (compose): implement stack row striping synchronization for improved UI consistency
+- Features (compose): add health status column and related functionality to stack and container views
+- Features: add custom interval settings for compose stats and enhance nchan publisher
+- Bug Fixes (composeStats): enhance memory value parsing and sanitize docker stats fields
+- Performance (compose): throttle dockerload cache paints during websocket bursts
+- Performance (compose): avoid full-table applyListView during progressive row inserts
+- Performance (compose): debounce composeListRefreshed during progressive row load
+- Performance: implement parallel project loading with request queuing and progress tracking
 - [PR #120](https://github.com/mstrhakr/compose_plugin/pull/120)
-- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.06.06...v2026.06.15.1000)
+- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.06.06...v2026.06.18.1637)
 </CHANGES>
 
 <!-- The 'pre-install' script. -->
