@@ -840,6 +840,10 @@ function initStackListUI() {
     // Apply current view mode (advanced/basic) with centralized logic
     applyListView(false);
 
+            // Recompute stack-row striping after all stack rows are present so
+            // hidden detail rows do not skew alternating backgrounds.
+            syncComposeStackRowStriping();
+
     // Seed expandedStacks from any rows rendered expanded server-side
     $('.stack-details-row:visible').each(function() {
         var stackId = this.id.replace('details-row-', '');
@@ -916,6 +920,9 @@ function initializeProgressiveLoadedRows($rowChunk) {
     // Apply default expansion policy per row as soon as it is inserted.
     applyDefaultExpansionToRows($rows);
 
+    // Keep stack striping stable while chunks stream in.
+    syncComposeStackRowStriping();
+
     // Newly inserted rows include detail rows with a static full-width colspan;
     // clamp it to the live column count so hidden columns don't reserve width.
     if (window.composeColCustomizer && typeof window.composeColCustomizer.syncColspans === 'function') {
@@ -982,6 +989,15 @@ function tryParseJson(str) {
     } catch (e) {
         return null;
     }
+}
+
+function syncComposeStackRowStriping() {
+    var $rows = $('#compose_stacks tr.compose-sortable');
+    if (!$rows.length) return;
+
+    $rows.each(function(index) {
+        $(this).toggleClass('compose-stack-row-alt', index % 2 === 0);
+    });
 }
 
 // Editor modal state

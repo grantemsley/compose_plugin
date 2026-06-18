@@ -153,6 +153,8 @@ function initComposeSortable() {
                     $stackRow.removeData('_detached-details');
                 }
             });
+
+            syncComposeStackRowStriping();
         }
     });
 }
@@ -166,6 +168,8 @@ function syncComposeSortModeUI() {
         $row.find('.expand-icon').toggle(!unlocked);
         $row.find('.mover').toggle(unlocked);
     });
+
+    syncComposeStackRowStriping();
 
     $('#compose_list').toggleClass('compose-sort-enabled', unlocked);
     updateComposeLockButtonUI();

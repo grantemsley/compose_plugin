@@ -259,6 +259,11 @@ if ($cpuCount <= 0) {
         width: auto !important
     }
 
+    #compose_stacks tbody tr.compose-sortable.compose-stack-row-alt,
+    #compose_stacks tbody tr.compose-sortable.compose-stack-row-alt td {
+        background-color: var(--dynamix-tablesorter-tbody-row-alt-bg-color)
+    }
+
     #compose_stacks tbody tr.stack-details-row {
         background-color: var(--dynamix-sb-body-bg-color) !important
     }
