@@ -10,10 +10,37 @@ require_once("/usr/local/emhttp/plugins/compose.manager/include/Util.php");
 
 $cfg = parse_plugin_cfg($sName);
 
+$mode = isset($_GET['mode']) ? trim((string)$_GET['mode']) : 'html';
+if ($mode === 'list') {
+    $projects = StackInfo::listProjectFolders($compose_root);
+    echo json_encode([
+        'result' => 'success',
+        'projects' => array_values($projects),
+    ]);
+    exit;
+}
+
 $o = "";
 $stackCount = 0;
 
-foreach (StackInfo::allFromRoot($compose_root) as $stackInfo) {
+$stackInfos = [];
+if ($mode === 'row') {
+    $project = isset($_GET['project']) ? basename(trim((string)$_GET['project'])) : '';
+    if ($project === '') {
+        echo json_encode(['result' => 'error', 'message' => 'Project not specified.']);
+        exit;
+    }
+    try {
+        $stackInfos = [StackInfo::fromProject($compose_root, $project)];
+    } catch (\Throwable $e) {
+        echo json_encode(['result' => 'error', 'message' => 'Project not found.']);
+        exit;
+    }
+} else {
+    $stackInfos = StackInfo::allFromRoot($compose_root);
+}
+
+foreach ($stackInfos as $stackInfo) {
     $stackCount++;
 
     $projectName = $stackInfo->getName();
@@ -73,6 +100,16 @@ foreach (StackInfo::allFromRoot($compose_root) as $stackInfo) {
 
     $profiles = $stackInfo->getProfiles();
     $profilesJson = htmlspecialchars(json_encode($profiles ?: []), ENT_QUOTES, 'UTF-8');
+
+    // Get default profiles for actions like force update
+    $defaultProfiles = $stackInfo->getDefaultProfiles();
+    $defaultProfilesStr = implode(',', $defaultProfiles);
+    $defaultProfilesHtml = htmlspecialchars($defaultProfilesStr, ENT_QUOTES, 'UTF-8');
+
+    // Get running profiles so UI can prioritize current runtime selection
+    $runningProfiles = $stackInfo->getRunningProfiles();
+    $runningProfilesStr = implode(',', $runningProfiles);
+    $runningProfilesHtml = htmlspecialchars($runningProfilesStr, ENT_QUOTES, 'UTF-8');
 
     // Determine status text and class for badge
     $statusText = "Stopped";
@@ -160,7 +197,7 @@ foreach (StackInfo::allFromRoot($compose_root) as $stackInfo) {
     $hasBuild = $stackInfo->hasBuildConfig() ? '1' : '0';
 
     // Main row - Docker tab structure with expand arrow on left
-    $o .= "<tr class='compose-sortable' id='stack-row-$id' data-project='$projectHtml' data-projectname='$projectNameHtml' data-path='$pathHtml' data-isup='$isup' data-profiles='$profilesJson' data-webui='$webuiUrlHtml' data-containers='$containerNamesAttr' data-ctids='$containerIdsAttr' data-hasbuild='$hasBuild' data-invalid-indirect='" . ($hasInvalidIndirect ? '1' : '0') . "' data-invalid-indirect-path='$invalidIndirectPathHtml'>";
+    $o .= "<tr class='compose-sortable' id='stack-row-$id' data-project='$projectHtml' data-projectname='$projectNameHtml' data-path='$pathHtml' data-isup='$isup' data-profiles='$profilesJson' data-running-profile='$runningProfilesHtml' data-default-profile='$defaultProfilesHtml' data-webui='$webuiUrlHtml' data-containers='$containerNamesAttr' data-ctids='$containerIdsAttr' data-hasbuild='$hasBuild' data-invalid-indirect='" . ($hasInvalidIndirect ? '1' : '0') . "' data-invalid-indirect-path='$invalidIndirectPathHtml'>";
 
     // Arrow column
     $o .= "<td class='col-arrow'>";
@@ -183,6 +220,13 @@ foreach (StackInfo::allFromRoot($compose_root) as $stackInfo) {
     $o .= "<span class='inner'><span class='appname'>$projectNameHtml</span><br>";
     $o .= "<i class='fa fa-$shape $status $color compose-status-icon' data-status='$status'></i><span class='state'>$statusLabel</span>";
     if ($hasInvalidIndirect) {
+        composeLogger('Rendering invalid indirect warning in stack list', [
+            'project' => $stackInfo->projectFolder,
+            'projectPath' => $stackInfo->path,
+            'invalidIndirectPath' => $invalidIndirectPath,
+            'isIndirect' => $stackInfo->isIndirect,
+            'composeSource' => $stackInfo->composeSource,
+        ], 'user', 'debug', 'stack-list');
         $o .= " <i class='fa fa-warning orange-text' title='External compose path is invalid or unavailable: $invalidIndirectPathHtml'></i>";
     }
     $o .= "<div class='cm-advanced compose-text-muted' style='margin-top:4px;font-size:0.85em;'>";
@@ -210,17 +254,24 @@ foreach (StackInfo::allFromRoot($compose_root) as $stackInfo) {
     $uptimeClass = $isrunning ? 'green-text' : 'grey-text';
     $o .= "<td class='col-uptime'><span class='$uptimeClass'>$uptimeDisplay</span></td>";
 
-    // CPU & Memory column (advanced only) — populated in real-time via dockerload WebSocket
-    $o .= "<td class='cm-advanced col-load compose-load-cell'>";
-    if ($isrunning) {
-        $o .= "<span class='compose-stack-cpu-$id compose-load-cpu'>0%</span>";
-        $o .= "<div class='usage-disk mm'><span id='compose-stack-cpu-$id' style='width:0'></span><span></span></div>";
-        $o .= "<span class='compose-stack-mem-$id compose-text-muted compose-load-mem'>0B / 0B</span>";
-    } else {
-        $o .= "<span class='compose-stack-cpu-$id compose-text-muted compose-load-cpu'>-</span>";
-        $o .= "<span class='compose-stack-mem-$id compose-load-mem' style='display:none'></span>";
-    }
+    // Health column (updated from detailed inspect data by frontend; initial fallback here)
+    $healthDisplay = $isrunning ? 'n/a' : 'stopped';
+    $healthClass = $isrunning ? 'compose-text-muted' : 'grey-text';
+    $o .= "<td class='col-health'><span class='$healthClass'>$healthDisplay</span></td>";
+
+    // Metric columns (advanced only)
+    $o .= "<td class='cm-advanced col-cpu compose-load-cell'>";
+    $o .= "<span class='compose-stack-cpu-$id compose-text-muted'>-</span>";
+    $o .= "<div class='usage-disk mm'><span id='compose-stack-cpu-bar-$id' style='width:0'></span><span></span></div>";
     $o .= "</td>";
+
+    $o .= "<td class='cm-advanced col-memory compose-load-cell'>";
+    $o .= "<span class='compose-stack-mem-$id compose-text-muted'>-</span>";
+    $o .= "<div class='usage-disk mm'><span id='compose-stack-mem-bar-$id' style='width:0'></span><span></span></div>";
+    $o .= "</td>";
+
+    $o .= "<td class='cm-advanced col-net_io'><span class='compose-stack-netio-$id compose-text-muted'>-</span></td>";
+    $o .= "<td class='cm-advanced col-block_io'><span class='compose-stack-blockio-$id compose-text-muted'>-</span></td>";
 
     // Description column (advanced only)
     $o .= "<td class='cm-advanced col-description' style='overflow-wrap:break-word;word-wrap:break-word;'>";
@@ -241,7 +292,7 @@ foreach (StackInfo::allFromRoot($compose_root) as $stackInfo) {
 
     // Expandable details row
     $o .= "<tr class='stack-details-row' id='details-row-$id' style='display:none;'>";
-    $o .= "<td colspan='10' class='stack-details-cell' style='padding:0 0 0 60px;background:var(--dynamix-tablesorter-tbody-row-bg-color);'>";
+    $o .= "<td colspan='14' class='stack-details-cell' style='padding:0 0 0 60px;background:var(--dynamix-tablesorter-tbody-row-bg-color);'>";
     $o .= "<div class='stack-details-container' id='details-container-$id' style='padding:8px 16px;'>";
     $o .= "<i class='fa fa-spinner fa-spin compose-spinner'></i> Loading containers...";
     $o .= "</div>";
@@ -250,9 +301,16 @@ foreach (StackInfo::allFromRoot($compose_root) as $stackInfo) {
 }
 
 // If no stacks found, show a message
-if ($stackCount === 0) {
-    $o = "<tr><td colspan='10' style='text-align:center;padding:20px;color:var(--alt-text-color);'>No Docker Compose stacks found. Click 'Add New Stack' to create one.</td></tr>";
+if ($mode !== 'row' && $stackCount === 0) {
+    $o = "<tr><td colspan='14' style='text-align:center;padding:20px;color:var(--alt-text-color);'>No Docker Compose stacks found. Click 'Add New Stack' to create one.</td></tr>";
 }
 
 // Output the HTML
-echo $o;
+if ($mode === 'row') {
+    echo json_encode([
+        'result' => 'success',
+        'html' => $o,
+    ]);
+} else {
+    echo $o;
+}

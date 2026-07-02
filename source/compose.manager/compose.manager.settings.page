@@ -696,6 +696,12 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         $('#AUTO_CHECK_UPDATES_DAYS').prop('disabled', !autoCheckEnabled);
     }
 
+    function toggleComposeStatsCustomInterval() {
+        var mode = ($('#COMPOSE_STATS_RATE_MODE').val() || 'live').toLowerCase();
+        var isCustom = mode === 'custom';
+        $('#COMPOSE_STATS_CUSTOM_INTERVAL_MS').prop('disabled', !isCustom);
+    }
+
     $(function() {
         // Keep the initial states to determine if a safety confirmation is needed on save
         var origDisableActionWarnings = $('#DISABLE_ACTION_WARNINGS').is(':checked');
@@ -979,6 +985,10 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         // Apply expand stacks by default on load and on change
         toggleExpandByDefault();
         $('#STACKS_DEFAULT_EXPANDED').change(toggleExpandByDefault);
+
+        // Enable custom interval only when the custom preset is selected.
+        toggleComposeStatsCustomInterval();
+        $('#COMPOSE_STATS_RATE_MODE').on('change', toggleComposeStatsCustomInterval);
 
         // Apply compose on top on load and on change
         toggleComposeOnTop();
@@ -2119,6 +2129,29 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                 <input type="checkbox" name="DEBUG_TO_LOG" id="DEBUG_TO_LOG" class="compose-toggle" <?= $cfg['DEBUG_TO_LOG'] == 'true' ? 'checked' : '' ?>>
                 <blockquote class="inline_help">
                     Log detailed compose command information to syslog. View logs in the Log tab.
+                </blockquote>
+            </dd>
+        </dl>
+
+        <dl>
+            <dt style="cursor: help;" onclick="toggleHelp(this)">_(Live Stats Update Rate)_:</dt>
+            <dd>
+                <label>
+                    <select name="COMPOSE_STATS_RATE_MODE" id="COMPOSE_STATS_RATE_MODE" style="min-width:180px;">
+                        <?php $statsRateMode = strtolower(trim((string)($cfg['COMPOSE_STATS_RATE_MODE'] ?? 'live'))); ?>
+                        <option value="live" <?= $statsRateMode === 'live' ? 'selected' : '' ?>>_(Live (max updates))_</option>
+                        <option value="medium" <?= $statsRateMode === 'medium' ? 'selected' : '' ?>>_(Medium (~2s))_</option>
+                        <option value="slow" <?= $statsRateMode === 'slow' ? 'selected' : '' ?>>_(Slow (~5s))_</option>
+                        <option value="custom" <?= $statsRateMode === 'custom' ? 'selected' : '' ?>>_(Custom)_</option>
+                    </select>
+                </label>
+                <label style="margin-left:12px;">
+                    _(Custom interval)_:
+                    <input type="number" name="COMPOSE_STATS_CUSTOM_INTERVAL_MS" id="COMPOSE_STATS_CUSTOM_INTERVAL_MS" min="100" max="10000" step="50" value="<?= intval($cfg['COMPOSE_STATS_CUSTOM_INTERVAL_MS'] ?? '1000') ?>" style="width:90px;"> _(ms)_
+                </label>
+                <blockquote class="inline_help">
+                    Controls how often Compose live metrics are published.<br>
+                    Live publishes each stream update, Medium uses ~2 seconds, Slow uses ~5 seconds, and Custom uses the interval in milliseconds.
                 </blockquote>
             </dd>
         </dl>

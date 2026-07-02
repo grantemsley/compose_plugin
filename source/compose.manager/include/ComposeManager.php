@@ -73,7 +73,23 @@ if ($cpuCount <= 0) {
     /* Table structure — always fixed layout */
     #compose_stacks {
         width: 100%;
-        table-layout: fixed
+        table-layout: fixed;
+        /* Single source of truth for stack-table column widths. */
+        --cm-col-arrow-px: 24px;
+        --cm-col-icon-px: 48px;
+        --cm-col-fixed-px: calc(var(--cm-col-arrow-px) + var(--cm-col-icon-px));
+        --cm-col-name-frac: 0.188524590;
+        --cm-col-update-frac: 0.131147541;
+        --cm-col-containers-frac: 0.065573770;
+        --cm-col-uptime-frac: 0.073770492;
+        --cm-col-health-frac: 0.073770492;
+        --cm-col-cpu-frac: 0.081967213;
+        --cm-col-memory-frac: 0.106557377;
+        --cm-col-net-io-frac: 0.000000000;
+        --cm-col-block-io-frac: 0.000000000;
+        --cm-col-description-frac: 0.114754098;
+        --cm-col-path-frac: 0.098360656;
+        --cm-col-autostart-frac: 0.065573770;
     }
 
     /* Stabilize header row height across basic/advanced toggle transitions */
@@ -89,9 +105,13 @@ if ($cpuCount <= 0) {
         text-align: left;
     }
 
-    /* Clip overflowing content in fixed-layout cells */
+    /* Clip overflowing content in fixed-layout cells.
+       border-box is REQUIRED so the percentage column widths below include
+       their own padding; otherwise padding is added on top of the computed
+       width and the columns overflow/shrink, leaving a gap at the right. */
     #compose_stacks th,
     #compose_stacks td {
+        box-sizing: border-box;
         overflow: hidden;
         text-overflow: ellipsis
     }
@@ -99,8 +119,52 @@ if ($cpuCount <= 0) {
     /* Basic-view column widths (7 visible columns)
    Arrow + Icon are fixed px (small fixed content); rest are % of table. */
     #compose_stacks thead th.col-arrow {
-        width: 15px;
+        width: var(--cm-col-arrow-px);
         padding: 0;
+    }
+
+    #compose_stacks thead th.col-arrow .compose-stack-toggle-all {
+        width: 24px;
+        height: 24px;
+        margin: 0 auto;
+        padding: 0;
+        border: 0;
+        background: none;
+        appearance: none;
+        -webkit-appearance: none;
+        border-radius: 4px;
+        color: var(--dynamix-tablesorter-thead-th-text-color);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        line-height: 1;
+        opacity: 0.95;
+    }
+
+    #compose_stacks thead th.col-arrow .compose-stack-toggle-all i {
+        transition: transform 0.2s ease;
+        transform: rotate(0deg);
+    }
+
+    #compose_stacks thead th.col-arrow .compose-stack-toggle-all.is-expanded i {
+        transform: rotate(180deg);
+    }
+
+    #compose_stacks thead th.col-arrow .compose-stack-toggle-all:hover {
+        color: var(--orange-text, var(--brand-orange));
+        opacity: 1;
+    }
+
+    #compose_stacks thead th.col-arrow .compose-stack-toggle-all:focus-visible {
+        outline: 1px solid var(--brand-orange);
+        outline-offset: 2px;
+    }
+
+    #compose_stacks thead th.col-arrow .compose-stack-toggle-all:disabled {
+        cursor: default;
+        opacity: 0.45;
     }
 
     #compose_stacks td.col-arrow {
@@ -117,70 +181,56 @@ if ($cpuCount <= 0) {
     }
 
     #compose_stacks thead th.col-icon {
-        width: 30px;
+        width: var(--cm-col-icon-px);
         padding: 0;
     }
 
     #compose_stacks thead th.col-name {
-        width: 12%;
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-name-frac));
     }
 
     #compose_stacks thead th.col-update {
-        width: 25%;
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-update-frac));
     }
 
     #compose_stacks thead th.col-containers {
-        width: 25%;
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-containers-frac));
     }
 
     #compose_stacks thead th.col-uptime {
-        width: 25%;
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-uptime-frac));
+    }
+
+    #compose_stacks thead th.col-health {
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-health-frac));
     }
 
     #compose_stacks thead th.col-autostart {
-        width: 15%;
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-autostart-frac));
     }
 
-    /* Advanced-view column widths (10 visible columns)
-   Arrow + Icon stay fixed px; Description + Path get the most %. */
-    #compose_stacks.cm-advanced-view thead th.col-arrow {
-        width: 15px;
+    #compose_stacks thead th.col-cpu {
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-cpu-frac))
     }
 
-    #compose_stacks.cm-advanced-view thead th.col-icon {
-        width: 30px;
+    #compose_stacks thead th.col-memory {
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-memory-frac))
     }
 
-    #compose_stacks.cm-advanced-view thead th.col-name {
-        width: 12%;
+    #compose_stacks thead th.col-net_io {
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-net-io-frac))
     }
 
-    #compose_stacks.cm-advanced-view thead th.col-update {
-        width: 10%
+    #compose_stacks thead th.col-block_io {
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-block-io-frac))
     }
 
-    #compose_stacks.cm-advanced-view thead th.col-containers {
-        width: 5%
+    #compose_stacks thead th.col-description {
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-description-frac))
     }
 
-    #compose_stacks.cm-advanced-view thead th.col-uptime {
-        width: 6%
-    }
-
-    #compose_stacks.cm-advanced-view thead th.col-load {
-        width: 12%
-    }
-
-    #compose_stacks.cm-advanced-view thead th.col-description {
-        width: 22%
-    }
-
-    #compose_stacks.cm-advanced-view thead th.col-path {
-        width: 22%
-    }
-
-    #compose_stacks.cm-advanced-view thead th.col-autostart {
-        width: 8%
+    #compose_stacks thead th.col-path {
+        width: calc((100% - var(--cm-col-fixed-px)) * var(--cm-col-path-frac))
     }
 
     /* Center the Containers column */
@@ -204,22 +254,14 @@ if ($cpuCount <= 0) {
         vertical-align: middle
     }
 
-    /* Advanced/basic visibility — CSS-only so no flash of hidden content */
-    #compose_stacks .cm-advanced {
-        display: none
-    }
-
-    #compose_stacks.cm-advanced-view .cm-advanced {
-        display: table-cell
-    }
-
-    #compose_stacks.cm-advanced-view div.cm-advanced {
-        display: block
-    }
-
     /* Detail row */
     #compose_stacks .stack-details-cell {
         width: auto !important
+    }
+
+    #compose_stacks tbody tr.compose-sortable.compose-stack-row-alt,
+    #compose_stacks tbody tr.compose-sortable.compose-stack-row-alt td {
+        background-color: var(--dynamix-tablesorter-tbody-row-alt-bg-color)
     }
 
     #compose_stacks tbody tr.stack-details-row {
@@ -236,10 +278,11 @@ if ($cpuCount <= 0) {
         z-index: 100 !important;
     }
 
-    /* Keep long context menus visible above fixed bottom UI bars */
+    /* Keep context menus above the fixed footer (z-index must out-rank the
+       .dropdown-menu !important rule above); the scroll spacer appended in
+       fixContextDropdownOverflow() keeps them reachable (unraid/webgui#2639) */
     .dropdown-context:not(.dropdown-context-sub) {
-        max-height: calc(100vh - 72px);
-        overflow-y: auto;
+        z-index: 10001 !important;
     }
 
     /* CPU & Memory load display (matches Docker manager usage-disk style) */
@@ -289,6 +332,12 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
 <script src="<?php autov('/plugins/compose.manager/javascript/common.js'); ?>" type="text/javascript"></script>
 <script src="<?php autov('/plugins/compose.manager/javascript/composeSortable.js'); ?>" type="text/javascript"></script>
 <script src="<?php autov('/plugins/compose.manager/javascript/composeStackUtils.js'); ?>" type="text/javascript"></script>
+<?php if (file_exists('/usr/local/emhttp/plugins/docker.versions/styles/styles.css')): ?>
+<link type="text/css" rel="stylesheet" href="<?php autov('/plugins/docker.versions/styles/styles.css'); ?>">
+<?php endif; ?>
+<?php if (file_exists('/usr/local/emhttp/plugins/docker.versions/scripts/changelog.js')): ?>
+<script src="<?php autov('/plugins/docker.versions/scripts/changelog.js'); ?>" type="text/javascript"></script>
+<?php endif; ?>
 <script>
     window.composeManagerBootstrap = {
         compose_root: <?php echo json_encode($compose_root); ?>,
@@ -338,6 +387,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
     var composeCpuCount = Number(composeBootstrap.composeCpuCount || 1);
 </script>
 <script src="<?php autov('/plugins/compose.manager/javascript/composeManagerPageInit.js'); ?>" type="text/javascript"></script>
+<script src="<?php autov('/plugins/compose.manager/javascript/composeColumnCustomizer.js'); ?>" type="text/javascript"></script>
 <script src="<?php autov('/plugins/compose.manager/javascript/composeManagerMain.js'); ?>" type="text/javascript"></script>
 
 <HTML>
@@ -352,13 +402,21 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         <table id="compose_stacks" class="tablesorter shift" style="table-layout:fixed;width:100%">
             <thead>
                 <tr>
-                    <th class="col-arrow"></th>
+                    <th class="col-arrow">
+                        <div type="button" class="compose-stack-toggle-all" id="compose-stack-toggle-all" role="button" tabindex="0" onclick="toggleAllStackDetails(); return false;" title="Expand all stacks" aria-label="Expand all stacks">
+                            <i class="fa fa-angle-double-down"></i>
+                        </div>
+                    </th>
                     <th class="col-icon"></th>
                     <th class="col-name">Stack</th>
                     <th class="col-update">Update</th>
                     <th class="col-containers">Containers</th>
                     <th class="col-uptime">Uptime</th>
-                    <th class="cm-advanced col-load">CPU &amp; Memory load</th>
+                    <th class="col-health">Health</th>
+                    <th class="cm-advanced col-cpu">CPU</th>
+                    <th class="cm-advanced col-memory">Memory</th>
+                    <th class="cm-advanced col-net_io">Net I/O</th>
+                    <th class="cm-advanced col-block_io">Disk I/O</th>
                     <th class="cm-advanced col-description">Description</th>
                     <th class="cm-advanced col-path">Path</th>
                     <th class="nine col-autostart">Autostart</th>
@@ -366,7 +424,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             </thead>
             <tbody id="compose_list">
                 <tr>
-                    <td colspan='10'></td>
+                    <td colspan='14'></td>
                 </tr>
             </tbody>
         </table>
@@ -471,6 +529,10 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
             <!-- ========== COMPOSE EDITOR PANEL ========== -->
             <div class="editor-panel active" id="editor-panel-compose" role="tabpanel" aria-labelledby="editor-tab-compose">
                 <div class="editor-modal-body">
+                    <div id="compose-file-selector-wrap" style="display:none;align-items:center;gap:8px;padding:6px 12px;">
+                        <label for="compose-file-selector" style="margin:0;">File:</label>
+                        <select id="compose-file-selector" onchange="switchComposeFile(this.value)"></select>
+                    </div>
                     <div class="editor-container active" id="editor-container-compose">
                         <div id="editor-compose" style="width: 100%; height: 100%;"></div>
                     </div>
@@ -611,6 +673,17 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                         </div>
 
                         <div class="settings-field">
+                            <label for="settings-extra-compose-candidates">Additional Compose Files</label>
+                            <div id="settings-extra-compose-candidates" style="display:none;"></div>
+                            <div id="settings-extra-compose-none" class="settings-field-help" style="display:none;">No additional compose files found in the compose source folder (looking for <code>*compose*.yml</code> / <code>*compose*.yaml</code>).</div>
+                            <details id="settings-extra-compose-external-wrap" style="margin-top:8px;">
+                                <summary style="cursor:pointer;">External files (advanced)</summary>
+                                <textarea id="settings-extra-compose-external" rows="2" placeholder="One absolute path per line, e.g. /mnt/user/appdata/shared/gpu.compose.yml"></textarea>
+                            </details>
+                            <div class="settings-field-help">Selected files are appended as additional <code>-f</code> flags after the main compose and override files (e.g., GPU or environment overrides). Setting this disables default file discovery.</div>
+                        </div>
+
+                        <div class="settings-field">
                             <label for="settings-env-path">External ENV File Path</label>
                             <input type="text" id="settings-env-path" placeholder="Default (uses .env in compose source folder)" data-pickroot="/" data-picktop="/mnt" data-pickcloseonfile="true">
                             <div class="settings-field-help">Path to an external .env file (e.g., /mnt/user/appdata/myapp/.env). Leave empty to use the default .env file in the compose source folder (project folder or indirect folder).</div>
@@ -627,6 +700,15 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                                 <span class="compose-text-muted" style="font-size:0.9em;">Available profiles: </span>
                                 <span id="settings-profiles-list" style="font-family:var(--font-bitstream);"></span>
                             </div>
+                        </div>
+
+                        <div class="settings-field">
+                            <label for="REMOVE_ORPHANS_DEFAULT">Remove Orphans by Default</label>
+                            <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
+                                <input type="checkbox" id="REMOVE_ORPHANS_DEFAULT" name="REMOVE_ORPHANS_DEFAULT" <?= ($cfg['REMOVE_ORPHANS_DEFAULT'] ?? 'false') == 'true' ? 'checked' : '' ?>>
+                                Enable <code>--remove-orphans</code> by default for Compose Up/Down actions
+                            </label>
+                            <div class="settings-field-help">When enabled, the Remove orphans option is pre-checked in Compose Up/Down dialogs and bulk start/stop dialogs. Useful when a stack is edited while containers still exist.</div>
                         </div>
 
                         <div class="settings-field">

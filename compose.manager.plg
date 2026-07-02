@@ -2,15 +2,15 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name "compose.manager">
 <!ENTITY author "mstrhakr">
-<!ENTITY version     "2026.06.06">
+<!ENTITY version     "2026.06.18.1637">
 <!ENTITY launch "Settings/&name;.settings">
 <!ENTITY packageVER "&version;">
-<!ENTITY packageMD5  "8cf5a8e4f40a712f63ca06fb0c7aee5c">
-<!ENTITY pkgBUILD    "0513">
+<!ENTITY packageMD5  "c555ac177f88ba7bfca46b205eb9136a">
+<!ENTITY pkgBUILD    "1637">
 <!ENTITY packageName "&name;-&packageVER;-noarch-&pkgBUILD;">
 <!ENTITY packagefile "&packageName;.txz">
 <!ENTITY github "mstrhakr/compose_plugin">
-<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/main/&name;.plg">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/dev/&name;.plg">
 <!ENTITY packageURL "https://github.com/&github;/releases/download/v&version;/&packagefile;">
 <!ENTITY pluginsPATH "/boot/config/plugins">
 <!ENTITY pluginLOC "&pluginsPATH;/&name;">
@@ -36,9 +36,18 @@
 >
 
 <CHANGES>
-###2026.06.06
-- Bug Fixes: update container cache loading to use PHP endpoint and improve data parsing; [Bug]: [error] 12159#12159: *38373 open() "/usr/local/emhttp/plugins/compose.manager/containers.cache.json" failed (2: No such file or directory) while sending to client Fixes mstrhakr/compose_plugin#117
-- [View all changes](https://github.com/mstrhakr/compose_plugin/compare/v2026.05.31...v2026.06.06)
+###2026.06.18.1637
+- Features (compose): enhance column customization with reorder functionality and UI updates
+- Features (compose): implement stack row striping synchronization for improved UI consistency
+- Features (compose): add health status column and related functionality to stack and container views
+- Features: add custom interval settings for compose stats and enhance nchan publisher
+- Bug Fixes (composeStats): enhance memory value parsing and sanitize docker stats fields
+- Performance (compose): throttle dockerload cache paints during websocket bursts
+- Performance (compose): avoid full-table applyListView during progressive row inserts
+- Performance (compose): debounce composeListRefreshed during progressive row load
+- Performance: implement parallel project loading with request queuing and progress tracking
+- [PR #120](https://github.com/mstrhakr/compose_plugin/pull/120)
+- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.06.06...v2026.06.18.1637)
 </CHANGES>
 
 <!-- The 'pre-install' script. -->

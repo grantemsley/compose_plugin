@@ -63,6 +63,89 @@ if (!function_exists('rejectStaleClientPath')) {
     }
 }
 
+if (!function_exists('resolveRequestedComposeFile')) {
+    /**
+     * Resolve an explicitly requested compose file (`file` POST param)
+     * against the stack's editable compose files.
+     *
+     * @return string|false|null Matched path, false when the request is
+     *                           invalid, or null when no file was requested.
+     */
+    function resolveRequestedComposeFile(StackInfo $stackInfo)
+    {
+        $requested = isset($_POST['file']) ? trim((string) $_POST['file']) : '';
+        if ($requested === '') {
+            return null;
+        }
+        foreach ($stackInfo->getEditableComposeFiles() as $candidate) {
+            if (Path::refersToSamePath($candidate, $requested)) {
+                return $candidate;
+            }
+        }
+        return false;
+    }
+}
+
+if (!function_exists('composeLoadPersistentContainerCache')) {
+    function composeLoadPersistentContainerCache(): array
+    {
+        $cacheFile = '/boot/config/plugins/compose.manager/containers.cache.json';
+        if (!is_file($cacheFile)) {
+            return [];
+        }
+        $decoded = json_decode(file_get_contents($cacheFile), true);
+        return is_array($decoded) ? $decoded : [];
+    }
+}
+
+if (!function_exists('composeSavePersistentContainerCache')) {
+    function composeSavePersistentContainerCache(array $cache): void
+    {
+        $cacheFile = '/boot/config/plugins/compose.manager/containers.cache.json';
+        file_put_contents($cacheFile, json_encode($cache, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+}
+
+if (!function_exists('composeResolveContainerIcon')) {
+    /**
+     * Resolve container icon using stack cache first, then docker inspect fallback.
+     *
+     * @param string $containerName
+     * @param string $service
+     * @param array<string,string> $iconByService
+     * @param array<string,string> $iconByName
+     * @param array<string,string> $inspectIconCache Per-request inspect memoization by container name
+     */
+    function composeResolveContainerIcon(string $containerName, string $service, array $iconByService, array $iconByName, array &$inspectIconCache): string
+    {
+        if ($service !== '' && isset($iconByService[$service]) && $iconByService[$service] !== '') {
+            return $iconByService[$service];
+        }
+
+        if ($containerName !== '' && isset($iconByName[$containerName]) && $iconByName[$containerName] !== '') {
+            return $iconByName[$containerName];
+        }
+
+        if ($containerName === '') {
+            return '';
+        }
+
+        if (isset($inspectIconCache[$containerName])) {
+            return $inspectIconCache[$containerName];
+        }
+
+        global $docker_label_icon;
+        $labelTemplate = '{{ index .Config.Labels "' . $docker_label_icon . '" }}';
+        $cmd = 'docker inspect ' . escapeshellarg($containerName) . ' --format ' . escapeshellarg($labelTemplate) . ' 2>/dev/null';
+        $icon = trim((string) shell_exec($cmd));
+        if ($icon === '<no value>') {
+            $icon = '';
+        }
+        $inspectIconCache[$containerName] = $icon;
+        return $icon;
+    }
+}
+
 switch ($_POST['action']) {
     case 'composeLogger':
         $message = $_POST['msg'] ?? '';
@@ -75,6 +158,181 @@ switch ($_POST['action']) {
     case 'getConfig':
         $cfg = @parse_ini_file("/boot/config/plugins/compose.manager/compose.manager.cfg", true, INI_SCANNER_NORMAL);
         echo json_encode(['result' => 'success', 'config' => $cfg]);
+        break;
+    case 'getColumnVisibility':
+        $prefFile = '/boot/config/plugins/compose.manager/column_visibility.json';
+        $defaults = [
+            'stack' => [
+                'update' => true,
+                'containers' => true,
+                'uptime' => true,
+                'health' => true,
+                'cpu' => true,
+                'memory' => true,
+                'net_io' => false,
+                'block_io' => false,
+                'description' => true,
+                'path' => true,
+            ],
+            'service' => [
+                'update' => true,
+                'health' => true,
+                'cpu' => true,
+                'memory' => true,
+                'net_io' => false,
+                'block_io' => false,
+                'source' => true,
+                'tag' => true,
+                'net' => true,
+                'ip' => true,
+                'cport' => true,
+                'lport' => true,
+            ],
+        ];
+        $defaultOrder = [
+            'stackOrder' => array_keys(array_filter($defaults['stack'])),
+            'serviceOrder' => array_keys(array_filter($defaults['service'])),
+        ];
+
+        $visibility = array_merge($defaults, $defaultOrder);
+        if (is_file($prefFile)) {
+            $raw = @file_get_contents($prefFile);
+            $saved = json_decode((string)$raw, true);
+            if (is_array($saved)) {
+                foreach (['stack', 'service'] as $scope) {
+                    if (!isset($saved[$scope]) || !is_array($saved[$scope])) continue;
+                    foreach ($defaults[$scope] as $key => $defaultVal) {
+                        if (array_key_exists($key, $saved[$scope])) {
+                            $visibility[$scope][$key] = (bool)$saved[$scope][$key];
+                        }
+                    }
+                }
+
+                foreach (['stackOrder', 'serviceOrder'] as $orderKey) {
+                    if (!isset($saved[$orderKey]) || !is_array($saved[$orderKey])) continue;
+
+                    $scope = $orderKey === 'stackOrder' ? 'stack' : 'service';
+                    $allowed = array_keys($defaults[$scope]);
+                    $normalizedOrder = [];
+
+                    foreach ($saved[$orderKey] as $col) {
+                        if (in_array($col, $allowed, true) && $visibility[$scope][$col] && !in_array($col, $normalizedOrder, true)) {
+                            $normalizedOrder[] = $col;
+                        }
+                    }
+
+                    foreach ($allowed as $col) {
+                        if ($visibility[$scope][$col] && !in_array($col, $normalizedOrder, true)) {
+                            $normalizedOrder[] = $col;
+                        }
+                    }
+
+                    $visibility[$orderKey] = $normalizedOrder;
+                }
+            }
+        }
+        echo json_encode(['result' => 'success', 'visibility' => $visibility]);
+        break;
+    case 'saveColumnVisibility':
+        $prefFile = '/boot/config/plugins/compose.manager/column_visibility.json';
+        $prefDir = dirname($prefFile);
+        $defaults = [
+            'stack' => [
+                'update' => true,
+                'containers' => true,
+                'uptime' => true,
+                'health' => true,
+                'cpu' => true,
+                'memory' => true,
+                'net_io' => false,
+                'block_io' => false,
+                'description' => true,
+                'path' => true,
+            ],
+            'service' => [
+                'update' => true,
+                'health' => true,
+                'cpu' => true,
+                'memory' => true,
+                'net_io' => false,
+                'block_io' => false,
+                'source' => true,
+                'tag' => true,
+                'net' => true,
+                'ip' => true,
+                'cport' => true,
+                'lport' => true,
+            ],
+        ];
+        $defaultOrder = [
+            'stackOrder' => array_keys(array_filter($defaults['stack'])),
+            'serviceOrder' => array_keys(array_filter($defaults['service'])),
+        ];
+
+        $raw = $_POST['visibility'] ?? '';
+        $parsed = json_decode((string)$raw, true);
+        if (!is_array($parsed)) {
+            echo json_encode(['result' => 'error', 'message' => 'Invalid visibility payload.']);
+            break;
+        }
+
+        $normalized = array_merge($defaults, $defaultOrder);
+        foreach (['stack', 'service'] as $scope) {
+            if (!isset($parsed[$scope]) || !is_array($parsed[$scope])) continue;
+            foreach ($defaults[$scope] as $key => $defaultVal) {
+                if (array_key_exists($key, $parsed[$scope])) {
+                    $normalized[$scope][$key] = (bool)$parsed[$scope][$key];
+                }
+            }
+        }
+
+        foreach (['stackOrder', 'serviceOrder'] as $orderKey) {
+            $scope = $orderKey === 'stackOrder' ? 'stack' : 'service';
+            $allowed = array_keys($defaults[$scope]);
+            $savedOrder = isset($parsed[$orderKey]) && is_array($parsed[$orderKey]) ? $parsed[$orderKey] : [];
+            $normalizedOrder = [];
+
+            foreach ($savedOrder as $col) {
+                if (in_array($col, $allowed, true) && $normalized[$scope][$col] && !in_array($col, $normalizedOrder, true)) {
+                    $normalizedOrder[] = $col;
+                }
+            }
+
+            foreach ($allowed as $col) {
+                if ($normalized[$scope][$col] && !in_array($col, $normalizedOrder, true)) {
+                    $normalizedOrder[] = $col;
+                }
+            }
+
+            $normalized[$orderKey] = $normalizedOrder;
+        }
+
+        if (!is_dir($prefDir)) {
+            @mkdir($prefDir, 0777, true);
+        }
+
+        $tmp = $prefFile . '.tmp';
+        $ok = @file_put_contents($tmp, json_encode($normalized, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        if ($ok === false || !@rename($tmp, $prefFile)) {
+            @unlink($tmp);
+            echo json_encode(['result' => 'error', 'message' => 'Failed to persist column visibility.']);
+            break;
+        }
+
+        echo json_encode(['result' => 'success', 'visibility' => $normalized]);
+        break;
+    case 'getPersistentContainerCache':
+        $cacheFile = '/boot/config/plugins/compose.manager/containers.cache.json';
+        $cache = is_file($cacheFile) ? json_decode(file_get_contents($cacheFile), true) : [];
+        echo json_encode(['result' => 'success', 'cache' => is_array($cache) ? $cache : []]);
+        break;
+    case 'getComposeLoadSnapshot':
+        $snapshotFile = '/tmp/compose_info_nchan.snapshot.json';
+        $snapshot = is_file($snapshotFile) ? json_decode((string)file_get_contents($snapshotFile), true) : [];
+        echo json_encode([
+            'result' => 'success',
+            'snapshot' => is_array($snapshot) ? $snapshot : [],
+        ]);
         break;
     case 'addStack':
         // Validate optional indirect inputs (folder or specific compose file)
@@ -279,6 +537,16 @@ switch ($_POST['action']) {
         $stackInfo = StackInfo::fromProject($compose_root, $script);
         $composeFilePath = $stackInfo->composeFilePath ?? ($stackInfo->composeSource . '/compose.yaml');
 
+        // Optional explicit file selection (e.g. additional compose files)
+        $requestedFile = resolveRequestedComposeFile($stackInfo);
+        if ($requestedFile === false) {
+            echo json_encode(['result' => 'error', 'message' => 'Requested file is not part of this stack.']);
+            break;
+        }
+        if ($requestedFile !== null) {
+            $composeFilePath = $requestedFile;
+        }
+
         // Check file existence consistently regardless of how path was resolved
         if (is_file($composeFilePath)) {
             $scriptContents = file_get_contents($composeFilePath);
@@ -431,12 +699,24 @@ switch ($_POST['action']) {
         $stackInfo = StackInfo::fromProject($compose_root, $script);
         $composeFilePath = $stackInfo->composeFilePath ?? ($stackInfo->composeSource . '/' . COMPOSE_FILE_NAMES[0]);
 
+        // Optional explicit file selection (e.g. additional compose files)
+        $requestedFile = resolveRequestedComposeFile($stackInfo);
+        if ($requestedFile === false) {
+            echo json_encode(['result' => 'error', 'message' => 'Requested file is not part of this stack.']);
+            break;
+        }
+        $isMainComposeFile = $requestedFile === null || Path::refersToSamePath($requestedFile, $composeFilePath);
+        if ($requestedFile !== null) {
+            $composeFilePath = $requestedFile;
+        }
+
         if (rejectStaleClientPath($composeFilePath, 'compose file')) {
             break;
         }
 
-        // Before saving, detect service renames and migrate override entries in the project override only
-        if (is_file($composeFilePath)) {
+        // Before saving, detect service renames and migrate override entries in the project override only.
+        // Rename migration only applies to the main compose file.
+        if ($isMainComposeFile && is_file($composeFilePath)) {
             $oldContent = file_get_contents($composeFilePath);
             $stackInfo->overrideInfo->migrateOnRename($oldContent, $scriptContents);
         }
@@ -701,6 +981,31 @@ switch ($_POST['action']) {
         $defaultProfileFile = "$compose_root/$script/default_profile";
         $defaultProfile = is_file($defaultProfileFile) ? trim(file_get_contents($defaultProfileFile)) : "";
 
+        // Get additional compose files (one path per line)
+        $extraComposeFilesFile = "$compose_root/$script/extra_compose_files";
+        $extraComposeFiles = is_file($extraComposeFilesFile) ? trim(file_get_contents($extraComposeFilesFile)) : "";
+
+        // Candidate compose files in the compose source folder for the
+        // Additional Compose Files selector (*compose*.y(a)ml, excluding the
+        // main compose file and override files)
+        $composeFileCandidates = [];
+        $mainComposeBase = $stackInfo->composeFilePath !== null ? basename($stackInfo->composeFilePath) : '';
+        $candidateGlob = glob($stackInfo->composeSource . '/*.{yml,yaml}', GLOB_BRACE) ?: [];
+        foreach ($candidateGlob as $candidatePath) {
+            $candidateBase = basename($candidatePath);
+            if (stripos($candidateBase, 'compose') === false) {
+                continue;
+            }
+            if ($candidateBase === $mainComposeBase) {
+                continue;
+            }
+            if (stripos($candidateBase, '.override.') !== false) {
+                continue;
+            }
+            $composeFileCandidates[] = $candidateBase;
+        }
+        sort($composeFileCandidates);
+
         // Get labels tab view mode (per-stack)
         $labelsViewModeFile = "$compose_root/$script/labels_view_mode";
         $labelsViewMode = is_file($labelsViewModeFile) ? strtolower(trim(file_get_contents($labelsViewModeFile))) : 'basic';
@@ -763,6 +1068,9 @@ switch ($_POST['action']) {
             'iconUrl' => $iconUrl,
             'webuiUrl' => $webuiUrl,
             'defaultProfile' => $defaultProfile,
+            'extraComposeFiles' => $extraComposeFiles,
+            'composeFileCandidates' => $composeFileCandidates,
+            'editableComposeFiles' => $stackInfo->getEditableComposeFiles(),
             'labelsViewMode' => $labelsViewMode,
             'useDefaultComposeFiles' => $useDefaultComposeFiles,
             'indirectMode' => $stackInfo->indirectMode,
@@ -896,6 +1204,43 @@ switch ($_POST['action']) {
             }
         }
 
+        // Additional compose files (one path per line, absolute or relative to compose source).
+        // Only processed when the client sends the field: a stale UI session
+        // that predates this setting must not silently clear it.
+        $extraComposeFilesProvided = isset($_POST['extraComposeFiles']);
+        $extraComposeFiles = $extraComposeFilesProvided ? trim($_POST['extraComposeFiles']) : "";
+        $extraComposeFilesNormalized = [];
+        $extraComposeFilesError = '';
+        foreach (preg_split('/\R/', $extraComposeFiles) as $extraLine) {
+            $extraLine = trim($extraLine);
+            if ($extraLine === '' || strpos($extraLine, '#') === 0) {
+                continue;
+            }
+            if (preg_match('/\.ya?ml$/i', $extraLine) !== 1) {
+                $extraComposeFilesError = 'Additional compose file must be a .yml or .yaml file: ' . $extraLine;
+                break;
+            }
+            if (Path::isAbsolutePath($extraLine)) {
+                $realExtra = realpath($extraLine);
+                if ($realExtra === false || !is_file($realExtra)) {
+                    $extraComposeFilesError = 'Additional compose file does not exist: ' . $extraLine;
+                    break;
+                }
+                if (!Path::isAllowedPath($realExtra, ['/mnt', '/boot/config'])) {
+                    $extraComposeFilesError = 'Additional compose files must be under /mnt/ or /boot/config/.';
+                    break;
+                }
+            } elseif (strpos($extraLine, '..') !== false) {
+                $extraComposeFilesError = 'Relative additional compose file paths must not contain "..": ' . $extraLine;
+                break;
+            }
+            $extraComposeFilesNormalized[] = $extraLine;
+        }
+        if ($extraComposeFilesError !== '') {
+            echo json_encode(['result' => 'error', 'message' => $extraComposeFilesError]);
+            break;
+        }
+
         // --- All validation passed, now write everything ---
 
         // Set env path
@@ -932,6 +1277,17 @@ switch ($_POST['action']) {
                 @unlink($defaultProfileFile);
         } else {
             file_put_contents($defaultProfileFile, $defaultProfile);
+        }
+
+        // Set additional compose files (skipped entirely when the field was not sent)
+        if ($extraComposeFilesProvided) {
+            $extraComposeFilesFile = "$compose_root/$script/extra_compose_files";
+            if (empty($extraComposeFilesNormalized)) {
+                if (is_file($extraComposeFilesFile))
+                    @unlink($extraComposeFilesFile);
+            } else {
+                file_put_contents($extraComposeFilesFile, implode("\n", $extraComposeFilesNormalized) . "\n");
+            }
         }
 
         // Set compose file discovery mode
@@ -1065,6 +1421,7 @@ switch ($_POST['action']) {
                         $rawContainer['Image'] = $inspect['Config']['Image'] ?? '';
                         $rawContainer['Created'] = $inspect['Created'] ?? '';
                         $rawContainer['StartedAt'] = $inspect['State']['StartedAt'] ?? '';
+                        $rawContainer['Health'] = $inspect['State']['Health']['Status'] ?? '';
 
                         // Get ports (raw bindings - IP resolved below after network detection)
                         $ports = [];
@@ -1290,6 +1647,25 @@ switch ($_POST['action']) {
 
         $updateResults = [];
         $DockerUpdate = new DockerUpdate();
+        $persistentContainerCache = composeLoadPersistentContainerCache();
+        $stackContainerCache = $persistentContainerCache[$script] ?? [];
+        $iconByService = [];
+        $iconByName = [];
+        foreach ($stackContainerCache as $cachedService => $cachedContainer) {
+            if (!is_array($cachedContainer)) {
+                continue;
+            }
+            $cachedIcon = trim((string) ($cachedContainer['icon'] ?? ''));
+            if ($cachedIcon !== '') {
+                $iconByService[(string) $cachedService] = $cachedIcon;
+            }
+            $cachedName = trim((string) ($cachedContainer['name'] ?? ''));
+            if ($cachedName !== '' && $cachedIcon !== '') {
+                $iconByName[$cachedName] = $cachedIcon;
+            }
+        }
+        $inspectIconCache = [];
+        $stackCacheDirty = false;
 
         // Load the update status file to get SHA values
         $dockerManPaths = [
@@ -1320,10 +1696,32 @@ switch ($_POST['action']) {
 
             // Second pass: check updates and collect results
             foreach ($rows as $container) {
-                $containerName = $container['Name'] ?? '';
-                $image = $container['Image'] ?? '';
+                $containerLower = array_change_key_case($container, CASE_LOWER);
+                $containerName = trim((string) ($containerLower['name'] ?? $containerLower['names'] ?? ''));
+                $service = trim((string) ($containerLower['service'] ?? ''));
+                $image = trim((string) ($containerLower['image'] ?? ''));
 
                 if ($containerName && $image) {
+                    $icon = composeResolveContainerIcon($containerName, $service, $iconByService, $iconByName, $inspectIconCache);
+
+                    if ($service !== '' && $icon !== '') {
+                        if (!isset($stackContainerCache[$service]) || !is_array($stackContainerCache[$service])) {
+                            $stackContainerCache[$service] = [];
+                        }
+                        if (($stackContainerCache[$service]['icon'] ?? '') !== $icon) {
+                            $stackContainerCache[$service]['icon'] = $icon;
+                            $stackCacheDirty = true;
+                        }
+                        if (($stackContainerCache[$service]['name'] ?? '') === '') {
+                            $stackContainerCache[$service]['name'] = $containerName;
+                            $stackCacheDirty = true;
+                        }
+                        if (($stackContainerCache[$service]['service'] ?? '') === '') {
+                            $stackContainerCache[$service]['service'] = $service;
+                            $stackCacheDirty = true;
+                        }
+                    }
+
                     // Normalize image name (strip docker.io/ prefix, @sha256: digest, add library/ for official images)
                     $image = ContainerInfo::normalizeImageForUpdateCheck($image);
 
@@ -1354,13 +1752,20 @@ switch ($_POST['action']) {
 
                     $updateResults[] = ContainerInfo::fromUpdateResponse([
                         'container' => $containerName,
+                        'service' => $service,
                         'image' => $image,
+                        'icon' => $icon,
                         'hasUpdate' => $hasUpdate,
                         'status' => $statusText,
                         'localSha' => $localSha,
                         'remoteSha' => $remoteSha
                     ])->toUpdateArray();
                 }
+            }
+
+            if ($stackCacheDirty) {
+                $persistentContainerCache[$script] = $stackContainerCache;
+                composeSavePersistentContainerCache($persistentContainerCache);
             }
         }
 
@@ -1390,6 +1795,9 @@ switch ($_POST['action']) {
 
         $allUpdates = [];
         $DockerUpdate = new DockerUpdate();
+        $persistentContainerCache = composeLoadPersistentContainerCache();
+        $persistentCacheDirty = false;
+        $inspectIconCache = [];
 
         // Path to update status file
         $dockerManPaths = [
@@ -1399,6 +1807,23 @@ switch ($_POST['action']) {
         foreach (StackInfo::allFromRoot($compose_root) as $stackInfoItem) {
             $stackName = $stackInfoItem->projectFolder;
             $projectName = $stackInfoItem->projectFolder;
+            $stackContainerCache = $persistentContainerCache[$stackName] ?? [];
+            $iconByService = [];
+            $iconByName = [];
+            foreach ($stackContainerCache as $cachedService => $cachedContainer) {
+                if (!is_array($cachedContainer)) {
+                    continue;
+                }
+                $cachedIcon = trim((string) ($cachedContainer['icon'] ?? ''));
+                if ($cachedIcon !== '') {
+                    $iconByService[(string) $cachedService] = $cachedIcon;
+                }
+                $cachedName = trim((string) ($cachedContainer['name'] ?? ''));
+                if ($cachedName !== '' && $cachedIcon !== '') {
+                    $iconByName[$cachedName] = $cachedIcon;
+                }
+            }
+            $stackCacheDirty = false;
 
             $rows = $stackInfoItem->getContainerList();
 
@@ -1434,11 +1859,32 @@ switch ($_POST['action']) {
                 foreach ($rows as $container) {
                     $containerLower = array_change_key_case($container, CASE_LOWER);
                     $containerName = trim($containerLower['name'] ?? $containerLower['names'] ?? '');
+                    $service = trim((string) ($containerLower['service'] ?? ''));
                     $image = trim($containerLower['image'] ?? '');
                     $state = strtolower(trim($containerLower['state'] ?? ''));
 
                     // Only check updates for running containers
                     if ($containerName && $image && $state === 'running') {
+                        $icon = composeResolveContainerIcon($containerName, $service, $iconByService, $iconByName, $inspectIconCache);
+
+                        if ($service !== '' && $icon !== '') {
+                            if (!isset($stackContainerCache[$service]) || !is_array($stackContainerCache[$service])) {
+                                $stackContainerCache[$service] = [];
+                            }
+                            if (($stackContainerCache[$service]['icon'] ?? '') !== $icon) {
+                                $stackContainerCache[$service]['icon'] = $icon;
+                                $stackCacheDirty = true;
+                            }
+                            if (($stackContainerCache[$service]['name'] ?? '') === '') {
+                                $stackContainerCache[$service]['name'] = $containerName;
+                                $stackCacheDirty = true;
+                            }
+                            if (($stackContainerCache[$service]['service'] ?? '') === '') {
+                                $stackContainerCache[$service]['service'] = $service;
+                                $stackCacheDirty = true;
+                            }
+                        }
+
                         $image = ContainerInfo::normalizeImageForUpdateCheck($image);
 
                         $DockerUpdate->reloadUpdateStatus($image);
@@ -1467,13 +1913,20 @@ switch ($_POST['action']) {
 
                         $stackUpdates[] = ContainerInfo::fromUpdateResponse([
                             'container' => $containerName,
+                            'service' => $service,
                             'image' => $image,
+                            'icon' => $icon,
                             'hasUpdate' => $hasUpdate,
                             'status' => ($updateStatus === null) ? 'unknown' : ($updateStatus ? 'up-to-date' : 'update-available'),
                             'localSha' => $localSha,
                             'remoteSha' => $remoteSha
                         ])->toUpdateArray();
                     }
+                }
+
+                if ($stackCacheDirty) {
+                    $persistentContainerCache[$stackName] = $stackContainerCache;
+                    $persistentCacheDirty = true;
                 }
             }
 
@@ -1482,6 +1935,10 @@ switch ($_POST['action']) {
                 'hasUpdate' => $hasStackUpdate,
                 'containers' => $stackUpdates
             ];
+        }
+
+        if ($persistentCacheDirty) {
+            composeSavePersistentContainerCache($persistentContainerCache);
         }
 
         // Save the update status for all stacks
@@ -1504,15 +1961,17 @@ switch ($_POST['action']) {
     case 'getSavedUpdateStatus':
         // Load saved update status from file
         $composeUpdateStatusFile = COMPOSE_UPDATE_STATUS_FILE;
+        // Check if docker.versions plugin directory exists (where changelog assets are expected)
+        $dockerVersionsInstalled = is_dir('/usr/local/emhttp/plugins/docker.versions');
         if (is_file($composeUpdateStatusFile)) {
             $savedStatus = json_decode(file_get_contents($composeUpdateStatusFile), true);
             if ($savedStatus) {
-                echo json_encode(['result' => 'success', 'stacks' => $savedStatus]);
+                echo json_encode(['result' => 'success', 'stacks' => $savedStatus, 'dockerVersionsInstalled' => $dockerVersionsInstalled]);
             } else {
-                echo json_encode(['result' => 'success', 'stacks' => []]);
+                echo json_encode(['result' => 'success', 'stacks' => [], 'dockerVersionsInstalled' => $dockerVersionsInstalled]);
             }
         } else {
-            echo json_encode(['result' => 'success', 'stacks' => []]);
+            echo json_encode(['result' => 'success', 'stacks' => [], 'dockerVersionsInstalled' => $dockerVersionsInstalled]);
         }
         break;
     case 'getLogs':

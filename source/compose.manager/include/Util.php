@@ -580,8 +580,113 @@ function pruneOverrideContentServices(string $overrideContent, array $validServi
     // Safety check: if ALL services in the override would be removed, don't prune.
     // This likely indicates a rename scenario rather than genuine orphans.
     // Wiping to "services: {}" would destroy user data (icons, webui labels, etc).
+    // Exception: if every orphaned service block is clearly auto-managed by this
+    // plugin, it is safe to remove all of them.
     if (count($removedRanges) === count($serviceRanges)) {
-        return ['content' => $overrideContent, 'removed' => [], 'changed' => false];
+        $allAutoManaged = false;
+        $singleServiceOrphan = count($removedRanges) === 1;
+
+        if (function_exists('yaml_parse')) {
+            $parsedOverride = @yaml_parse($overrideContent);
+            if (is_array($parsedOverride) && isset($parsedOverride['services']) && is_array($parsedOverride['services'])) {
+                $allowedLabelKeys = [
+                    'net.unraid.docker.managed' => true,
+                    'net.unraid.docker.icon' => true,
+                    'net.unraid.docker.webui' => true,
+                    'net.unraid.docker.shell' => true,
+                ];
+
+                $allAutoManaged = true;
+                foreach ($removedRanges as $range) {
+                    $serviceDef = $parsedOverride['services'][$range['name']] ?? null;
+                    if (!is_array($serviceDef)) {
+                        $allAutoManaged = false;
+                        break;
+                    }
+
+                    $serviceKeys = array_keys($serviceDef);
+                    if ($serviceKeys !== ['labels']) {
+                        $allAutoManaged = false;
+                        break;
+                    }
+
+                    $labels = $serviceDef['labels'] ?? null;
+                    if (!is_array($labels) || empty($labels)) {
+                        $allAutoManaged = false;
+                        break;
+                    }
+
+                    $hasManagedLabel = array_key_exists('net.unraid.docker.managed', $labels);
+                    if (!$hasManagedLabel && !$singleServiceOrphan) {
+                        $allAutoManaged = false;
+                        break;
+                    }
+
+                    foreach (array_keys($labels) as $labelKey) {
+                        if (!isset($allowedLabelKeys[(string) $labelKey])) {
+                            $allAutoManaged = false;
+                            break 2;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!$allAutoManaged) {
+            $allAutoManaged = true;
+            foreach ($removedRanges as $range) {
+                $serviceBlockLines = array_slice($lines, $range['start'], $range['end'] - $range['start'] + 1);
+                $serviceBlock = implode("\n", $serviceBlockLines);
+
+                if (strpos($serviceBlock, 'net.unraid.docker.managed') !== false) {
+                    continue;
+                }
+
+                if (!$singleServiceOrphan) {
+                    $allAutoManaged = false;
+                    break;
+                }
+
+                $hasOnlyAllowedLabels = false;
+                $sawLabelsSection = false;
+                foreach ($serviceBlockLines as $offset => $blockLine) {
+                    if ($offset === 0) {
+                        continue;
+                    }
+
+                    if (trim($blockLine) === '' || preg_match('/^\s*#/', $blockLine)) {
+                        continue;
+                    }
+
+                    if (preg_match('/^\s{4}labels\s*:\s*(?:#.*)?$/', $blockLine)) {
+                        $sawLabelsSection = true;
+                        $hasOnlyAllowedLabels = true;
+                        continue;
+                    }
+
+                    if (preg_match('/^\s{6}(net\.unraid\.docker\.(?:icon|webui|shell))\s*:\s*/', $blockLine)) {
+                        if (!$sawLabelsSection) {
+                            $hasOnlyAllowedLabels = false;
+                            break;
+                        }
+                        $hasOnlyAllowedLabels = true;
+                        continue;
+                    }
+
+                    $hasOnlyAllowedLabels = false;
+                    break;
+                }
+
+                if (!$hasOnlyAllowedLabels) {
+                    $allAutoManaged = false;
+                    break;
+                }
+            }
+        }
+
+        if (!$allAutoManaged) {
+            return ['content' => $overrideContent, 'removed' => [], 'changed' => false];
+        }
     }
 
     // Only prune specific orphaned services while preserving others
@@ -594,6 +699,10 @@ function pruneOverrideContentServices(string $overrideContent, array $validServi
 
     $newLines = [];
     foreach ($lines as $lineIndex => $line) {
+        if (count($removedRanges) === count($serviceRanges) && $lineIndex === $servicesStart) {
+            $newLines[] = 'services: {}';
+            continue;
+        }
         if (!isset($removeByLine[$lineIndex])) {
             $newLines[] = $line;
         }
@@ -1041,6 +1150,7 @@ class OverrideInfo
  * @property array $volumes Volume mounts [{source, destination, type}]
  * @property string $created ISO datetime when container was created
  * @property string $startedAt ISO datetime when container was started
+ * @property string $health Container health status (healthy/unhealthy/starting/empty)
  * @method static ContainerInfo fromDockerInspect(array $raw) Create a ContainerInfo from a docker inspect + compose ps result array
  * @method static ContainerInfo fromUpdateResponse(array $raw) Create a ContainerInfo from an update-check response element
  * 
@@ -1087,6 +1197,8 @@ class ContainerInfo
     public string $created = '';
     /** @var string ISO datetime when container was started */
     public string $startedAt = '';
+    /** @var string Container health status (healthy/unhealthy/starting/empty) */
+    public string $health = '';
 
     private function __construct() {}
 
@@ -1133,6 +1245,7 @@ class ContainerInfo
         $info->volumes = $raw['Volumes'] ?? $raw['volumes'] ?? [];
         $info->created = $raw['Created'] ?? $raw['created'] ?? '';
         $info->startedAt = $raw['StartedAt'] ?? $raw['startedAt'] ?? '';
+        $info->health = strtolower((string)($raw['Health'] ?? $raw['health'] ?? ''));
 
         // Normalize update status (accept PascalCase or camelCase)
         $info->updateStatus = $raw['updateStatus'] ?? $raw['UpdateStatus'] ?? $raw['status'] ?? 'unknown';
@@ -1163,6 +1276,7 @@ class ContainerInfo
         $info->id = $raw['ID'] ?? $raw['Id'] ?? $raw['id'] ?? '';
         $info->service = $raw['service'] ?? $raw['Service'] ?? '';
         $info->image = $raw['image'] ?? $raw['Image'] ?? '';
+        $info->icon = $raw['icon'] ?? $raw['Icon'] ?? '';
         $info->hasUpdate = $raw['hasUpdate'] ?? false;
         $info->updateStatus = $raw['status'] ?? $raw['updateStatus'] ?? 'unknown';
         $info->localSha = $raw['localSha'] ?? '';
@@ -1227,6 +1341,7 @@ class ContainerInfo
             'volumes' => $this->volumes,
             'created' => $this->created,
             'startedAt' => $this->startedAt,
+            'health' => $this->health,
         ];
     }
 
@@ -1239,7 +1354,9 @@ class ContainerInfo
     {
         return [
             'name' => $this->name,
+            'service' => $this->service,
             'image' => $this->image,
+            'icon' => $this->icon,
             'hasUpdate' => $this->hasUpdate,
             'updateStatus' => $this->updateStatus,
             'localSha' => $this->localSha,
@@ -1424,6 +1541,15 @@ class StackInfo
             if ($this->invalidIndirectPath !== null) {
                 // Stack has a broken indirect reference — allow degraded construction
                 // so the user can fix it in the Settings editor.
+                composeLogger('Preparing degraded stack load due to invalid indirect path', [
+                    'project' => $this->projectFolder,
+                    'projectPath' => $this->path,
+                    'indirectMode' => $this->indirectMode,
+                    'indirectPath' => $this->indirectPath,
+                    'invalidIndirectPath' => $this->invalidIndirectPath,
+                    'composeSource' => $this->composeSource,
+                    'composeFilePath' => $this->composeFilePath,
+                ], 'user', 'debug', 'stack');
                 composeLogger("Stack $this->projectFolder has an invalid indirect path; loading in degraded mode", null, 'user', 'warning', 'stack');
                 $this->overrideInfo = OverrideInfo::fromStackInfo($this);
                 return;
@@ -1513,6 +1639,16 @@ class StackInfo
                 || Path::hasTraversal($indirectPath)
             ) {
                 // Path is structurally invalid — ignore it and keep stack local without mutating files.
+                composeLogger('Invalid indirect metadata rejected during structural validation', [
+                    'project' => $this->projectFolder,
+                    'indirectFile' => $this->path . '/indirect',
+                    'rawIndirectPath' => $indirectPath,
+                    'isEmpty' => ($indirectPath === ''),
+                    'hasNewline' => Path::hasNewline($indirectPath),
+                    'hasSeparator' => Path::hasSeparator($indirectPath),
+                    'hasWindowsStylePath' => Path::hasWindowsStylePath($indirectPath),
+                    'hasTraversal' => Path::hasTraversal($indirectPath),
+                ], 'user', 'debug', 'stack');
                 composeLogger("Ignoring structurally invalid indirect path at $this->path/indirect: " . sanitizeLogText($indirectPath), null, 'user', 'warning', 'stack');
                 return false;
             }
@@ -1600,6 +1736,9 @@ class StackInfo
         $sanitizedProjectString = compose_manager_sanitize_project_name($rawProjectString, $wasEmpty);
 
         if ($wasEmpty) {
+            composeLogger('Project name sanitization produced empty output; fallback name will be used', [
+                'input' => $rawProjectString,
+            ], 'user', 'debug', 'stack');
             composeLogger("Sanitized project string is empty after processing; defaulting to 'compose'", ['input' => $rawProjectString], 'user', 'warning', 'stack');
         }
 
@@ -1621,6 +1760,11 @@ class StackInfo
             // If no display name is set, initialize it from the project folder name.
             $displayName = $this->projectFolder;
             $this->writeMetadata('name', $displayName);
+            composeLogger('Missing display name metadata detected; initializing from project folder', [
+                'project' => $this->projectFolder,
+                'displayName' => $displayName,
+                'metadataFile' => $this->path . '/name',
+            ], 'user', 'debug', 'stack');
             composeLogger("Initialized missing display name from project folder: '$displayName'", ['project' => $this->projectFolder, 'displayName' => $displayName], 'user', 'warning', 'stack');
         }
         $this->displayName = $displayName;
@@ -1701,6 +1845,11 @@ class StackInfo
             return realpath($rawEnvPath) ?: $rawEnvPath;
         }
 
+        composeLogger('Explicit envpath is set but not resolvable to a file; falling back to default env resolution', [
+            'project' => $this->projectFolder,
+            'envpath' => $rawEnvPath,
+            'composeSource' => $this->composeSource,
+        ], 'user', 'debug', 'stack');
         composeLogger("Ignoring invalid envpath for stack $this->projectFolder: file not found", ['envpath' => $rawEnvPath], 'user', 'warning', 'stack');
         return null;
     }
@@ -1765,6 +1914,40 @@ class StackInfo
     }
 
     /**
+     * Parse additional compose file paths from the `extra_compose_files`
+     * metadata file (one path per line; `#` comments allowed).
+     *
+     * Paths may be absolute or relative to the compose source folder.
+     * Missing files are skipped with a warning so a stale entry cannot
+     * break stack operations.
+     *
+     * @return string[]
+     */
+    private function getExtraComposeFiles(): array
+    {
+        $raw = $this->readMetadata('extra_compose_files');
+        if ($raw === null || $raw === '') {
+            return [];
+        }
+
+        $files = [];
+        foreach (preg_split('/\R/', $raw) as $line) {
+            $line = trim($line);
+            if ($line === '' || str_starts_with($line, '#')) {
+                continue;
+            }
+            $path = Path::isAbsolutePath($line) ? $line : $this->composeSource . '/' . $line;
+            if (!is_file($path)) {
+                composeLogger("Ignoring missing extra compose file for stack $this->projectFolder", ['path' => $path], 'user', 'warning', 'stack');
+                continue;
+            }
+            $files[] = $path;
+        }
+
+        return $files;
+    }
+
+    /**
      * Normalize compose file paths for deduplication.
      *
      * @return string
@@ -1820,6 +2003,26 @@ class StackInfo
         return $entries;
     }
 
+    /**
+     * Compose files that are directly editable in the stack editor: every
+     * existing file that contributes to the compose command, in `-f` order
+     * (main compose file, override file, COMPOSE_FILE env entries, and
+     * `extra_compose_files` metadata).
+     *
+     * @return string[]
+     */
+    public function getEditableComposeFiles(): array
+    {
+        $files = [];
+        foreach ($this->getComposeFilePaths() as $path) {
+            if (!is_file($path)) {
+                continue;
+            }
+            $files[] = $path;
+        }
+        return $files;
+    }
+
     private function getComposeFilePaths(): array
     {
         $paths = [];
@@ -1832,6 +2035,10 @@ class StackInfo
         }
 
         foreach ($this->getAdditionalComposeFilesFromEnv() as $extraFile) {
+            $paths[] = $extraFile;
+        }
+
+        foreach ($this->getExtraComposeFiles() as $extraFile) {
             $paths[] = $extraFile;
         }
 
@@ -1875,8 +2082,8 @@ class StackInfo
     /**
      * Determine whether this stack has manual settings that require explicit mode.
      *
-    * Explicit env-path and indirect-file selections are treated as explicit-mode
-    * signals, so default file discovery is bypassed.
+    * Explicit env-path, extra compose files, and indirect-file selections are
+    * treated as explicit-mode signals, so default file discovery is bypassed.
      *
      * @return bool
      */
@@ -1884,6 +2091,11 @@ class StackInfo
     {
         $configuredEnvPath = $this->readMetadata('envpath');
         if ($configuredEnvPath !== null && trim($configuredEnvPath) !== '') {
+            return true;
+        }
+
+        $extraComposeFiles = $this->readMetadata('extra_compose_files');
+        if ($extraComposeFiles !== null && $extraComposeFiles !== '') {
             return true;
         }
 

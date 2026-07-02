@@ -109,12 +109,15 @@ class ComposeListHtmlTest extends TestCase
         $this->assertMatchesRegularExpression("/class='[^']*\\bcm-advanced\\b[^']*'/", $source);
     }
 
-    public function testAdvancedLoadColumnMarkupExists(): void
+    public function testAdvancedMetricColumnsMarkupExists(): void
     {
         $source = $this->getPageSource();
-        $this->assertStringContainsString("col-load compose-load-cell", $source);
+        $this->assertStringContainsString("col-cpu compose-load-cell", $source);
+        $this->assertStringContainsString("col-memory compose-load-cell", $source);
         $this->assertStringContainsString("compose-stack-cpu-", $source);
         $this->assertStringContainsString("compose-stack-mem-", $source);
+        $this->assertStringContainsString("compose-stack-cpu-bar-", $source);
+        $this->assertStringContainsString("compose-stack-mem-bar-", $source);
     }
 
     // ===========================================
@@ -138,7 +141,7 @@ class ComposeListHtmlTest extends TestCase
         $source = $this->getPageSource();
         $this->assertStringContainsString('No Docker Compose stacks found', $source);
         $this->assertStringContainsString('Add New Stack', $source);
-        $this->assertStringContainsString("colspan='10'", $source);
+        $this->assertStringContainsString("colspan='14'", $source);
     }
 
     // ===========================================

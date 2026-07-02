@@ -16,6 +16,7 @@ namespace ComposeManager\Tests;
 
 use PluginTests\TestCase;
 use PluginTests\Mocks\FunctionMocks;
+use PluginTests\StreamWrapper\UnraidStreamWrapper;
 
 
 require_once '/usr/local/emhttp/plugins/compose.manager/include/Util.php';
@@ -871,6 +872,52 @@ class ExecActionsTest extends TestCase
         $this->assertEquals('success', $result['result']);
     }
 
+    public function testSetStackSettingsPreservesExtraComposeFilesWhenFieldMissing(): void
+    {
+        $stackPath = $this->createTestStack('test-stack');
+        file_put_contents($stackPath . '/extra_compose_files', "compose.gpu.yaml\n");
+
+        // A stale UI session that predates the field posts without it
+        $output = $this->executeAction('setStackSettings', [
+            'script' => 'test-stack',
+            'defaultProfile' => 'staging',
+        ]);
+
+        $result = json_decode($output, true);
+        $this->assertEquals('success', $result['result']);
+        $this->assertFileExists($stackPath . '/extra_compose_files');
+        $this->assertEquals("compose.gpu.yaml\n", file_get_contents($stackPath . '/extra_compose_files'));
+    }
+
+    public function testSetStackSettingsClearsExtraComposeFilesWhenFieldEmpty(): void
+    {
+        $stackPath = $this->createTestStack('test-stack');
+        file_put_contents($stackPath . '/extra_compose_files', "compose.gpu.yaml\n");
+
+        $output = $this->executeAction('setStackSettings', [
+            'script' => 'test-stack',
+            'extraComposeFiles' => '',
+        ]);
+
+        $result = json_decode($output, true);
+        $this->assertEquals('success', $result['result']);
+        $this->assertFileDoesNotExist($stackPath . '/extra_compose_files');
+    }
+
+    public function testSetStackSettingsWritesExtraComposeFiles(): void
+    {
+        $stackPath = $this->createTestStack('test-stack');
+
+        $output = $this->executeAction('setStackSettings', [
+            'script' => 'test-stack',
+            'extraComposeFiles' => "compose.gpu.yaml\ncompose.debug.yaml",
+        ]);
+
+        $result = json_decode($output, true);
+        $this->assertEquals('success', $result['result']);
+        $this->assertEquals("compose.gpu.yaml\ncompose.debug.yaml\n", file_get_contents($stackPath . '/extra_compose_files'));
+    }
+
     public function testSetStackSettingsRejectsBothExternalComposePathAndFile(): void
     {
         $this->createTestStack('test-stack');
@@ -1055,6 +1102,49 @@ class ExecActionsTest extends TestCase
             $this->assertEquals('error', $result['result']);
             $this->assertStringContainsString('Invalid icon', $result['message']);
         }
+    }
+
+    // ===========================================
+    // getSavedUpdateStatus Action Tests
+    // ===========================================
+
+    /**
+     * Returns dockerVersionsInstalled=false when the plugin directory is absent.
+     */
+    public function testGetSavedUpdateStatusDockerVersionsNotInstalled(): void
+    {
+        @unlink(COMPOSE_UPDATE_STATUS_FILE);
+
+        // Make the test deterministic even when running on a host that has docker.versions installed.
+        $fakeDir = sys_get_temp_dir() . '/fake_docker_versions_absent_' . getmypid();
+        UnraidStreamWrapper::addMapping('/usr/local/emhttp/plugins/docker.versions', $fakeDir);
+
+        $output = $this->executeAction('getSavedUpdateStatus');
+        $result = json_decode($output, true);
+
+        $this->assertIsArray($result);
+        $this->assertEquals('success', $result['result']);
+        $this->assertSame([], $result['stacks']);
+        $this->assertFalse($result['dockerVersionsInstalled']);
+    }
+
+
+
+    /**
+     * Falls back to empty stacks when the status file contains invalid JSON.
+     */
+    public function testGetSavedUpdateStatusHandlesInvalidStatusFile(): void
+    {
+        file_put_contents(COMPOSE_UPDATE_STATUS_FILE, 'not-valid-json');
+
+        $output = $this->executeAction('getSavedUpdateStatus');
+        $result = json_decode($output, true);
+
+        $this->assertIsArray($result);
+        $this->assertEquals('success', $result['result']);
+        $this->assertSame([], $result['stacks']);
+
+        @unlink(COMPOSE_UPDATE_STATUS_FILE);
     }
 
     // ===========================================

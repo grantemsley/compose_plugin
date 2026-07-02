@@ -317,6 +317,39 @@ class UtilTest extends TestCase
         $this->assertEquals($override, $result['content']);
     }
 
+    public function testPruneOverrideContentServicesRemovesAllAutoManagedOrphans(): void
+    {
+        $override = "services:\n" .
+            "  old-service:\n" .
+            "    labels:\n" .
+            "      net.unraid.docker.managed: \"compose-manager\"\n" .
+            "      net.unraid.docker.webui: \"https://example.com\"\n";
+
+        $result = pruneOverrideContentServices($override, ['new-service']);
+
+        $this->assertTrue($result['changed']);
+        $this->assertEquals(['old-service'], $result['removed']);
+        $this->assertStringContainsString("services: {}", $result['content']);
+        $this->assertStringNotContainsString("old-service", $result['content']);
+    }
+
+    public function testPruneOverrideContentServicesRemovesLegacyLabelsOnlyOrphans(): void
+    {
+        $override = "services:\n" .
+            "  old-service:\n" .
+            "    labels:\n" .
+            "      net.unraid.docker.icon: \"icon.png\"\n" .
+            "      net.unraid.docker.webui: \"https://example.com\"\n" .
+            "      net.unraid.docker.shell: \"/bin/bash\"\n";
+
+        $result = pruneOverrideContentServices($override, ['new-service']);
+
+        $this->assertTrue($result['changed']);
+        $this->assertEquals(['old-service'], $result['removed']);
+        $this->assertStringContainsString("services: {}", $result['content']);
+        $this->assertStringNotContainsString("old-service", $result['content']);
+    }
+
     public function testPruneOverrideContentServicesPreservesOnMultipleRenames(): void
     {
         // Simulates renaming multiple services - none match anymore

@@ -1,0 +1,235 @@
+#!/usr/bin/php -q
+<?php
+/* Compose-local nchan publisher for stack/container runtime metrics.
+ *
+ * Channel: composeinfo
+ * Payload: ID;CPUPerc;MemUsage;MemPerc;NetIO;BlockIO
+ *
+ * This is intentionally namespaced to Compose Manager so we can evolve
+ * metric fields without touching Docker manager's dockerload publisher.
+ */
+
+$docroot = $_SERVER['DOCUMENT_ROOT'] ?? '/usr/local/emhttp';
+if ($docroot === '') {
+    $docroot = '/usr/local/emhttp';
+}
+
+require_once "$docroot/webGui/include/publish.php";
+require_once "$docroot/plugins/compose.manager/include/Helpers.php";
+
+composeLogger('publisher starting', null, 'user', 'info', 'nchan');
+$statusFile = '/tmp/compose_info_nchan.status';
+$snapshotFile = '/tmp/compose_info_nchan.snapshot.json';
+
+function resolvePublishIntervalMs(string $mode, int $customMs): int
+{
+    switch ($mode) {
+        case 'live':
+            return 0;
+        case 'medium':
+            return 2000;
+        case 'slow':
+            return 5000;
+        case 'custom':
+            return max(100, min(10000, $customMs));
+        default:
+            return 0;
+    }
+}
+
+function readPublishConfig(): array
+{
+    $cfgFile = '/boot/config/plugins/compose.manager/compose.manager.cfg';
+    $cfg = is_file($cfgFile) ? (@parse_ini_file($cfgFile) ?: []) : [];
+
+    $mode = strtolower(trim((string)($cfg['COMPOSE_STATS_RATE_MODE'] ?? 'live')));
+    if (!in_array($mode, ['live', 'medium', 'slow', 'custom'], true)) {
+        $mode = 'live';
+    }
+
+    $customMs = (int)($cfg['COMPOSE_STATS_CUSTOM_INTERVAL_MS'] ?? 1000);
+    if ($customMs <= 0) {
+        $customMs = 1000;
+    }
+
+    return [$mode, resolvePublishIntervalMs($mode, $customMs)];
+}
+
+function buildPayload(array $statsById): string
+{
+    if (count($statsById) === 0) {
+        return '';
+    }
+    return implode("\n", array_values($statsById));
+}
+
+function composeStripAnsiAndControl(string $value): string
+{
+    // Strip ANSI CSI sequences and other control bytes.
+    $value = preg_replace('/\x1B\[[0-9;?]*[ -\/]*[@-~]/', '', $value) ?? $value;
+    $value = preg_replace('/[\x00-\x1F\x7F-\x9F]/', '', $value) ?? $value;
+    return trim($value);
+}
+
+function composeNormalizeContainerId(string $value): string
+{
+    $value = composeStripAnsiAndControl($value);
+    if ($value === '') {
+        return '';
+    }
+    if (preg_match('/[a-f0-9]{12,64}/i', $value, $m) === 1) {
+        return strtolower($m[0]);
+    }
+    return $value;
+}
+
+@file_put_contents($statusFile, json_encode([
+    'state' => 'starting',
+    'ts' => time(),
+], JSON_UNESCAPED_SLASHES));
+while (true) {
+    [$rateMode, $publishIntervalMs] = readPublishConfig();
+    composeLogger('starting docker stats stream (mode=' . $rateMode . ', intervalMs=' . $publishIntervalMs . ')', null, 'user', 'info', 'nchan');
+
+    $cmd = "docker stats --format='{{.ID}};{{.CPUPerc}};{{.MemUsage}};{{.MemPerc}};{{.NetIO}};{{.BlockIO}}' 2>&1";
+    $descriptorspec = [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+    ];
+    $process = @proc_open($cmd, $descriptorspec, $pipes);
+    if (!is_resource($process)) {
+        composeLogger('failed to start docker stats stream; retrying', null, 'user', 'warn', 'nchan');
+        sleep(2);
+        continue;
+    }
+
+    @fclose($pipes[0]);
+    stream_set_blocking($pipes[1], false);
+
+    $statsById = [];
+    $lastPublishMs = 0;
+    $lastListenerCheckMs = 0;
+    $lastStatusWriteMs = 0;
+    $lastHeartbeatLogMs = 0;
+    $streamUpdates = 0;
+    $lastStreamLineMs = 0;
+    $cadenceSamples = 0;
+    $cadenceTotalMs = 0;
+    $cadenceMinMs = 0;
+    $cadenceMaxMs = 0;
+    $lastCadenceMs = 0;
+
+    while (true) {
+        $procStatus = proc_get_status($process);
+        if (!$procStatus['running']) {
+            composeLogger('docker stats stream stopped; restarting', $procStatus, 'user', 'warn', 'nchan');
+            break;
+        }
+
+        $line = fgets($pipes[1]);
+        $nowMs = (int)round(microtime(true) * 1000);
+
+        if ($line !== false) {
+            $trimmed = composeStripAnsiAndControl((string)$line);
+            if ($trimmed !== '' && strpos($trimmed, ';') !== false) {
+                $parts = explode(';', $trimmed, 2);
+                $id = composeNormalizeContainerId((string)($parts[0] ?? ''));
+                if ($id !== '') {
+                    $rest = trim((string)($parts[1] ?? ''));
+                    $statsById[$id] = $id . ';' . $rest;
+                    $streamUpdates++;
+
+                    if ($lastStreamLineMs > 0) {
+                        $deltaMs = max(0, $nowMs - $lastStreamLineMs);
+                        $lastCadenceMs = $deltaMs;
+                        $cadenceTotalMs += $deltaMs;
+                        $cadenceSamples++;
+                        if ($cadenceMinMs === 0 || $deltaMs < $cadenceMinMs) {
+                            $cadenceMinMs = $deltaMs;
+                        }
+                        if ($deltaMs > $cadenceMaxMs) {
+                            $cadenceMaxMs = $deltaMs;
+                        }
+                    }
+                    $lastStreamLineMs = $nowMs;
+                }
+            }
+
+            if ($publishIntervalMs === 0 || ($nowMs - $lastPublishMs) >= $publishIntervalMs) {
+                $payload = buildPayload($statsById);
+                publish('composeinfo', $payload, 1, true, 10);
+                @file_put_contents($snapshotFile, json_encode([
+                    'ts' => time(),
+                    'raw' => $payload,
+                ], JSON_UNESCAPED_SLASHES));
+                $lastPublishMs = $nowMs;
+                $lastListenerCheckMs = $nowMs;
+            }
+        } else {
+            // Keep abort timer progressing even if the stream is temporarily quiet.
+            if (($nowMs - $lastListenerCheckMs) >= 1000) {
+                $payload = buildPayload($statsById);
+                publish('composeinfo', $payload, 1, true, 10);
+                $lastListenerCheckMs = $nowMs;
+            }
+            usleep(100000);
+        }
+
+        // Visible runtime heartbeat for troubleshooting startup/loop health.
+        if (($nowMs - $lastStatusWriteMs) >= 5000) {
+            $sample = buildPayload($statsById);
+            if (strlen($sample) > 120) {
+                $sample = substr($sample, 0, 120);
+            }
+            $preview = '';
+            if (!empty($statsById)) {
+                $preview = array_values($statsById)[0];
+            }
+            $cadenceAvgMs = $cadenceSamples > 0 ? (int)round($cadenceTotalMs / $cadenceSamples) : 0;
+            @file_put_contents($statusFile, json_encode([
+                'state' => 'running',
+                'ts' => time(),
+                'mode' => $rateMode,
+                'intervalMs' => $publishIntervalMs,
+                'rows' => count($statsById),
+                'updates' => $streamUpdates,
+                'cadenceAvgMs' => $cadenceAvgMs,
+                'cadenceMinMs' => $cadenceMinMs,
+                'cadenceMaxMs' => $cadenceMaxMs,
+                'cadenceLastMs' => $lastCadenceMs,
+                'sample' => $sample,
+            ], JSON_UNESCAPED_SLASHES));
+            $lastStatusWriteMs = $nowMs;
+        }
+
+        // Lightweight health log every ~5 minutes.
+        if (($nowMs - $lastHeartbeatLogMs) >= 300000) {
+            $preview = '';
+            if (!empty($statsById)) {
+                $preview = array_values($statsById)[0];
+            }
+            if (strlen($preview) > 140) {
+                $preview = substr($preview, 0, 140) . '...';
+            }
+            $cadenceAvgMs = $cadenceSamples > 0 ? (int)round($cadenceTotalMs / $cadenceSamples) : 0;
+            composeLogger('publisher heartbeat streamUpdates=' . $streamUpdates . ' rows=' . count($statsById) . ' cadenceAvgMs=' . $cadenceAvgMs . ' cadenceMinMs=' . $cadenceMinMs . ' cadenceMaxMs=' . $cadenceMaxMs . ' cadenceLastMs=' . $lastCadenceMs . ' sample=' . ($preview !== '' ? $preview : '<empty>'), null, 'user', 'debug', 'nchan');
+            $lastHeartbeatLogMs = $nowMs;
+
+            // Reset cadence window each heartbeat so logs show recent behavior.
+            $cadenceSamples = 0;
+            $cadenceTotalMs = 0;
+            $cadenceMinMs = 0;
+            $cadenceMaxMs = 0;
+            $lastCadenceMs = 0;
+        }
+    }
+
+    if (isset($pipes[1]) && is_resource($pipes[1])) {
+        @fclose($pipes[1]);
+    }
+    if (is_resource($process)) {
+        @proc_close($process);
+    }
+
+    sleep(1);
+}
