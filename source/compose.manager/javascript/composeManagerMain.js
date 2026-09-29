@@ -5279,7 +5279,9 @@ function showStackActionDialog(action, path, profile) {
             detectedMismatch
         }, 'user', 'debug', 'showStackActionDialog');
         containers = mergeUpdateStatus(containers, project);
-        renderStackActionDialog(action, displayName, path, profile, containers, hasBuild, detectedMismatch);
+        waitForStackActionDialogClose(function() {
+            renderStackActionDialog(action, displayName, path, profile, containers, hasBuild, detectedMismatch);
+        });
     }).fail(function(xhr, status, error) {
         // Fallback: if profile resolution fails, show cached container metadata
         composeLogger('getProfileServices AJAX fail', {
@@ -5297,9 +5299,22 @@ function showStackActionDialog(action, path, profile) {
             });
             containers = mergeUpdateStatus(containers, project);
         }
-        renderStackActionDialog(action, displayName, path, profile, containers, hasBuild, cachedContainers.length > 0);
+        waitForStackActionDialogClose(function() {
+            renderStackActionDialog(action, displayName, path, profile, containers, hasBuild, cachedContainers.length > 0);
+        });
     });
     return;
+}
+
+function waitForStackActionDialogClose(callback) {
+    var attempts = 0;
+    var poll = setInterval(function() {
+        attempts++;
+        if (!$('.sweet-alert').hasClass('showSweetAlert') || attempts >= 50) {
+            clearInterval(poll);
+            callback();
+        }
+    }, 20);
 }
 
 function renderStackActionDialog(action, displayName, path, profile, containers, hasBuild, showRemoveOrphans) {
