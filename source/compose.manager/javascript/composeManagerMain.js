@@ -5307,10 +5307,8 @@ function showStackActionDialog(action, path, profile) {
 }
 
 function waitForStackActionDialogClose(callback) {
-    var attempts = 0;
     var poll = setInterval(function() {
-        attempts++;
-        if (!$('.sweet-alert').hasClass('showSweetAlert') || attempts >= 50) {
+        if (!$('.sweet-alert').hasClass('showSweetAlert')) {
             clearInterval(poll);
             callback();
         }
