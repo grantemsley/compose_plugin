@@ -1333,7 +1333,7 @@ function initEditorModal() {
 
     // Icon preview update with debounce
     var settingsIconDebounce = null;
-    $('#settings-icon-url').on('input', function() {
+    $('#settings-icon-url').on('input change', function() {
         var $input = $(this);
         clearTimeout(settingsIconDebounce);
         settingsIconDebounce = setTimeout(function() {
@@ -1366,7 +1366,7 @@ function initEditorModal() {
     });
 
     // External compose path info toggle
-    $('#settings-external-compose-path').on('input', function() {
+    $('#settings-external-compose-path').on('input change', function() {
         var path = $(this).val().trim();
         var filePath = $('#settings-external-compose-file').val().trim();
         if (path || filePath) {
@@ -1375,7 +1375,7 @@ function initEditorModal() {
             $('#settings-external-compose-info').hide();
         }
     });
-    $('#settings-external-compose-file').on('input', function() {
+    $('#settings-external-compose-file').on('input change', function() {
         var path = $('#settings-external-compose-path').val().trim();
         var filePath = $(this).val().trim();
         if (path || filePath) {
@@ -3579,7 +3579,7 @@ function addStack() {
         });
     }
 
-    $('#compose-stack-external-path, #compose-stack-external-file, #compose-stack-env-path').off('input.defaultComposeDiscovery').on('input.defaultComposeDiscovery', function() {
+    $('#compose-stack-external-path, #compose-stack-external-file, #compose-stack-env-path').off('input.defaultComposeDiscovery change.defaultComposeDiscovery').on('input.defaultComposeDiscovery change.defaultComposeDiscovery', function() {
         updateAddStackDefaultComposeDiscoveryState();
     });
 
@@ -3604,7 +3604,7 @@ function addStack() {
         updateAddStackSlugPreview();
         updateAddStackValidity();
     });
-    $('#compose-stack-external-path, #compose-stack-external-file').off('input.addStackValidate').on('input.addStackValidate', function() {
+    $('#compose-stack-external-path, #compose-stack-external-file').off('input.addStackValidate change.addStackValidate').on('input.addStackValidate change.addStackValidate', function() {
         updateAddStackValidity();
     });
     $('input[name="compose-stack-compose-source"]').off('change.addStackValidate').on('change.addStackValidate', function() {
@@ -6833,7 +6833,7 @@ function renderLabelsUI(mainDoc, overrideDoc) {
     }
 
     // Attach change handlers to label inputs
-    $('#labels-services-container').find('input[data-service]').on('input', function() {
+    $('#labels-services-container').find('input[data-service]').on('input change', function() {
         var service = $(this).data('service');
         var field = $(this).data('field');
         var key = service + '_' + field;
