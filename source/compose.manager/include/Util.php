@@ -2618,12 +2618,22 @@ class StackInfo
 
     /**
      * Get the custom env file path (from `envpath` file).
+     *
+     * A relative path is returned relative to the stack directory, the same rule
+     * getEffectiveEnvFilePath() applies when running compose. The file does not
+     * have to exist yet (the editor can create it).
      * @return string|null
      */
     public function getEnvFilePath(): ?string
     {
         $val = $this->readMetadata('envpath');
-        return ($val !== null && $val !== '') ? $val : null;
+        if ($val === null || $val === '') {
+            return null;
+        }
+        if (Path::isAbsolutePath($val)) {
+            return $val;
+        }
+        return $this->path . '/' . $val;
     }
 
     public function getCredentialId(): ?string
