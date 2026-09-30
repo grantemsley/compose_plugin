@@ -866,7 +866,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
         }
 
         var _ignorePatchUIChange = true; // prevent change handler from firing during initialization
-        $('#PROJECTS_FOLDER').on("input", null, null, checkProjectFolder);
+        $('#PROJECTS_FOLDER').on("input change", null, null, checkProjectFolder);
 
         // Helper to initialize toggles as switchButton (only once)
         function initSwitchToggles($scope) {
