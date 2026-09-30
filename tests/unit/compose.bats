@@ -88,6 +88,13 @@ test_setup() {
     assert_failure
 }
 
+@test "compose.sh fails when the env file does not exist" {
+    run bash "$COMPOSE_SCRIPT" -e "$TEST_TEMP_DIR/missing.env" -c up -p teststack
+
+    assert_failure
+    assert_output_contains ".env doesn't exist"
+}
+
 # ============================================================
 # --ignore-buildable Flag Tests
 # ============================================================
