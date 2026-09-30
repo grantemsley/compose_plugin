@@ -4207,7 +4207,7 @@ $(document).on('click', '.compose-identity-warning', function (event) {
 $(document).on('click', '.compose-identity-choice', function () {
     var project = $(this).data('project');
     var choice = $(this).data('choice');
-    $.post(compURL, { action: 'setProjectIdentity', stackName: project, projectName: choice }, function (data) {
+    $.post(caURL, { action: 'setProjectIdentity', stackName: project, projectName: choice }, function (data) {
         var parsed = tryParseJson(data);
         if (parsed && parsed.result === 'success') {
             swal({ title: 'Identity pinned', text: 'Using project name "' + choice + '".', type: 'success' }, function () {
