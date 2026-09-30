@@ -63,7 +63,35 @@ switch ($action) {
                 break;
             }
         }
-        if (file_put_contents($autofile, json_encode($filtered, JSON_PRETTY_PRINT)) === false) {
+        // Same lock as AutoUpdateRunner, so a save and a scheduled run cannot overwrite each other.
+        $handle = fopen($autofile, 'c+');
+        if (!$handle || !flock($handle, LOCK_EX)) {
+            if ($handle) fclose($handle);
+            http_response_code(500);
+            echo json_encode(array('error' => 'Failed to lock config file'));
+            break;
+        }
+        // The settings page only sends the fields it shows, so keep the stored ones it does not
+        // (such as last_run, without which the runner updates the stack again).
+        $existing = json_decode((string) stream_get_contents($handle), true);
+        if (!is_array($existing)) $existing = array();
+        foreach ($filtered as $key => $config) {
+            if (is_array($config) && isset($existing[$key]) && is_array($existing[$key])) {
+                $filtered[$key] = array_merge($existing[$key], $config);
+            }
+        }
+        // Encode before truncating, so a failed encode leaves the file as it was.
+        $json = json_encode($filtered, JSON_PRETTY_PRINT);
+        $written = false;
+        if ($json !== false) {
+            ftruncate($handle, 0);
+            rewind($handle);
+            $written = fwrite($handle, $json);
+            fflush($handle);
+        }
+        flock($handle, LOCK_UN);
+        fclose($handle);
+        if ($written === false) {
             http_response_code(500);
             echo json_encode(array('error' => 'Failed to write config file'));
             break;
