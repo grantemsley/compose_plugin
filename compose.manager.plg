@@ -36,10 +36,12 @@
 >
 
 <CHANGES>
-###2026.09.25.1058
-- Bug Fixes (staticcheck): remove invalid credential lock template
+###2026.09.30.0815
+- Bug Fixes (ui): wait until action dialog is fully closed
+- Bug Fixes (ui): wait for profile dialog before action dialog
+- Tests (e2e): cover profile action dialog transition
 - [PR #155](https://github.com/mstrhakr/compose_plugin/pull/155)
-- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.09.13...v2026.09.25.1058)
+- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.09.13...v2026.09.30.0815)
 </CHANGES>
 
 <!-- The 'pre-install' script. -->
