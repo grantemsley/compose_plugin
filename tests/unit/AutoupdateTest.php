@@ -154,6 +154,39 @@ class AutoupdateTest extends TestCase
         $_POST = [];
     }
 
+    public function testSaveConfigKeepsFieldsTheSettingsPageDoesNotSend(): void
+    {
+        global $compose_root;
+        $stackPath = $compose_root . '/KeepLastRun_' . getmypid();
+        if (!is_dir($stackPath)) mkdir($stackPath, 0755, true);
+        file_put_contents((string) $this->autoUpdateConfigFile, json_encode([
+            'defaults' => ['parallel_limit' => 4],
+            $stackPath => ['enabled' => true, 'schedule' => 'daily', 'time' => '02:00', 'last_run' => 1700000000],
+        ]));
+
+        // The settings page posts each entry without last_run.
+        $_POST = [
+            'action' => 'saveConfig',
+            'data' => json_encode([
+                'defaults' => ['parallel_limit' => 4],
+                $stackPath => ['enabled' => false, 'schedule' => 'weekly', 'time' => '03:00', 'weekday' => 1, 'monthday' => 1],
+            ]),
+        ];
+        ob_start();
+        include '/usr/local/emhttp/plugins/compose.manager/include/AutoUpdate.php';
+        $response = json_decode((string) ob_get_clean(), true);
+        $this->assertTrue((bool) ($response['ok'] ?? false));
+
+        $saved = json_decode((string) file_get_contents((string) $this->autoUpdateConfigFile), true);
+        $this->assertSame(1700000000, $saved[$stackPath]['last_run']);
+        $this->assertFalse($saved[$stackPath]['enabled']);
+        $this->assertSame('weekly', $saved[$stackPath]['schedule']);
+        $this->assertSame('03:00', $saved[$stackPath]['time']);
+
+        rmdir($stackPath);
+        $_POST = [];
+    }
+
     public function testInstallCronUsesAbsolutePhpBinary(): void
     {
         if (is_file($this->cronFile)) {
