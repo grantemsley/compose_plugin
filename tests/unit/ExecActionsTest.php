@@ -523,6 +523,24 @@ class ExecActionsTest extends TestCase
         $this->assertStringContainsString('saved', $output);
     }
 
+    /**
+     * Test saveEnv writes a relative envpath inside the stack directory
+     */
+    public function testSaveEnvWritesRelativeEnvPathInStackDirectory(): void
+    {
+        $stackPath = $this->createTestStack('test-stack');
+        file_put_contents($stackPath . '/envpath', 'app.env');
+
+        $envContent = "RELATIVE_VAR=value";
+        $output = $this->executeAction('saveEnv', [
+            'script' => 'test-stack',
+            'scriptContents' => $envContent,
+        ]);
+
+        $this->assertStringContainsString('saved', $output);
+        $this->assertEquals($envContent, file_get_contents($stackPath . '/app.env'));
+    }
+
     // ===========================================
     // getOverride Action Tests
     // ===========================================
