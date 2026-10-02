@@ -183,6 +183,22 @@ get_running_container_count() {
   docker compose "${project_dir_args[@]}" "${compose_file_args[@]}" "${env_file_args[@]}" -p "$PROJECT_NAME" ps -q 2>/dev/null | awk 'NF { count++ } END { print count+0 }'
 }
 
+# Remove old image IDs that are no longer referenced by this stack.
+# Plain `docker rmi` deliberately leaves images used by any other container alone.
+remove_superseded_images() {
+  local -a stale_images=()
+  mapfile -t stale_images < <(
+    comm -23 \
+      <(printf '%s\n' "$OLD_DIGESTS" | sort -u) \
+      <(printf '%s\n' "$NEW_DIGESTS" | sort -u) |
+      grep -E '^sha256:[[:xdigit:]]+$' || true
+  )
+
+  if (( ${#stale_images[@]} )); then
+    docker rmi "${stale_images[@]}" >/dev/null 2>&1 || true
+  fi
+}
+
 OLD_DIGESTS=$(get_image_digests || true)
 
 # Run pull and capture output (timeout prevents indefinite hangs on unresponsive registries)
@@ -227,6 +243,9 @@ if [ "$OLD_DIGESTS" != "$NEW_DIGESTS" ]; then
     rm -f "$OUT"
     exit 1
   fi
+
+  # Mirror the manual Update action: remove superseded images only after up succeeds.
+  remove_superseded_images
   
   MSG="Stack '$PROJECT_NAME' was updated successfully."
   composeLogger "$MSG" info autoupdate daemon
