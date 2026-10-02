@@ -36,11 +36,11 @@
 >
 
 <CHANGES>
-###2026.10.02.0849
-- Bug Fixes (autoupdate): remove superseded images after updates
-- Fix picker-driven path validation updates
+###2026.10.02.0915
+- Bug Fixes (autoupdate): keep the last run time when saving auto-update settings
+- Bug Fixes (compose): fail when the stack's env file is missing
 - [PR #155](https://github.com/mstrhakr/compose_plugin/pull/155)
-- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.09.13...v2026.10.02.0849)
+- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.09.13...v2026.10.02.0915)
 </CHANGES>
 
 <!-- The 'pre-install' script. -->
