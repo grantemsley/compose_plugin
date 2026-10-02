@@ -475,11 +475,39 @@ final class CredentialVault
     private static function atomicWrite(string $path, string $contents, int $mode, string $errorMessage): void
     {
         $tmpPath = $path . '.tmp-' . bin2hex(random_bytes(8));
-        if (file_put_contents($tmpPath, $contents, LOCK_EX) === false) {
+        $handle = @fopen($tmpPath, 'x+b');
+        if ($handle === false) {
+            throw new RuntimeException($errorMessage);
+        }
+
+        try {
+            // Set permissions before writing any secret bytes. The exclusive
+            // create prevents collisions with another writer's temporary file.
+            if (!@chmod($tmpPath, $mode)) {
+                throw new RuntimeException($errorMessage);
+            }
+            $length = strlen($contents);
+            $offset = 0;
+            while ($offset < $length) {
+                $written = fwrite($handle, substr($contents, $offset));
+                if ($written === false || $written === 0) {
+                    throw new RuntimeException($errorMessage);
+                }
+                $offset += $written;
+            }
+            if (!fflush($handle)) {
+                throw new RuntimeException($errorMessage);
+            }
+        } catch (\Throwable $error) {
+            fclose($handle);
+            @unlink($tmpPath);
+            throw new RuntimeException($errorMessage, 0, $error);
+        }
+
+        if (!fclose($handle)) {
             @unlink($tmpPath);
             throw new RuntimeException($errorMessage);
         }
-        chmod($tmpPath, $mode);
         if (!rename($tmpPath, $path)) {
             @unlink($tmpPath);
             throw new RuntimeException($errorMessage);

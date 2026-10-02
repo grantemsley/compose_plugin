@@ -43,6 +43,21 @@ final class CredentialVaultTest extends TestCase
         $this->assertArrayNotHasKey('secret', $vault->listCredentials()[0]);
     }
 
+    public function testEncryptionKeyIsCreatedWithRestrictivePermissions(): void
+    {
+        $vault = new CredentialVault();
+        $vault->saveCredential([
+            'name' => 'Work GitHub',
+            'provider' => 'github',
+            'registry' => 'ghcr.io',
+            'username' => 'octocat',
+            'secret' => 'github-secret-token',
+        ]);
+
+        $this->assertSame(0600, fileperms(COMPOSE_CREDENTIAL_KEY_FILE) & 0777);
+        $this->assertSame([], glob(COMPOSE_CREDENTIAL_KEY_FILE . '.tmp-*') ?: []);
+    }
+
     public function testMaterializesMinimalDockerConfig(): void
     {
         $vault = new CredentialVault();

@@ -175,10 +175,15 @@ switch ($action) {
             $composeFileList = $stackInfo->buildComposeFileList();
             $envFilePath = $args['envFilePath'] ?? null;
             $projectDirectory = $args['projectDirectory'];
+            $credentialId = $stackInfo->getCredentialId();
         } else {
             $composeFileList = $composeFile;
             $envFilePath = null;
             $projectDirectory = $path;
+            $credentialIdFile = rtrim($path, '/') . '/credential_id';
+            $credentialId = is_file($credentialIdFile)
+                ? trim((string) file_get_contents($credentialIdFile))
+                : null;
         }
 
         // Allow overriding the shell command via environment for tests; default to sh
@@ -195,6 +200,9 @@ switch ($action) {
         }
         if ($composeFileList === '' && $projectDirectory !== '') {
             $envPrefix .= 'COMPOSE_PROJECT_DIR=' . escapeshellarg($projectDirectory) . ' ';
+        }
+        if ($credentialId !== null && $credentialId !== '') {
+            $envPrefix .= 'COMPOSE_CREDENTIAL_ID=' . escapeshellarg($credentialId) . ' ';
         }
 
         $cmd = $envPrefix . $shCmd . ' ' . escapeshellarg($script) . " " . escapeshellarg($projectName) . " 2>&1";

@@ -32,7 +32,8 @@ class AutoupdateTest extends TestCase
     if ($marker) {
         file_put_contents($marker, json_encode([
             'argv' => $argv,
-                'parallelLimit' => getenv('COMPOSE_PARALLEL_LIMIT'),
+            'parallelLimit' => getenv('COMPOSE_PARALLEL_LIMIT'),
+            'credentialId' => getenv('COMPOSE_CREDENTIAL_ID'),
         ]));
     }
     exit(0);
@@ -95,6 +96,7 @@ class AutoupdateTest extends TestCase
         $tmp = $compose_root . '/PrintMaster_' . getmypid();
         if (!is_dir($tmp)) mkdir($tmp, 0755, true);
         file_put_contents($tmp . '/docker-compose.yml', "services:\n  a:\n    image: busybox\n");
+        file_put_contents($tmp . '/credential_id', 'run-now-credential');
         file_put_contents((string) $this->autoUpdateConfigFile, json_encode([
             'defaults' => ['parallel_limit' => 3],
         ]));
@@ -125,12 +127,15 @@ class AutoupdateTest extends TestCase
         $expectedProjectName = \StackInfo::sanitizeProjectString(basename($tmp));
         $this->assertSame($expectedProjectName, $payload['argv'][2]);
         $this->assertSame('3', $payload['parallelLimit']);
+        $this->assertSame('run-now-credential', $payload['credentialId']);
 
         // cleanup
         unlink($marker);
         unlink($scriptPath);
         // remove tmp
-        unlink($tmp . '/docker-compose.yml'); rmdir($tmp);
+        unlink($tmp . '/docker-compose.yml');
+        unlink($tmp . '/credential_id');
+        rmdir($tmp);
         $_POST = [];
     }
 
