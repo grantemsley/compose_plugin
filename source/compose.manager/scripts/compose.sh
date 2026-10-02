@@ -148,7 +148,7 @@ do
         echo "using .env: $envFile"
       else
         echo ".env doesn't exist: $envFile"
-        exit
+        exit 1
       fi
 
       env_args=("--env-file" "$envFile")
