@@ -2,11 +2,11 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name "compose.manager">
 <!ENTITY author "mstrhakr">
-<!ENTITY version     "2026.09.30.0815">
+<!ENTITY version     "2026.10.02.0849">
 <!ENTITY launch "Settings/&name;.settings">
 <!ENTITY packageVER "&version;">
-<!ENTITY packageMD5  "311c48f3a4af0d65a04dec7d341a463f">
-<!ENTITY pkgBUILD    "0815">
+<!ENTITY packageMD5  "b9c5c3554a3ea212f90b5c1ac2701cfc">
+<!ENTITY pkgBUILD    "0849">
 <!ENTITY packageName "&name;-&packageVER;-noarch-&pkgBUILD;">
 <!ENTITY packagefile "&packageName;.txz">
 <!ENTITY github "mstrhakr/compose_plugin">
