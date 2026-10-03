@@ -133,6 +133,11 @@ final class GitClone
             }
 
             $commit = $this->resolveCommit('refs/remotes/origin/' . $this->settings->branch);
+            if (!$this->composeFileExistsAt($commit)) {
+                throw new RuntimeException(
+                    "{$this->settings->composePath} does not exist on branch {$this->settings->branch}, so the clone was removed again."
+                );
+            }
             $this->runOrThrow(['checkout', '--detach', $commit], 'Could not check out the files');
             return $commit;
         } catch (Throwable $error) {
@@ -590,6 +595,24 @@ final class GitClone
             30
         );
         return $result->succeeded();
+    }
+
+    /**
+     * The untracked files and folders in the clone, as git lists them (a
+     * folder holding only untracked files is one entry, ending in /).
+     * Ignored files are listed too.
+     *
+     * @return string[]
+     * @throws RuntimeException if git fails
+     */
+    public function untrackedEntries(): array
+    {
+        $this->assertOwned();
+        $result = $this->git(['ls-files', '-z', '--others', '--directory'], $this->settings->cloneDir, 120);
+        if (!$result->succeeded()) {
+            throw new RuntimeException('Could not list the untracked files: ' . $result->errorSummary());
+        }
+        return array_values(array_filter(explode("\0", $result->stdout), static fn(string $path): bool => $path !== ''));
     }
 
     /**

@@ -45,6 +45,8 @@ defined('COMPOSE_GIT_HOME_DIR') || define('COMPOSE_GIT_HOME_DIR', '/var/tmp/comp
 defined('COMPOSE_GIT_DEFAULT_CLONES_ROOT') || define('COMPOSE_GIT_DEFAULT_CLONES_ROOT', '/mnt/user/appdata/compose.manager/git');
 // The docker CLI (the git deploy checks run it; tests point this at a scripted stand-in).
 defined('COMPOSE_DOCKER_BIN') || define('COMPOSE_DOCKER_BIN', 'docker');
+// compose.sh's per-stack lock files (its LOCK_DIR), which compose-git takes too.
+defined('COMPOSE_LOCK_DIR') || define('COMPOSE_LOCK_DIR', '/var/run/compose.manager');
 
 /**
  * Reserved filename at the compose root level used by the plugin installer

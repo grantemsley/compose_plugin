@@ -54,6 +54,7 @@ define('COMPOSE_MOUNTS_FILE', sys_get_temp_dir() . '/compose_git_mounts');
 define('COMPOSE_GIT_HOME_DIR', sys_get_temp_dir() . '/compose_git_home');
 // A scripted stand-in for the docker CLI (see FakeDocker in the git deploy tests).
 define('COMPOSE_DOCKER_BIN', sys_get_temp_dir() . '/compose_fake_docker/docker');
+define('COMPOSE_LOCK_DIR', sys_get_temp_dir() . '/compose_manager_locks');
 // Point to the dev-env resvg binary when present; plugin path used on real Unraid
 define('COMPOSE_RESVG_BIN',          is_executable('/tmp/resvg') ? '/tmp/resvg'
     : '/usr/local/emhttp/plugins/compose.manager/bin/resvg');
