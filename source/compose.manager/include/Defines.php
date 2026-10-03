@@ -41,6 +41,7 @@ defined('COMPOSE_GITHUB_DEVICE_DIR') || define('COMPOSE_GITHUB_DEVICE_DIR', '/va
 defined('COMPOSE_UNRAID_VAR_INI') || define('COMPOSE_UNRAID_VAR_INI', '/var/local/emhttp/var.ini');
 defined('COMPOSE_MOUNTS_FILE') || define('COMPOSE_MOUNTS_FILE', '/proc/self/mounts');
 defined('COMPOSE_GIT_MNT_DIR') || define('COMPOSE_GIT_MNT_DIR', '/mnt');
+defined('COMPOSE_GIT_HOME_DIR') || define('COMPOSE_GIT_HOME_DIR', '/var/tmp/compose-manager-git-home');
 defined('COMPOSE_GIT_DEFAULT_CLONES_ROOT') || define('COMPOSE_GIT_DEFAULT_CLONES_ROOT', '/mnt/user/appdata/compose.manager/git');
 
 /**

@@ -51,6 +51,7 @@ define('COMPOSE_GITHUB_DEVICE_DIR', sys_get_temp_dir() . '/compose_manager_githu
 define('COMPOSE_GIT_MNT_DIR', sys_get_temp_dir() . '/compose_git_mnt');
 define('COMPOSE_UNRAID_VAR_INI', sys_get_temp_dir() . '/compose_git_var.ini');
 define('COMPOSE_MOUNTS_FILE', sys_get_temp_dir() . '/compose_git_mounts');
+define('COMPOSE_GIT_HOME_DIR', sys_get_temp_dir() . '/compose_git_home');
 // Point to the dev-env resvg binary when present; plugin path used on real Unraid
 define('COMPOSE_RESVG_BIN',          is_executable('/tmp/resvg') ? '/tmp/resvg'
     : '/usr/local/emhttp/plugins/compose.manager/bin/resvg');
