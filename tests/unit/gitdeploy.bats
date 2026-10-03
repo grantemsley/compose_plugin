@@ -19,7 +19,7 @@ test_setup() {
     export IMAGES_CALLS="$TEST_TEMP_DIR/images-calls"
     : > "$CALLS"
     echo 0 > "$IMAGES_CALLS"
-    export PREPARE_EXIT=0 PULL_EXIT=0 BUILD_EXIT=0 UP_EXIT=0
+    export PREPARE_EXIT=0 PULL_EXIT=0 BUILD_EXIT=0 UP_EXIT=0 UP_ARGUMENTS_EXIT=0 UP_ARGUMENTS=""
     export COMPOSE_ARGS_EXIT=0 RESTORE_EXIT=0
     export PREPARE_OUTPUT="0000000000000000000000000000000000000001"
 
@@ -51,6 +51,10 @@ case "$1" in
         ;;
       finish)
         exit "${FINISH_EXIT:-0}"
+        ;;
+      up-arguments)
+        [ "$UP_ARGUMENTS_EXIT" = 0 ] || { echo "✗ could not compare commits" >&2; exit "$UP_ARGUMENTS_EXIT"; }
+        printf '%s' "$UP_ARGUMENTS"
         ;;
     esac
     exit 0
@@ -204,7 +208,7 @@ calls_matching() {
     [ "$build_line" -lt "$up_line" ]
     [ "$up_line" -lt "$finish_line" ]
 
-    grep -q "docker compose -f /clone/whoami/compose.yaml --env-file /stack/.env -p whoami up -d --remove-orphans" "$CALLS"
+    grep -q "docker compose -f /clone/whoami/compose.yaml --env-file /stack/.env -p whoami up -d --remove-orphans$" "$CALLS"
     grep -q "git_stack finish $STACK success" "$CALLS"
     grep -q "docker rmi img-old$" "$CALLS"
     grep -q '"operation":"gitdeploy"' "$STACK/last_result.json"
@@ -221,6 +225,31 @@ calls_matching() {
     run_gitdeploy --wait --wait-timeout 90
     [ "$status" -eq 0 ]
     grep -q -- "up -d --remove-orphans --wait --wait-timeout 90" "$CALLS"
+}
+
+@test "gitdeploy recreates every container when the stack's folder changed" {
+    export UP_ARGUMENTS=$'--force-recreate\n'
+    run_gitdeploy --wait
+    [ "$status" -eq 0 ]
+    grep -q "git_stack up-arguments $STACK 0000000000000000000000000000000000000001" "$CALLS"
+    grep -q -- "up -d --remove-orphans --wait --force-recreate$" "$CALLS"
+}
+
+@test "gitdeploy puts the previous commit back when it cannot tell whether to recreate, and never runs up" {
+    export UP_ARGUMENTS_EXIT=1
+    run_gitdeploy
+    [ "$status" -eq 1 ]
+    grep -q "git_stack restore $STACK 0000000000000000000000000000000000000001" "$CALLS"
+    [ "$(calls_matching ' up ')" -eq 0 ]
+    [ "$(calls_matching 'finish')" -eq 0 ]
+}
+
+@test "gitdeploy never passes unexpected up-arguments output to up" {
+    export UP_ARGUMENTS=$'PHP Notice: something\n--force-recreate\n'
+    run_gitdeploy
+    [ "$status" -eq 1 ]
+    grep -q "git_stack restore $STACK 0000000000000000000000000000000000000001" "$CALLS"
+    [ "$(calls_matching ' up ')" -eq 0 ]
 }
 
 @test "gitdeploy never rebuilds during up, so a build failure cannot happen part-way" {

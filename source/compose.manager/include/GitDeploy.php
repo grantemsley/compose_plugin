@@ -88,6 +88,52 @@ final class GitDeploy
     }
 
     /**
+     * Extra arguments for "up" after prepare().
+     *
+     * Plain "up -d" recreates a container only when its compose definition
+     * changed, so a commit that only edits a bind-mounted config file would
+     * leave the containers on the old file. When the stack's setting is on and
+     * anything in the stack's folder changed, the whole stack is recreated
+     * (not restarted: a restart keeps a single-file mount on the old copy of
+     * the file).
+     *
+     * "Changed" is measured from both the previously checked-out commit and
+     * the last successfully deployed one. After a failed "up" the two differ,
+     * and the running containers may hold either commit's files.
+     *
+     * @param string $previousCommit The commit prepare() returned
+     * @return string[] ['--force-recreate'] or []
+     */
+    public function upArguments(string $previousCommit): array
+    {
+        $settings = $this->loadSettings();
+        if (!$settings->recreateOnFolderChange) {
+            return [];
+        }
+        $clone = new GitClone($settings);
+        $current = $clone->checkedOutCommit();
+
+        $compareFrom = [$previousCommit];
+        $deployed = GitStackState::load($this->stackDir)->deployedCommit;
+        if ($deployed !== null && $deployed !== $previousCommit) {
+            $compareFrom[] = $deployed;
+        }
+        foreach ($compareFrom as $from) {
+            if ($from !== $current && !$clone->hasCommit($from)) {
+                // The branch was rewritten and git has since pruned the old
+                // commit, so the change cannot be measured: assume one.
+                ($this->say)('The commit ' . substr($from, 0, 12) . ' is no longer in the clone, so every container is recreated.');
+                return ['--force-recreate'];
+            }
+            if ($from !== $current && $clone->stackFilesChanged($from, $current)) {
+                ($this->say)("Files in the stack's folder changed, so every container is recreated.");
+                return ['--force-recreate'];
+            }
+        }
+        return [];
+    }
+
+    /**
      * Put the clone back at a commit (after a failed pull, before any container changed).
      */
     public function restore(string $commit): void

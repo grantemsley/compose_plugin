@@ -284,6 +284,65 @@ final class GitDeployTest extends TestCase
         $this->assertNull($state->failedCommit);
     }
 
+    // ----- recreate on any change in the stack's folder -----
+
+    public function testConfigOnlyChangeInTheStackFolderRecreatesEveryContainer(): void
+    {
+        $this->writeAndPush(['whoami/config.yml' => "level: debug\n"], 'config only');
+        $previous = $this->deploy()->prepare('whoami', [], null, false);
+
+        $this->assertSame(['--force-recreate'], $this->deploy()->upArguments($previous));
+    }
+
+    public function testChangeOutsideTheStackFolderRecreatesNothing(): void
+    {
+        $this->writeAndPush(['other/compose.yaml' => "services: {}\n"], 'another stack');
+        $previous = $this->deploy()->prepare('whoami', [], null, false);
+
+        $this->assertSame([], $this->deploy()->upArguments($previous));
+    }
+
+    public function testRedeployOfTheSameCommitRecreatesNothing(): void
+    {
+        $previous = $this->deploy()->prepare('whoami', [], null, false);
+
+        $this->assertSame([], $this->deploy()->upArguments($previous));
+    }
+
+    public function testWithTheSettingOffNothingIsRecreated(): void
+    {
+        GitStackSettings::load($this->stackDir)->withRecreateOnFolderChange(false)->save($this->stackDir);
+        $this->writeAndPush(['whoami/config.yml' => "level: debug\n"], 'config only');
+        $previous = $this->deploy()->prepare('whoami', [], null, false);
+
+        $this->assertSame([], $this->deploy()->upArguments($previous));
+    }
+
+    public function testFolderChangeSinceTheDeployedCommitRecreatesAfterAFailedUp(): void
+    {
+        // A deployed; B edits a mounted config file and its up fails; C changes
+        // nothing in the folder. The containers may still have A's file.
+        $this->writeAndPush(['whoami/config.yml' => "level: debug\n"], 'B: config');
+        $this->deploy()->prepare('whoami', [], null, false);
+        $this->deploy()->finish(false);
+        $this->writeAndPush(['other/compose.yaml' => "services: {}\n"], 'C: another stack');
+
+        $previous = $this->deploy()->prepare('whoami', [], null, false);
+
+        $this->assertSame(['--force-recreate'], $this->deploy()->upArguments($previous));
+    }
+
+    public function testDeployedCommitNoLongerInTheCloneRecreatesInsteadOfFailing(): void
+    {
+        // The branch was rewritten and git pruned the deployed commit.
+        (new GitStackState(str_repeat('a', 40), null))->save($this->stackDir);
+        $this->writeAndPush(['other/compose.yaml' => "services: {}\n"], 'another stack');
+
+        $previous = $this->deploy()->prepare('whoami', [], null, false);
+
+        $this->assertSame(['--force-recreate'], $this->deploy()->upArguments($previous));
+    }
+
     public function testDeployAfterAFailedUpIsNotMistakenForACommitMadeByHand(): void
     {
         $this->writeAndPush(['whoami/compose.yaml' => "services:\n  whoami:\n    image: traefik/whoami:v2\n"], 'bump');

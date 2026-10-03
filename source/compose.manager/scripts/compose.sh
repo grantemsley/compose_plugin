@@ -601,7 +601,35 @@ case $command in
       exit 1
     fi
 
-    # 3. Start the stack at the new commit.
+    # 3. Ask whether every container should be recreated (the stack's
+    #    "recreate on any change in its folder" setting).
+    if ! git_up_extra=$(git_stack up-arguments "$stack_path" "$previous_commit"); then
+      save_result "failed" 1 "gitdeploy"
+      log_msg "ERROR" "Could not compare commits for git stack $name"
+      echo ""
+      echo "✗ Stack $name was not deployed."
+      put_back_previous_commit
+      exit 1
+    fi
+    # Only the two answers git_stack.php gives are accepted, so a stray line
+    # of output can never become an argument to up.
+    case "$git_up_extra" in
+      "")
+        ;;
+      "--force-recreate")
+        up_args+=("--force-recreate")
+        ;;
+      *)
+        save_result "failed" 1 "gitdeploy"
+        log_msg "ERROR" "git_stack.php up-arguments printed something unexpected for $name"
+        echo ""
+        echo "✗ Stack $name was not deployed."
+        put_back_previous_commit
+        exit 1
+        ;;
+    esac
+
+    # 4. Start the stack at the new commit.
     echo ""
     echo "Starting containers..."
     "${git_compose[@]}" -p "$name" up "${up_args[@]}"

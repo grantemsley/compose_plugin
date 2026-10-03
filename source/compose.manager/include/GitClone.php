@@ -579,6 +579,20 @@ final class GitClone
     }
 
     /**
+     * Whether the clone has a commit (after a rewritten branch, an old commit may be gone).
+     */
+    public function hasCommit(string $commit): bool
+    {
+        $this->assertOwned();
+        $result = $this->git(
+            ['cat-file', '-e', $this->commitArgument($commit) . '^{commit}'],
+            $this->settings->cloneDir,
+            30
+        );
+        return $result->succeeded();
+    }
+
+    /**
      * Whether a string looks like a full commit id (SHA-1 or SHA-256).
      */
     public static function isCommitId(string $value): bool
