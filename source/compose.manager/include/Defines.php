@@ -43,6 +43,8 @@ defined('COMPOSE_MOUNTS_FILE') || define('COMPOSE_MOUNTS_FILE', '/proc/self/moun
 defined('COMPOSE_GIT_MNT_DIR') || define('COMPOSE_GIT_MNT_DIR', '/mnt');
 defined('COMPOSE_GIT_HOME_DIR') || define('COMPOSE_GIT_HOME_DIR', '/var/tmp/compose-manager-git-home');
 defined('COMPOSE_GIT_DEFAULT_CLONES_ROOT') || define('COMPOSE_GIT_DEFAULT_CLONES_ROOT', '/mnt/user/appdata/compose.manager/git');
+// The docker CLI (the git deploy checks run it; tests point this at a scripted stand-in).
+defined('COMPOSE_DOCKER_BIN') || define('COMPOSE_DOCKER_BIN', 'docker');
 
 /**
  * Reserved filename at the compose root level used by the plugin installer
