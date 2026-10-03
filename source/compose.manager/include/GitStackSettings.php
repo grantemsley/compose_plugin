@@ -34,14 +34,20 @@ final class GitStackSettings
     public const FORMAT_VERSION = 1;
 
     /** @var string[] The keys git.json must contain, no more and no fewer. */
-    private const KEYS = ['version', 'url', 'branch', 'composePath', 'cloneId', 'cloneDir'];
+    private const KEYS = ['version', 'url', 'branch', 'composePath', 'cloneId', 'cloneDir', 'recreateOnFolderChange'];
 
+    /**
+     * @param bool $recreateOnFolderChange Recreate the stack's containers when a deploy changes
+     *     anything in the stack's folder, not only when the compose definition changes. A commit
+     *     that only edits a bind-mounted config file then takes effect.
+     */
     private function __construct(
         public readonly string $url,
         public readonly string $branch,
         public readonly string $composePath,
         public readonly string $cloneId,
-        public readonly string $cloneDir
+        public readonly string $cloneDir,
+        public readonly bool $recreateOnFolderChange
     ) {
     }
 
@@ -55,12 +61,21 @@ final class GitStackSettings
         string $branch,
         string $composePath,
         string $clonesRoot,
-        string $stackFolderName
+        string $stackFolderName,
+        bool $recreateOnFolderChange = true
     ): self {
         GitPathGuard::assertValidClonesRoot($clonesRoot);
         $cloneId = bin2hex(random_bytes(8));
         $cloneDir = $clonesRoot . '/' . self::cloneFolderName($stackFolderName, $cloneId);
-        return self::fromValues($url, $branch, $composePath, $cloneId, $cloneDir);
+        return self::fromValues($url, $branch, $composePath, $cloneId, $cloneDir, $recreateOnFolderChange);
+    }
+
+    /**
+     * The same settings with "recreate on any change in the stack's folder" turned on or off.
+     */
+    public function withRecreateOnFolderChange(bool $recreateOnFolderChange): self
+    {
+        return new self($this->url, $this->branch, $this->composePath, $this->cloneId, $this->cloneDir, $recreateOnFolderChange);
     }
 
     /**
@@ -114,9 +129,19 @@ final class GitStackSettings
                 throw new RuntimeException("$file: '$key' must be a string.");
             }
         }
+        if (!is_bool($data['recreateOnFolderChange'])) {
+            throw new RuntimeException("$file: 'recreateOnFolderChange' must be true or false.");
+        }
 
         try {
-            return self::fromValues($data['url'], $data['branch'], $data['composePath'], $data['cloneId'], $data['cloneDir']);
+            return self::fromValues(
+                $data['url'],
+                $data['branch'],
+                $data['composePath'],
+                $data['cloneId'],
+                $data['cloneDir'],
+                $data['recreateOnFolderChange']
+            );
         } catch (InvalidArgumentException $error) {
             throw new RuntimeException("$file: " . $error->getMessage(), 0, $error);
         }
@@ -145,6 +170,7 @@ final class GitStackSettings
             'composePath' => $this->composePath,
             'cloneId' => $this->cloneId,
             'cloneDir' => $this->cloneDir,
+            'recreateOnFolderChange' => $this->recreateOnFolderChange,
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         if ($json === false) {
             throw new RuntimeException('Could not encode the git settings.');
@@ -327,7 +353,8 @@ final class GitStackSettings
         string $branch,
         string $composePath,
         string $cloneId,
-        string $cloneDir
+        string $cloneDir,
+        bool $recreateOnFolderChange
     ): self {
         self::validateUrl($url);
         self::validateBranch($branch);
@@ -344,6 +371,6 @@ final class GitStackSettings
             throw new InvalidArgumentException("The clone folder $cloneDir does not belong to clone id $cloneId.");
         }
 
-        return new self($url, $branch, $composePath, $cloneId, $cloneDir);
+        return new self($url, $branch, $composePath, $cloneId, $cloneDir, $recreateOnFolderChange);
     }
 }

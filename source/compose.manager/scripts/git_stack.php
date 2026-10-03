@@ -9,6 +9,8 @@
  *       on success the previously checked-out commit is printed on stdout.
  *   git_stack.php compose-args <stack-path>
  *       Print the stack's -f / --env-file arguments, each followed by a NUL byte.
+ *   git_stack.php up-arguments <stack-path> <previous-commit>
+ *       Print the extra arguments for "up" (--force-recreate or nothing), one per line.
  *   git_stack.php restore <stack-path> <commit>
  *       Check the clone out at <commit> again (after a failed pull).
  *   git_stack.php finish <stack-path> success|failed
@@ -61,6 +63,12 @@ try {
         case 'compose-args':
             foreach ($deploy->composeArgs() as $arg) {
                 echo $arg . "\0";
+            }
+            break;
+
+        case 'up-arguments':
+            foreach ($deploy->upArguments($args[2] ?? '') as $arg) {
+                echo $arg . "\n";
             }
             break;
 

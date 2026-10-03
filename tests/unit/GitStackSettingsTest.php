@@ -218,7 +218,21 @@ final class GitStackSettingsTest extends TestCase
         $this->assertSame($settings->composePath, $loaded->composePath);
         $this->assertSame($settings->cloneId, $loaded->cloneId);
         $this->assertSame($settings->cloneDir, $loaded->cloneDir);
+        $this->assertTrue($loaded->recreateOnFolderChange);
         $this->assertSame([], glob($this->stackDir . '/git.json.tmp-*') ?: []);
+    }
+
+    public function testRecreateOnFolderChangeIsOnByDefaultAndCanBeTurnedOff(): void
+    {
+        $settings = $this->makeSettings();
+        $this->assertTrue($settings->recreateOnFolderChange);
+
+        $settings->withRecreateOnFolderChange(false)->save($this->stackDir);
+        $loaded = GitStackSettings::load($this->stackDir);
+
+        $this->assertNotNull($loaded);
+        $this->assertFalse($loaded->recreateOnFolderChange);
+        $this->assertSame($settings->cloneDir, $loaded->cloneDir);
     }
 
     public function testStackWithoutGitJsonIsNotAGitStack(): void
@@ -254,6 +268,10 @@ final class GitStackSettingsTest extends TestCase
             }],
             'number instead of string' => [static function (array $data): string {
                 $data['branch'] = 5;
+                return (string) json_encode($data);
+            }],
+            'string instead of true or false' => [static function (array $data): string {
+                $data['recreateOnFolderChange'] = 'yes';
                 return (string) json_encode($data);
             }],
             'hand-edited bad branch' => [static function (array $data): string {
@@ -325,6 +343,7 @@ final class GitStackSettingsTest extends TestCase
 
         $this->assertSame('https://github.com/owner/repo.git', $settings->url);
         $this->assertSame('whoami/compose.yaml', $settings->composePath);
+        $this->assertTrue($settings->recreateOnFolderChange);
     }
 
     public function testSettingFromANewerVersionIsRefusedByName(): void
