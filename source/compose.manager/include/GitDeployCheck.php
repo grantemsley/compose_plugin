@@ -15,7 +15,8 @@ require_once '/usr/local/emhttp/plugins/compose.manager/include/DockerCommand.ph
  *  - compose errors, and variables that are not set (a blank value can create
  *    state that outlives fixing it);
  *  - keys listed in the repository's .env.example but missing from the .env;
- *  - external networks and volumes that do not exist;
+ *  - external networks and volumes that do not exist (networks only when the
+ *    "Create Missing External Networks" setting is off);
  *  - bind-mount sources under /mnt that are not on a live mount (Docker would
  *    create them in RAM) or whose share (such as /mnt/user/appdata) does not
  *    exist, and sources outside /mnt whose top folder (such as /tmp) does not
@@ -38,13 +39,16 @@ final class GitDeployCheck
      * @param string $cloneDir The stack's clone folder
      * @param string $composeDir The folder of the compose file inside the clone
      * @param string|null $envFile The .env the stack uses, if any
+     * @param bool $missingNetworksWillBeCreated True when the "Create Missing External Networks"
+     *                                           setting is on, so a missing external network is not a problem
      */
     public function __construct(
         private readonly string $projectName,
         private readonly array $composeArgs,
         private readonly string $cloneDir,
         private readonly string $composeDir,
-        private readonly ?string $envFile
+        private readonly ?string $envFile,
+        private readonly bool $missingNetworksWillBeCreated = false
     ) {
     }
 
@@ -158,6 +162,10 @@ final class GitDeployCheck
         foreach (['networks' => 'network', 'volumes' => 'volume'] as $section => $kind) {
             foreach ((array) ($resolved[$section] ?? []) as $key => $definition) {
                 if (!is_array($definition) || ($definition['external'] ?? false) !== true) {
+                    continue;
+                }
+                // compose.sh creates missing external networks right before "up" when the setting is on.
+                if ($kind === 'network' && $this->missingNetworksWillBeCreated) {
                     continue;
                 }
                 $name = (string) ($definition['name'] ?? $key);

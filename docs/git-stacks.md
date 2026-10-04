@@ -325,7 +325,8 @@ without changing anything when:
 - the compose file is not valid, defines no services, or uses a variable that is not set (an empty value must
   be written as `NAME=` in the `.env`);
 - the repository's `.env.example` lists names missing from the `.env` in use;
-- an `external: true` network or volume does not exist;
+- an `external: true` network or volume does not exist. With **Create Missing External Networks** turned on
+  in the plugin's settings, a missing network is created instead, the same as for any other stack;
 - a bind-mount source is missing in a way described in
   [Folders and files](#folders-and-files-your-containers-need), or a config or secret file, or a local build
   folder, is missing;

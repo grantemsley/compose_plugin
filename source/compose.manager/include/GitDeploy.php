@@ -317,7 +317,17 @@ final class GitDeploy
             $envFile = rtrim($this->stackDir, '/') . '/.env';
         }
 
-        $check = new GitDeployCheck($projectName, $args, $settings->cloneDir, dirname($composeFile), $envFile);
+        $pluginSettings = parse_plugin_cfg('compose.manager');
+        $missingNetworksWillBeCreated = ($pluginSettings['CREATE_MISSING_EXTERNAL_NETWORKS'] ?? 'false') === 'true';
+
+        $check = new GitDeployCheck(
+            $projectName,
+            $args,
+            $settings->cloneDir,
+            dirname($composeFile),
+            $envFile,
+            $missingNetworksWillBeCreated
+        );
         $problems = $check->run();
         if ($problems !== []) {
             throw new RuntimeException("The stack was not deployed:\n- " . implode("\n- ", $problems));
