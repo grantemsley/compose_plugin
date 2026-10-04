@@ -586,6 +586,137 @@ final class GitCloneTest extends TestCase
         $this->assertSame($names, $changed);
     }
 
+    public function testLocalChangesAreSavedAsAPatchThenDiscarded(): void
+    {
+        $clone = $this->createdClone();
+        $dir = $clone->settings()->cloneDir;
+        $deployed = $clone->checkedOutCommit();
+        file_put_contents($dir . '/whoami/compose.yaml', "hotfix\n");
+        file_put_contents($dir . '/whoami/untracked.txt', "keep\n");
+
+        $patch = $clone->saveChangesAsPatch($deployed, $this->stackDir);
+        $clone->discardLocalChanges();
+
+        $this->assertNotNull($patch);
+        $this->assertStringContainsString('+hotfix', (string) file_get_contents($patch));
+        $this->assertSame([], $clone->locallyChangedFiles());
+        $this->assertSame("keep\n", file_get_contents($dir . '/whoami/untracked.txt'));
+
+        // The patch puts the change back.
+        $this->git(['apply', $patch], $dir);
+        $this->assertSame("hotfix\n", file_get_contents($dir . '/whoami/compose.yaml'));
+    }
+
+    public function testDiscardRefusesWhenAFolderOfDataReplacedATrackedFile(): void
+    {
+        $this->writeAndPush(['whoami/logs' => "placeholder\n"], 'placeholder');
+        $clone = $this->createdClone();
+        $dir = $clone->settings()->cloneDir;
+        unlink($dir . '/whoami/logs');
+        mkdir($dir . '/whoami/logs');
+        file_put_contents($dir . '/whoami/logs/app.log', "data\n");
+
+        try {
+            $clone->discardLocalChanges();
+            $this->fail('Discarded over an untracked folder of data');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('whoami/logs', $error->getMessage());
+        }
+        $this->assertSame("data\n", file_get_contents($dir . '/whoami/logs/app.log'));
+    }
+
+    public function testDiscardRefusesWhenAFileOfDataReplacedATrackedFolder(): void
+    {
+        $this->writeAndPush(['whoami/logs/app.log' => "placeholder\n"], 'placeholder');
+        $clone = $this->createdClone();
+        $dir = $clone->settings()->cloneDir;
+        unlink($dir . '/whoami/logs/app.log');
+        rmdir($dir . '/whoami/logs');
+        file_put_contents($dir . '/whoami/logs', "data\n");
+
+        try {
+            $clone->discardLocalChanges();
+            $this->fail('Discarded over an untracked file of data');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('whoami/logs', $error->getMessage());
+        }
+        $this->assertSame("data\n", file_get_contents($dir . '/whoami/logs'));
+    }
+
+    public function testEditToAFileRemovedFromTheIndexIsSavedInThePatch(): void
+    {
+        $clone = $this->createdClone();
+        $dir = $clone->settings()->cloneDir;
+        $deployed = $clone->checkedOutCommit();
+        $this->git(['rm', '-q', '--cached', 'whoami/compose.yaml'], $dir);
+        file_put_contents($dir . '/whoami/compose.yaml', "edited\n");
+
+        // Unstaging tracks the file again, so the edit is an ordinary local change.
+        $clone->unstageAll();
+        $patch = $clone->saveChangesAsPatch($deployed, $this->stackDir);
+        $clone->discardLocalChanges();
+
+        $this->assertStringContainsString('+edited', (string) file_get_contents((string) $patch));
+        $this->git(['apply', (string) $patch], $dir);
+        $this->assertSame("edited\n", file_get_contents($dir . '/whoami/compose.yaml'));
+    }
+
+    public function testStagedNewFileSurvivesADiscard(): void
+    {
+        $clone = $this->createdClone();
+        $dir = $clone->settings()->cloneDir;
+        $deployed = $clone->checkedOutCommit();
+        mkdir($dir . '/whoami/data');
+        file_put_contents($dir . '/whoami/data/app.db', 'container data');
+        file_put_contents($dir . '/whoami/compose.yaml', "hotfix\n");
+        // "git add -A" after a hotfix also stages the container's data.
+        $this->git(['add', '-A'], $dir);
+
+        $clone->unstageAll();
+        $patch = $clone->saveChangesAsPatch($deployed, $this->stackDir);
+        $clone->discardLocalChanges();
+
+        $this->assertSame('container data', file_get_contents($dir . '/whoami/data/app.db'));
+        $this->assertSame([], $clone->locallyChangedFiles());
+        // The data is not in the patch: it stayed where it was.
+        $this->assertStringNotContainsString('app.db', (string) file_get_contents((string) $patch));
+        $this->assertStringContainsString('+hotfix', (string) file_get_contents((string) $patch));
+    }
+
+    public function testCommitMadeByHandInTheCloneIsInThePatch(): void
+    {
+        $clone = $this->createdClone();
+        $dir = $clone->settings()->cloneDir;
+        $deployed = $clone->checkedOutCommit();
+        file_put_contents($dir . '/whoami/compose.yaml', "committed by hand\n");
+        $this->git(['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-am', 'by hand'], $dir);
+
+        $patch = $clone->saveChangesAsPatch($deployed, $this->stackDir);
+
+        $this->assertNotNull($patch);
+        $this->assertStringContainsString('+committed by hand', (string) file_get_contents($patch));
+    }
+
+    public function testNothingToSaveGivesNoPatch(): void
+    {
+        $clone = $this->createdClone();
+        $this->assertNull($clone->saveChangesAsPatch($clone->checkedOutCommit(), $this->stackDir));
+        $this->assertDirectoryDoesNotExist($this->stackDir . '/git-changes');
+    }
+
+    public function testTwoPatchesInTheSameSecondDoNotOverwriteEachOther(): void
+    {
+        $clone = $this->createdClone();
+        $deployed = $clone->checkedOutCommit();
+        file_put_contents($clone->settings()->cloneDir . '/whoami/compose.yaml', "one\n");
+        $first = $clone->saveChangesAsPatch($deployed, $this->stackDir);
+        $second = $clone->saveChangesAsPatch($deployed, $this->stackDir);
+
+        $this->assertNotSame($first, $second);
+        $this->assertFileExists((string) $first);
+        $this->assertFileExists((string) $second);
+    }
+
     // ----- what changed -----
 
     public function testChangeInAnotherStackFolderDoesNotCount(): void
