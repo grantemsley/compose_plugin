@@ -3536,7 +3536,7 @@ class StackInfo
             return [];
         }
 
-        $cmd = "docker compose " . $this->buildComposeFileFlags();
+        $cmd = "docker compose " . $this->buildComposeFileFlagsWithoutManagedOverride();
         $envFlag = $this->buildEnvFileFlag();
         if ($envFlag !== '') {
             $cmd .= " " . $envFlag;
@@ -3551,6 +3551,45 @@ class StackInfo
         return array_values(array_filter(array_map('trim', explode("\n", trim($output))), function ($service) {
             return $service !== '';
         }));
+    }
+
+    /**
+     * The -f flags for this stack, leaving out the plugin-managed override and
+     * the icon override generated from it.
+     *
+     * Both files hold only labels. An entry for a service the compose file no
+     * longer has defines a service with no image, and compose refuses the
+     * whole project over it ("has neither an image nor a build context"), so
+     * they must be left out when asking which services are valid.
+     *
+     * With default file discovery there are no -f flags to leave one out of,
+     * so this returns the same as buildComposeFileFlags().
+     *
+     * @return string
+     */
+    private function buildComposeFileFlagsWithoutManagedOverride(): string
+    {
+        if ($this->useDefaultComposeFileDiscovery()) {
+            return $this->buildComposeFileFlags();
+        }
+
+        $leftOut = [];
+        foreach ([$this->overrideInfo->getProjectOverridePath(), $this->getIconNormalizationOverridePath()] as $path) {
+            if ($path !== null) {
+                $leftOut[$this->normalizeComposeFilePath($path)] = true;
+            }
+        }
+
+        $flags = [];
+        foreach ($this->getComposeFilePaths() as $filePath) {
+            if (isset($leftOut[$this->normalizeComposeFilePath($filePath)])) {
+                continue;
+            }
+            if (is_file($filePath)) {
+                $flags[] = '-f ' . escapeshellarg($filePath);
+            }
+        }
+        return implode(' ', $flags);
     }
 
     /**
