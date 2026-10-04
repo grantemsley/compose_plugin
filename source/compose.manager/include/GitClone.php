@@ -32,7 +32,7 @@ final class GitCloneNotOwnedException extends RuntimeException
  *  - it never runs git clean and never forces a checkout, so untracked files,
  *    ignored or not, such as data a container wrote through a relative bind
  *    mount, are never removed or overwritten,
- *  - it refuses to check out while tracked files have local changes.
+ *  - local changes are saved as a patch before they are ever discarded.
  */
 final class GitClone
 {
@@ -368,12 +368,214 @@ final class GitClone
     }
 
     /**
+     * Save everything that differs from a commit (local edits, and any commits
+     * made by hand in the clone) as a patch file in the stack folder.
+     *
+     * @return string|null the patch file written, or null when there was nothing to save
+     * @throws RuntimeException if the patch cannot be written
+     */
+    public function saveChangesAsPatch(string $againstCommit, string $stackDir): ?string
+    {
+        $this->assertOwned();
+        $result = $this->git(
+            ['diff', '--binary', $this->commitArgument($againstCommit), '--'],
+            $this->settings->cloneDir,
+            120
+        );
+        if (!$result->succeeded()) {
+            throw new RuntimeException('Could not collect the local changes: ' . $result->errorSummary());
+        }
+        if ($result->stdout === '') {
+            return null;
+        }
+
+        $patchDir = rtrim($stackDir, '/') . '/git-changes';
+        if (str_starts_with($patchDir, rtrim(COMPOSE_GIT_MNT_DIR, '/') . '/')) {
+            GitPathGuard::assertSafeToWrite($patchDir);
+        }
+        if (!is_dir($patchDir) && !@mkdir($patchDir, 0755) && !is_dir($patchDir)) {
+            throw new RuntimeException("Could not create $patchDir.");
+        }
+
+        $base = $patchDir . '/' . date('Y-m-d_His') . '-' . substr($againstCommit, 0, 12);
+        $patchFile = $base . '.patch';
+        for ($n = 2; file_exists($patchFile); $n++) {
+            $patchFile = "$base-$n.patch";
+        }
+        // The patch is the only copy of the changes once they are discarded,
+        // so a short write (a full flash) must stop the discard.
+        if (file_put_contents($patchFile, $result->stdout) !== strlen($result->stdout)) {
+            // This run created the file (the loop above picked an unused name).
+            @unlink($patchFile);
+            throw new RuntimeException("Could not write all of $patchFile, so the local changes were kept.");
+        }
+        return $patchFile;
+    }
+
+    /**
+     * Take every staged change out of the index, leaving the files as they are.
+     *
+     * A new file that was staged (for example by "git add -A", which also
+     * sweeps up a container's ./data folder) is in the index, so git does not
+     * list it as untracked, and "git reset --hard" would delete it. Unstaged,
+     * it is an untracked file again: assertDiscardKeepsUntrackedFiles()
+     * protects it and the discard leaves it alone. Call this first, before
+     * the check and before saving the patch.
+     *
+     * @throws RuntimeException naming the problem
+     */
+    public function unstageAll(): void
+    {
+        $this->assertOwned();
+        GitPathGuard::assertSafeToWrite($this->settings->cloneDir . '/.git');
+        $this->runOrThrow(['reset', '--quiet', 'HEAD'], 'Could not unstage the staged changes');
+    }
+
+    /**
+     * Put the tracked files back to the checked-out commit. Untracked files are
+     * left alone, and so are staged new files (see unstageAll()). Call only
+     * after saveChangesAsPatch() has saved the changes.
+     *
+     * @throws RuntimeException naming the problem
+     */
+    public function discardLocalChanges(): void
+    {
+        $this->assertOwned();
+        $this->unstageAll();
+        $this->assertDiscardKeepsUntrackedFiles();
+        GitPathGuard::assertSafeToWrite($this->settings->cloneDir);
+        $this->runOrThrow(['reset', '--hard', '--quiet', 'HEAD'], 'Could not discard the local changes');
+    }
+
+    /**
+     * Throw if discarding the local changes would delete or overwrite an untracked file.
+     *
+     * "git reset --hard HEAD" puts back every file tracked at HEAD, and it
+     * replaces whatever untracked file or folder is at that path: a tracked
+     * file "logs" that was deleted and replaced by a folder of logs, or the
+     * other way round, a tracked folder "logs" that was deleted and replaced
+     * by a file. The patch from saveChangesAsPatch() does not hold those
+     * untracked contents, so they would be lost. Call this before saving the
+     * patch, so a refusal changes nothing.
+     *
+     * @throws RuntimeException listing the files in the way
+     */
+    public function assertDiscardKeepsUntrackedFiles(): void
+    {
+        $tracked = $this->git(['ls-tree', '-r', '--name-only', '-z', 'HEAD'], $this->settings->cloneDir, 60);
+        // No --exclude-standard: ignored files are listed too, and are just as much at risk.
+        $untracked = $this->git(['ls-files', '-z', '--others'], $this->settings->cloneDir, 120);
+        if (!$tracked->succeeded() || !$untracked->succeeded()) {
+            throw new RuntimeException(
+                'Could not list the files in the clone: '
+                . (!$tracked->succeeded() ? $tracked->errorSummary() : $untracked->errorSummary())
+            );
+        }
+
+        $trackedFiles = [];
+        // Every folder that holds a tracked file, at any depth.
+        $trackedFolders = [];
+        foreach (explode("\0", $tracked->stdout) as $path) {
+            if ($path === '') {
+                continue;
+            }
+            $trackedFiles[$path] = true;
+            $folder = dirname($path);
+            while ($folder !== '.' && !isset($trackedFolders[$folder])) {
+                $trackedFolders[$folder] = true;
+                $folder = dirname($folder);
+            }
+        }
+
+        $atRisk = [];
+        foreach (explode("\0", $untracked->stdout) as $path) {
+            if ($path === '') {
+                continue;
+            }
+            // At risk: an untracked file where a tracked folder is. The reset
+            // would delete the file to put the folder back.
+            if (isset($trackedFolders[$path])) {
+                $atRisk[$path] = true;
+                continue;
+            }
+            // At risk: an untracked file at a tracked path, or inside a folder
+            // that sits where a tracked file is.
+            $candidate = $path;
+            while ($candidate !== '.' && $candidate !== '') {
+                if (isset($trackedFiles[$candidate])) {
+                    $atRisk[$candidate] = true;
+                    break;
+                }
+                $candidate = dirname($candidate);
+            }
+        }
+
+        if ($atRisk !== []) {
+            $paths = array_keys($atRisk);
+            throw new RuntimeException(
+                'Discarding the local changes would delete or overwrite untracked files at '
+                . implode(', ', array_slice($paths, 0, 5)) . (count($paths) > 5 ? ', ...' : '')
+                . ', because the checked-out commit has a tracked file or folder there. Nothing was changed. '
+                . 'Move them out of the clone, then deploy again.'
+            );
+        }
+    }
+
+    /**
      * The folder in the repository that holds the compose file, or '' for the top level.
      */
     public function stackFolderInRepo(): string
     {
         $folder = dirname($this->settings->composePath);
         return $folder === '.' ? '' : $folder;
+    }
+
+    /**
+     * Whether a commit is on the stack's branch as last fetched (it, or a later
+     * commit of the branch, is what the branch points at).
+     *
+     * @throws RuntimeException if git cannot tell
+     */
+    public function isOnBranch(string $commit): bool
+    {
+        $this->assertOwned();
+        $result = $this->git(
+            ['merge-base', '--is-ancestor', $this->commitArgument($commit), 'refs/remotes/origin/' . $this->settings->branch],
+            $this->settings->cloneDir,
+            60
+        );
+        // Exit code 1 means "not an ancestor"; anything else non-zero is an error.
+        if ($result->exitCode === 1 && !$result->timedOut) {
+            return false;
+        }
+        if (!$result->succeeded()) {
+            throw new RuntimeException('Could not compare the commit with the branch: ' . $result->errorSummary());
+        }
+        return true;
+    }
+
+    /**
+     * The last commit a commit shares with the stack's branch as last fetched,
+     * or null when they share none.
+     *
+     * @throws RuntimeException if git fails
+     */
+    public function lastCommitSharedWithBranch(string $commit): ?string
+    {
+        $this->assertOwned();
+        $result = $this->git(
+            ['merge-base', $this->commitArgument($commit), 'refs/remotes/origin/' . $this->settings->branch],
+            $this->settings->cloneDir,
+            60
+        );
+        if ($result->exitCode === 1 && !$result->timedOut) {
+            return null;
+        }
+        $shared = trim($result->stdout);
+        if (!$result->succeeded() || !self::isCommitId($shared)) {
+            throw new RuntimeException('Could not compare the commit with the branch: ' . $result->errorSummary());
+        }
+        return $shared;
     }
 
     /**
