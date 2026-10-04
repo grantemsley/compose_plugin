@@ -22,6 +22,10 @@ test_setup() {
     export PREPARE_EXIT=0 PULL_EXIT=0 BUILD_EXIT=0 UP_EXIT=0 UP_ARGUMENTS_EXIT=0 UP_ARGUMENTS=""
     export COMPOSE_ARGS_EXIT=0 RESTORE_EXIT=0
     export PREPARE_OUTPUT="0000000000000000000000000000000000000001"
+    # The plugin's settings: none, so Create Missing External Networks is off unless a test turns it on.
+    export COMPOSE_MANAGER_CFG_FILE="$TEST_TEMP_DIR/compose.manager.cfg"
+    # What "docker compose config --format json" prints, and whether "docker network inspect" finds the network.
+    export CONFIG_JSON='{}' NETWORK_INSPECT_EXIT=0
 
     STACK="$TEST_TEMP_DIR/whoami"
     mkdir -p "$STACK" "$TEST_TEMP_DIR/bin"
@@ -76,6 +80,8 @@ for arg in "$@"; do
     pull) exit "$PULL_EXIT" ;;
     build) exit "$BUILD_EXIT" ;;
     up) exit "$UP_EXIT" ;;
+    config) printf '%s' "$CONFIG_JSON"; exit 0 ;;
+    inspect) exit "$NETWORK_INSPECT_EXIT" ;;
   esac
 done
 exit 0
@@ -256,4 +262,34 @@ calls_matching() {
     run_gitdeploy --build
     [ "$status" -eq 0 ]
     [ "$(grep -c -- ' up .*--build' "$CALLS" || true)" -eq 0 ]
+}
+
+@test "gitdeploy creates a missing external network after the build and before up when the setting is on" {
+    echo 'CREATE_MISSING_EXTERNAL_NETWORKS="true"' > "$COMPOSE_MANAGER_CFG_FILE"
+    export CONFIG_JSON='{"networks":{"proxy":{"name":"zz-proxy","external":true}}}' NETWORK_INSPECT_EXIT=1
+    run_gitdeploy
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Created missing external network: zz-proxy"* ]]
+
+    build_line=$(grep -n ' build$' "$CALLS" | cut -d: -f1)
+    create_line=$(grep -n 'docker network create zz-proxy$' "$CALLS" | cut -d: -f1)
+    up_line=$(grep -n ' up ' "$CALLS" | cut -d: -f1)
+    [ "$build_line" -lt "$create_line" ]
+    [ "$create_line" -lt "$up_line" ]
+}
+
+@test "gitdeploy creates no network when the setting is off" {
+    export CONFIG_JSON='{"networks":{"proxy":{"name":"zz-proxy","external":true}}}' NETWORK_INSPECT_EXIT=1
+    run_gitdeploy
+    [ "$status" -eq 0 ]
+    [ "$(calls_matching 'network create')" -eq 0 ]
+}
+
+@test "gitdeploy creates no network when it stops before up" {
+    echo 'CREATE_MISSING_EXTERNAL_NETWORKS="true"' > "$COMPOSE_MANAGER_CFG_FILE"
+    export CONFIG_JSON='{"networks":{"proxy":{"name":"zz-proxy","external":true}}}' NETWORK_INSPECT_EXIT=1
+    export BUILD_EXIT=1
+    run_gitdeploy
+    [ "$status" -eq 1 ]
+    [ "$(calls_matching 'network create')" -eq 0 ]
 }

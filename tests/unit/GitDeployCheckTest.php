@@ -131,6 +131,19 @@ final class GitDeployCheckTest extends TestCase
         $this->assertSame([], $this->check());
     }
 
+    public function testMissingExternalNetworkIsNotAProblemWhenItWillBeCreated(): void
+    {
+        $config = $this->config(['image' => 'busybox']);
+        $config['networks'] = ['proxy' => ['name' => 'zz-proxy', 'external' => true]];
+        $config['volumes'] = ['ext' => ['name' => 'zz-ext', 'external' => true]];
+        $this->docker->setConfig($config);
+
+        // The volume is still checked: only networks are created by the setting.
+        $problems = $this->check(missingNetworksWillBeCreated: true);
+        $this->assertCount(1, $problems);
+        $this->assertStringContainsString("volume 'zz-ext'", $problems[0]);
+    }
+
     // ----- paths -----
 
     public function testMisspelledShareInBindSourceIsAProblem(): void
@@ -369,14 +382,15 @@ final class GitDeployCheckTest extends TestCase
     }
 
     /** @return string[] */
-    private function check(): array
+    private function check(bool $missingNetworksWillBeCreated = false): array
     {
         $check = new GitDeployCheck(
             'whoami',
             ['-f', $this->clone . '/whoami/compose.yaml'],
             $this->clone,
             $this->clone . '/whoami',
-            $this->stackDir . '/.env'
+            $this->stackDir . '/.env',
+            $missingNetworksWillBeCreated
         );
         return $check->run();
     }

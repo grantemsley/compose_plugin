@@ -629,6 +629,14 @@ case $command in
         ;;
     esac
 
+    # Optionally create missing `external: true` networks, as up and update do
+    # (Settings > Compose > Create Missing External Networks). This is done
+    # here, after every check, pull and build has passed, so a deploy that
+    # stops earlier creates nothing.
+    if plugin_setting_enabled CREATE_MISSING_EXTERNAL_NETWORKS; then
+      create_missing_external_networks "${git_compose[@]}" -p "$name"
+    fi
+
     # 4. Start the stack at the new commit.
     echo ""
     echo "Starting containers..."

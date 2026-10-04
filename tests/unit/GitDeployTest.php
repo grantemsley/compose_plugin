@@ -10,6 +10,7 @@ use GitCommand;
 use GitDeploy;
 use GitStackSettings;
 use GitStackState;
+use PluginTests\Mocks\FunctionMocks;
 use PluginTests\TestCase;
 use RuntimeException;
 
@@ -99,6 +100,27 @@ final class GitDeployTest extends TestCase
             $this->assertStringContainsString('cannot start any token', $error->getMessage());
         }
         $this->assertSame($before, $this->clone->checkedOutCommit());
+    }
+
+    public function testMissingExternalNetworkIsLeftToCreateMissingExternalNetworks(): void
+    {
+        $this->docker->setConfig([
+            'name' => 'whoami',
+            'services' => ['whoami' => ['image' => 'busybox']],
+            'networks' => ['proxy' => ['name' => 'zz-proxy', 'external' => true]],
+        ]);
+
+        try {
+            $this->deploy()->prepare('whoami', [], null, false);
+            $this->fail('Deployed with a missing external network and the setting off');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString("network 'zz-proxy' does not exist", $error->getMessage());
+        }
+
+        // With the setting on, compose.sh creates the network before up, so the check lets it through.
+        FunctionMocks::setPluginConfig('compose.manager', ['CREATE_MISSING_EXTERNAL_NETWORKS' => 'true']);
+        $this->deploy()->prepare('whoami', [], null, false);
+        $this->assertSame($this->upstreamHead(), $this->clone->checkedOutCommit());
     }
 
     public function testComposeFileRemovedUpstreamIsNotDeployed(): void
