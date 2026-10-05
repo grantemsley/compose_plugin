@@ -51,7 +51,23 @@ final class GitStackSettingsTest extends TestCase
             'port' => ['https://git.example.com:3000/owner/repo.git'],
             'nested path' => ['https://gitlab.example.com/group/sub/repo.git'],
             'local bare repo' => [COMPOSE_GIT_MNT_DIR . '/user/appdata/repos/stacks.git'],
+            'ssh' => ['ssh://git@github.com/owner/repo.git'],
+            'ssh with port' => ['ssh://git@git.example.com:2222/owner/repo.git'],
+            'scp style' => ['git@github.com:owner/repo.git'],
+            'scp style absolute path' => ['git@nas.example.com:/srv/git/stacks.git'],
         ];
+    }
+
+    public function testSshAddressIsSplitIntoItsParts(): void
+    {
+        $this->assertSame(
+            ['user' => 'git', 'host' => 'git.example.com', 'port' => 2222, 'path' => 'owner/repo.git'],
+            GitStackSettings::sshAddress('ssh://git@Git.Example.com:2222/owner/repo.git')
+        );
+        $this->assertSame(
+            ['user' => 'git', 'host' => 'github.com', 'port' => 22, 'path' => 'owner/repo.git'],
+            GitStackSettings::sshAddress('git@github.com:owner/repo.git')
+        );
     }
 
     #[DataProvider('goodUrls')]
@@ -68,8 +84,13 @@ final class GitStackSettingsTest extends TestCase
             'empty' => ['', 'empty'],
             'plain http' => ['http://github.com/owner/repo.git', 'https://'],
             'upper case scheme, which git refuses' => ['HTTPS://github.com/owner/repo.git', 'https://'],
-            'ssh' => ['ssh://git@github.com/owner/repo.git', 'https://'],
-            'scp style' => ['git@github.com:owner/repo.git', 'https://'],
+            'ssh without a user' => ['ssh://github.com/owner/repo.git', 'ssh repository address is not valid'],
+            'ssh host starting with a dash' => ['ssh://git@-oProxyCommand=x/repo.git', 'ssh repository address is not valid'],
+            'ssh user starting with a dash' => ['-oProxyCommand=x@github.com:repo.git', 'ssh repository address is not valid'],
+            'ssh port too large' => ['ssh://git@github.com:99999/owner/repo.git', 'ssh repository address is not valid'],
+            'ssh password' => ['ssh://git:secret@github.com/owner/repo.git', 'ssh repository address is not valid'],
+            'ssh path traversal' => ['git@github.com:../../etc/passwd', 'ssh repository address is not valid'],
+            'ssh path starting with a dash' => ['git@github.com:-repo.git', 'ssh repository address is not valid'],
             'file url' => ['file:///mnt/user/repo.git', 'https://'],
             'ext transport' => ['ext::sh -c touch% /tmp/x', 'spaces'],
             'ext transport without spaces' => ['ext::sh', 'https://'],
@@ -273,6 +294,38 @@ final class GitStackSettingsTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('needs no credential');
         $settings->withCredentialId(str_repeat('ab', 16));
+    }
+
+    public function testSshStackKeepsItsPinnedHostKeys(): void
+    {
+        $knownHosts = "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
+            . "[git.example.com]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTY=\n";
+        $settings = GitStackSettings::createNew('git@github.com:owner/repo.git', 'main', 'whoami/compose.yaml', $this->mnt . '/user/appdata/git', 'whoami')
+            ->withCredentialId(str_repeat('cd', 16))
+            ->withSshKnownHosts($knownHosts);
+        $this->assertTrue($settings->isSsh());
+
+        $settings->save($this->stackDir);
+        $loaded = GitStackSettings::load($this->stackDir);
+
+        $this->assertNotNull($loaded);
+        $this->assertSame($knownHosts, $loaded->sshKnownHosts);
+        $this->assertSame(str_repeat('cd', 16), $loaded->credentialId);
+    }
+
+    public function testPinnedHostKeysMustBeKnownHostsLinesForAnSshRepository(): void
+    {
+        $ssh = GitStackSettings::createNew('git@github.com:owner/repo.git', 'main', 'whoami/compose.yaml', $this->mnt . '/user/appdata/git', 'whoami');
+        try {
+            $ssh->withSshKnownHosts("github.com ssh-ed25519 AAAA\n@cert-authority * ssh-rsa AAAA\n");
+            $this->fail('Accepted a line that is not a plain host key');
+        } catch (InvalidArgumentException $error) {
+            $this->assertStringContainsString('not a known_hosts line', $error->getMessage());
+        }
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('only for an ssh repository');
+        $this->makeSettings()->withSshKnownHosts("github.com ssh-ed25519 AAAA\n");
     }
 
     public function testCredentialIdThatIsNotAVaultIdIsRefused(): void

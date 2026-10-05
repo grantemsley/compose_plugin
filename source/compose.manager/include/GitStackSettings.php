@@ -39,14 +39,17 @@ final class GitStackSettings
     private const KEYS = ['version', 'url', 'branch', 'composePath', 'cloneId', 'cloneDir', 'recreateOnFolderChange'];
 
     /** @var string[] Keys added later, which a file may leave out. */
-    private const OPTIONAL_KEYS = ['credentialId'];
+    private const OPTIONAL_KEYS = ['credentialId', 'sshKnownHosts'];
 
     /**
      * @param bool $recreateOnFolderChange Recreate the stack's containers when a deploy changes
      *     anything in the stack's folder, not only when the compose definition changes. A commit
      *     that only edits a bind-mounted config file then takes effect.
      * @param string|null $credentialId The credential vault entry used to reach the repository, or
-     *     null for a repository that needs none (the default: format 1 had no credentials).
+     *     null for a repository that needs none (the default: format 1 had no credentials). For an
+     *     ssh repository, the stack's deploy key.
+     * @param string|null $sshKnownHosts The ssh repository host's keys, pinned when the stack was
+     *     set up, in known_hosts format; null for an https or local repository.
      */
     private function __construct(
         public readonly string $url,
@@ -55,7 +58,8 @@ final class GitStackSettings
         public readonly string $cloneId,
         public readonly string $cloneDir,
         public readonly bool $recreateOnFolderChange,
-        public readonly ?string $credentialId = null
+        public readonly ?string $credentialId = null,
+        public readonly ?string $sshKnownHosts = null
     ) {
     }
 
@@ -90,7 +94,8 @@ final class GitStackSettings
             $this->cloneId,
             $this->cloneDir,
             $recreateOnFolderChange,
-            $this->credentialId
+            $this->credentialId,
+            $this->sshKnownHosts
         );
     }
 
@@ -108,8 +113,36 @@ final class GitStackSettings
             $this->cloneId,
             $this->cloneDir,
             $this->recreateOnFolderChange,
-            $credentialId
+            $credentialId,
+            $this->sshKnownHosts
         );
+    }
+
+    /**
+     * The same settings with other pinned ssh host keys.
+     *
+     * @throws InvalidArgumentException if they are not known_hosts lines, or the repository is not ssh
+     */
+    public function withSshKnownHosts(?string $sshKnownHosts): self
+    {
+        return self::fromValues(
+            $this->url,
+            $this->branch,
+            $this->composePath,
+            $this->cloneId,
+            $this->cloneDir,
+            $this->recreateOnFolderChange,
+            $this->credentialId,
+            $sshKnownHosts
+        );
+    }
+
+    /**
+     * Whether the repository is reached over ssh (with a deploy key).
+     */
+    public function isSsh(): bool
+    {
+        return self::isSshUrl($this->url);
     }
 
     /**
@@ -170,6 +203,10 @@ final class GitStackSettings
         if ($credentialId !== null && !is_string($credentialId)) {
             throw new RuntimeException("$file: 'credentialId' must be a string.");
         }
+        $sshKnownHosts = $data['sshKnownHosts'] ?? null;
+        if ($sshKnownHosts !== null && !is_string($sshKnownHosts)) {
+            throw new RuntimeException("$file: 'sshKnownHosts' must be a string.");
+        }
 
         try {
             return self::fromValues(
@@ -179,7 +216,8 @@ final class GitStackSettings
                 $data['cloneId'],
                 $data['cloneDir'],
                 $data['recreateOnFolderChange'],
-                $credentialId
+                $credentialId,
+                $sshKnownHosts
             );
         } catch (InvalidArgumentException $error) {
             throw new RuntimeException("$file: " . $error->getMessage(), 0, $error);
@@ -214,6 +252,9 @@ final class GitStackSettings
         // Keys added later are written only when they differ from their default (see the class comment).
         if ($this->credentialId !== null) {
             $data['credentialId'] = $this->credentialId;
+        }
+        if ($this->sshKnownHosts !== null) {
+            $data['sshKnownHosts'] = $this->sshKnownHosts;
         }
         $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         if ($json === false) {
@@ -261,9 +302,10 @@ final class GitStackSettings
     /**
      * Check a repository address.
      *
-     * Accepted: an https URL without a user name or password in it, or the
-     * absolute path of a repository under /mnt (for a bare repository on this
-     * server that you push to).
+     * Accepted: an https URL without a user name or password in it, an ssh
+     * address (ssh://git@host[:port]/path or git@host:path, reached with the
+     * stack's deploy key), or the absolute path of a repository under /mnt (for
+     * a bare repository on this server that you push to).
      *
      * @throws InvalidArgumentException naming the problem
      */
@@ -279,6 +321,17 @@ final class GitStackSettings
             throw new InvalidArgumentException('The repository address must not contain spaces or control characters.');
         }
 
+        if (self::isSshUrl($url)) {
+            // Each part is held to plain characters: the host and user reach ssh's command line,
+            // where a value starting with "-" would be read as an option.
+            if (self::sshAddress($url) === null) {
+                throw new InvalidArgumentException(
+                    "The ssh repository address is not valid. Use ssh://git@host[:port]/path or git@host:path: $url"
+                );
+            }
+            return;
+        }
+
         if (str_starts_with($url, '/')) {
             GitPathGuard::assertCleanAbsolutePath($url, 'The repository path');
             if (!str_starts_with($url, rtrim(COMPOSE_GIT_MNT_DIR, '/') . '/')) {
@@ -292,8 +345,8 @@ final class GitStackSettings
         // Lower case only: git matches the transport name exactly, and refuses "HTTPS".
         if (!str_starts_with($url, 'https://')) {
             throw new InvalidArgumentException(
-                "The repository address must start with https://, or be a path under " . COMPOSE_GIT_MNT_DIR
-                . " for a repository on this server: $url"
+                "The repository address must start with https:// or ssh:// (or be git@host:path), or be a path under "
+                . COMPOSE_GIT_MNT_DIR . " for a repository on this server: $url"
             );
         }
 
@@ -304,7 +357,7 @@ final class GitStackSettings
         if (isset($parts['user']) || isset($parts['pass'])) {
             throw new InvalidArgumentException(
                 'The repository address must not contain a user name, password or token '
-                . '(it would be stored in plain text). Private repositories are not supported yet.'
+                . '(it would be stored in plain text). For a private repository, use a git credential instead.'
             );
         }
         if (isset($parts['query']) || isset($parts['fragment'])) {
@@ -316,6 +369,60 @@ final class GitStackSettings
         $path = $parts['path'] ?? '';
         if ($path === '' || $path === '/') {
             throw new InvalidArgumentException("The repository address has no repository path: $url");
+        }
+    }
+
+    /**
+     * Whether an address is meant as ssh: ssh://..., or the user@host:path form.
+     */
+    public static function isSshUrl(string $url): bool
+    {
+        return str_starts_with(strtolower($url), 'ssh://')
+            || preg_match('#^[^/:@]+@[^/:]+:#', $url) === 1;
+    }
+
+    /**
+     * The parts of an ssh repository address, or null when it is not a valid one.
+     *
+     * The user, host and port go to ssh, so each is held to plain characters, and
+     * none can start with "-". The path is what the server is asked for.
+     *
+     * @return array{user: string, host: string, port: int, path: string}|null
+     */
+    public static function sshAddress(string $url): ?array
+    {
+        $user = '[A-Za-z0-9_][A-Za-z0-9._-]*';
+        $host = '(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?';
+        $path = '[A-Za-z0-9._~+][A-Za-z0-9._~+/-]*';
+        if (preg_match("#^ssh://($user)@($host)(?::([0-9]{1,5}))?/($path)$#i", $url, $match) === 1) {
+            $port = $match[3] === '' ? 22 : (int) $match[3];
+        } elseif (preg_match("#^($user)@($host):(/?$path)$#", $url, $match) === 1) {
+            $port = 22;
+            $match[4] = $match[3];
+        } else {
+            return null;
+        }
+        if ($port < 1 || $port > 65535 || str_contains($match[4], '..')) {
+            return null;
+        }
+        return ['user' => $match[1], 'host' => strtolower($match[2]), 'port' => $port, 'path' => $match[4]];
+    }
+
+    /**
+     * Check pinned ssh host keys: one or more known_hosts lines, "host type key".
+     *
+     * @throws InvalidArgumentException naming the problem
+     */
+    public static function validateKnownHosts(string $knownHosts): void
+    {
+        $lines = array_filter(explode("\n", trim($knownHosts)), static fn(string $line): bool => $line !== '');
+        if ($lines === []) {
+            throw new InvalidArgumentException('The pinned ssh host keys are empty.');
+        }
+        foreach ($lines as $line) {
+            if (preg_match('#^[A-Za-z0-9.:\[\]_-]+ (?:ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(?:256|384|521)) [A-Za-z0-9+/]+={0,2}$#', $line) !== 1) {
+                throw new InvalidArgumentException("A pinned ssh host key is not a known_hosts line: $line");
+            }
         }
     }
 
@@ -411,7 +518,8 @@ final class GitStackSettings
         string $cloneId,
         string $cloneDir,
         bool $recreateOnFolderChange,
-        ?string $credentialId = null
+        ?string $credentialId = null,
+        ?string $sshKnownHosts = null
     ): self {
         self::validateUrl($url);
         self::validateBranch($branch);
@@ -432,7 +540,13 @@ final class GitStackSettings
         if ($credentialId !== null && str_starts_with($url, '/')) {
             throw new InvalidArgumentException('A repository on this server needs no credential.');
         }
+        if ($sshKnownHosts !== null) {
+            if (!self::isSshUrl($url)) {
+                throw new InvalidArgumentException('Pinned ssh host keys are only for an ssh repository.');
+            }
+            self::validateKnownHosts($sshKnownHosts);
+        }
 
-        return new self($url, $branch, $composePath, $cloneId, $cloneDir, $recreateOnFolderChange, $credentialId);
+        return new self($url, $branch, $composePath, $cloneId, $cloneDir, $recreateOnFolderChange, $credentialId, $sshKnownHosts);
     }
 }

@@ -70,9 +70,11 @@ is printed at the end. No stack folder by that name may exist yet; to put an exi
 under git, use 'compose-git convert'.
 
 Options:
-  --url <url>             The repository: a public https:// address, with no user name or
-                          password in it, or the path of a repository on this server under
-                          /mnt. Required.
+  --url <url>             The repository: an https:// address with no user name or
+                          password in it, an ssh address (ssh://git@host[:port]/path or
+                          git@host:path), or the path of a repository on this server under
+                          /mnt. Required. An ssh stack gets a deploy key of its own, and the
+                          host's ssh keys are pinned.
   --path <compose file>   The compose file's path inside the repository, such as
                           stacks/whoami/compose.yaml. Required.
   --branch <branch>       The branch to follow. Default: main.
@@ -103,9 +105,11 @@ If the clone fails, or the branch has no compose file at --path, nothing is chan
 refuses to start while another operation on the stack is running.
 
 Options:
-  --url <url>             The repository: a public https:// address, with no user name or
-                          password in it, or the path of a repository on this server under
-                          /mnt. Required.
+  --url <url>             The repository: an https:// address with no user name or
+                          password in it, an ssh address (ssh://git@host[:port]/path or
+                          git@host:path), or the path of a repository on this server under
+                          /mnt. Required. An ssh stack gets a deploy key of its own, and the
+                          host's ssh keys are pinned.
   --path <compose file>   The compose file's path inside the repository. Required.
   --branch <branch>       The branch to follow. Default: main.
   --clones-root <folder>  The folder the clone goes in, as <stack>-<id>. It must be on a
