@@ -194,6 +194,62 @@ final class CredentialVaultTest extends TestCase
         ]);
     }
 
+    public function testGitCredentialIsForOneHost(): void
+    {
+        $vault = new CredentialVault();
+        $saved = $vault->saveCredential([
+            'name' => 'Git stacks',
+            'provider' => 'git',
+            'registry' => 'https://GitHub.com/',
+            'username' => 'bot',
+            'secret' => 'token123',
+        ]);
+        $this->assertSame('git', $saved['provider']);
+        $this->assertSame('github.com', $saved['registry']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('repository host only');
+        $vault->saveCredential([
+            'name' => 'Too much',
+            'provider' => 'git',
+            'registry' => 'github.com/owner/repo.git',
+            'username' => 'bot',
+            'secret' => 'token123',
+        ]);
+    }
+
+    public function testUseCredentialHandsTheSecretToTheCallbackOnly(): void
+    {
+        $vault = new CredentialVault();
+        $saved = $vault->saveCredential([
+            'name' => 'Git stacks',
+            'provider' => 'git',
+            'registry' => 'github.com',
+            'username' => 'bot',
+            'secret' => 'token123',
+        ]);
+
+        $seen = $vault->useCredential($saved['id'], static fn(array $credential): string => $credential['secret']);
+
+        $this->assertSame('token123', $seen);
+    }
+
+    public function testGitCredentialIsNeverWrittenOutAsADockerLogin(): void
+    {
+        $vault = new CredentialVault();
+        $saved = $vault->saveCredential([
+            'name' => 'Git stacks',
+            'provider' => 'git',
+            'registry' => 'github.com',
+            'username' => 'bot',
+            'secret' => 'token123',
+        ]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('is a git repository credential, not a registry login');
+        $vault->materializeDockerConfig($saved['id']);
+    }
+
     public function testGetCredentialSummaryOmitsSecret(): void
     {
         $vault = new CredentialVault();
