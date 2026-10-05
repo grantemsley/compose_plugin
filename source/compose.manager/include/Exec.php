@@ -184,6 +184,7 @@ if (!function_exists('composeBuildCredentialStackMap')) {
     /**
      * Single-pass scan of every stack's `credential_id` file, grouped by credential id.
      * Avoids re-globbing/re-reading the compose root once per credential.
+     * A git stack's repository credential (`credentialId` in its git.json) counts too.
      *
      * @return array<string, string[]> Credential id => assigned stack names
      */
@@ -196,6 +197,18 @@ if (!function_exists('composeBuildCredentialStackMap')) {
                 continue;
             }
             $map[$credentialId][] = basename(dirname($credentialFile));
+        }
+        foreach (glob(rtrim($composeRoot, '/') . '/*/git.json') ?: [] as $gitSettingsFile) {
+            // Read as plain JSON: a git.json that fails validation still keeps its credential in use.
+            $gitSettings = json_decode((string) @file_get_contents($gitSettingsFile), true);
+            $credentialId = is_array($gitSettings) ? ($gitSettings['credentialId'] ?? null) : null;
+            if (!is_string($credentialId) || $credentialId === '') {
+                continue;
+            }
+            $stack = basename(dirname($gitSettingsFile));
+            if (!in_array($stack, $map[$credentialId] ?? [], true)) {
+                $map[$credentialId][] = $stack;
+            }
         }
         return $map;
     }

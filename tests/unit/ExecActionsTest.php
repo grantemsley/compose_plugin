@@ -840,6 +840,24 @@ class ExecActionsTest extends TestCase
         $this->assertSame(['test-stack'], $deleteResult['stacks']);
     }
 
+    public function testCredentialUsedByAGitStackCannotBeDeleted(): void
+    {
+        $stackPath = $this->createTestStack('git-stack');
+        $saved = json_decode($this->executeAction('saveCredential', [
+            'name' => 'Git stacks', 'provider' => 'git', 'registry' => 'github.com',
+            'username' => 'bot', 'secret' => 'repository-token',
+        ]), true);
+        $credentialId = $saved['credential']['id'];
+        file_put_contents($stackPath . '/git.json', (string) json_encode(['credentialId' => $credentialId]));
+
+        $listed = json_decode($this->executeAction('listCredentials'), true);
+        $this->assertSame(['git-stack'], $listed['credentials'][0]['stacks']);
+
+        $deleteResult = json_decode($this->executeAction('deleteCredential', ['id' => $credentialId]), true);
+        $this->assertSame('error', $deleteResult['result']);
+        $this->assertSame(['git-stack'], $deleteResult['stacks']);
+    }
+
     public function testGetStackSettingsReturnsExternalComposeFileForFileMode(): void
     {
         $stackPath = $this->createTestStack('test-stack');
