@@ -298,6 +298,79 @@ final class GitStackManagerTest extends TestCase
         $this->assertSame([$folder], $this->manager->listGitStacks());
     }
 
+    // ----- credentials -----
+
+    public function testGitCredentialIsFoundByNameOrIdAndRegistryCredentialsAreIgnored(): void
+    {
+        $vault = $this->emptyVault();
+        $git = $vault->saveCredential(['name' => 'Forgejo', 'provider' => 'git', 'registry' => 'git.example.com', 'username' => 'bot', 'secret' => 't1']);
+        $vault->saveCredential(['name' => 'Docker', 'provider' => 'docker', 'registry' => 'docker.io', 'username' => 'bot', 'secret' => 't2']);
+
+        $this->assertSame($git['id'], $this->manager->findGitCredential('Forgejo'));
+        $this->assertSame($git['id'], $this->manager->findGitCredential($git['id']));
+        try {
+            $this->manager->findGitCredential('Docker');
+            $this->fail('Found a registry credential as a git credential');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('Git credentials: Forgejo', $error->getMessage());
+        }
+    }
+
+    public function testTwoGitCredentialsWithTheSameNameAreNotGuessedBetween(): void
+    {
+        $vault = $this->emptyVault();
+        $vault->saveCredential(['name' => 'Bot', 'provider' => 'git', 'registry' => 'github.com', 'username' => 'a', 'secret' => 't1']);
+        $vault->saveCredential(['name' => 'Bot', 'provider' => 'git', 'registry' => 'gitlab.com', 'username' => 'b', 'secret' => 't2']);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage("Several git credentials are named 'Bot'");
+        $this->manager->findGitCredential('Bot');
+    }
+
+    public function testAddThatCannotReachAPrivateRepositoryLeavesNoCloneAndNoCredentialFile(): void
+    {
+        $credential = $this->emptyVault()->saveCredential(
+            ['name' => 'Local', 'provider' => 'git', 'registry' => '127.0.0.1:9', 'username' => 'bot', 'secret' => 'token']
+        );
+
+        try {
+            $this->manager->add('private', 'https://127.0.0.1:9/team/stacks.git', 'main', 'whoami/compose.yaml', $this->clonesRoot, '', $credential['id']);
+            $this->fail('Added a stack whose repository could not be reached');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('Could not clone', $error->getMessage());
+        }
+        $this->assertDirectoryDoesNotExist($this->composeRoot . '/private');
+        $this->assertSame([], glob($this->clonesRoot . '/*') ?: []);
+        $this->assertSame([], glob(COMPOSE_GIT_CREDENTIAL_DIR . '/*') ?: []);
+    }
+
+    public function testCredentialCanBeRemovedAndIsShownInStatus(): void
+    {
+        $folder = $this->manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+        $this->assertNull($this->manager->status($folder)['credential']);
+
+        // A repository on this server never takes one.
+        $credential = $this->emptyVault()->saveCredential(
+            ['name' => 'Forgejo', 'provider' => 'git', 'registry' => 'git.example.com', 'username' => 'bot', 'secret' => 't1']
+        );
+        try {
+            $this->manager->setCredential($folder, $credential['id']);
+            $this->fail('Gave a repository on this server a credential');
+        } catch (\InvalidArgumentException $error) {
+            $this->assertStringContainsString('needs no credential', $error->getMessage());
+        }
+
+        $this->manager->setCredential($folder, null);
+        $this->assertNull(GitStackSettings::load($this->composeRoot . '/' . $folder)?->credentialId);
+    }
+
+    public function testCommandLineCredentialNeedsAStackAndANameOrNone(): void
+    {
+        $this->assertSame(2, $this->runCli(['compose-git', 'credential', 'whoami']));
+        $this->assertSame(2, $this->runCli(['compose-git', 'credential', 'whoami', 'Bot', '--none']));
+        $this->assertSame(1, $this->runCli(['compose-git', 'credential', 'whoami', 'No such credential']));
+    }
+
     // ----- reclone -----
 
     public function testRecloneMovesTheOldCloneAsideAndReturnsToTheDeployedCommit(): void
@@ -536,8 +609,9 @@ final class GitStackManagerTest extends TestCase
     public static function commandsAndTheirOptions(): array
     {
         return [
-            'add' => ['add', ['--url', '--path', '--branch', '--clones-root', '--description']],
-            'convert' => ['convert', ['--url', '--path', '--branch', '--clones-root']],
+            'add' => ['add', ['--url', '--path', '--branch', '--clones-root', '--description', '--credential']],
+            'convert' => ['convert', ['--url', '--path', '--branch', '--clones-root', '--credential']],
+            'credential' => ['credential', ['--none']],
             'check' => ['check', ['--all']],
             'deploy' => ['deploy', ['--commit', '--save-local-changes', '--wait', '--no-wait', '--wait-timeout', '--profile']],
             'reclone' => ['reclone', []],
@@ -608,6 +682,13 @@ final class GitStackManagerTest extends TestCase
         $errorText = (string) stream_get_contents($errors);
         fclose($errors);
         return [$exit, $output, $errorText];
+    }
+
+    private function emptyVault(): \CredentialVault
+    {
+        @unlink(COMPOSE_CREDENTIAL_VAULT_FILE);
+        @unlink(COMPOSE_CREDENTIAL_KEY_FILE);
+        return new \CredentialVault();
     }
 
     /** @param string[] $argv */

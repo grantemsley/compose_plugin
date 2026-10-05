@@ -29,8 +29,9 @@ final class ComposeGitUsageError extends InvalidArgumentException
 
 const COMPOSE_GIT_USAGE = <<<'TEXT'
 Usage:
-  compose-git add <name> --url <url> --path <compose file> [--branch <branch>] [--clones-root <folder>] [--description <text>]
-  compose-git convert <stack> --url <url> --path <compose file> [--branch <branch>] [--clones-root <folder>]
+  compose-git add <name> --url <url> --path <compose file> [--branch <branch>] [--clones-root <folder>] [--description <text>] [--credential <name>]
+  compose-git convert <stack> --url <url> --path <compose file> [--branch <branch>] [--clones-root <folder>] [--credential <name>]
+  compose-git credential <stack> <name>|--none
   compose-git check <stack>|--all
   compose-git deploy <stack> [--commit <full commit id>] [--save-local-changes] [--wait|--no-wait] [--wait-timeout <seconds>] [--profile <name>]...
   compose-git reclone <stack>
@@ -39,6 +40,8 @@ Usage:
 <url> is an https address (no user name or password in it) or the path of a repository under /mnt.
 <compose file> is the compose file's path inside the repository, such as stacks/whoami/compose.yaml.
 --branch defaults to main. <stack> is the stack's exact folder name.
+--credential names a git credential (an HTTPS token) from the plugin's Credentials tab, for a
+private repository; credential changes or removes it on an existing stack.
 deploy waits for healthy containers when the stack's wait-for-healthy setting says so;
 --wait and --no-wait override it.
 
@@ -77,6 +80,8 @@ Options:
                           share, disk or pool, and the share must exist.
                           Default: /mnt/user/appdata/compose.manager/git.
   --description <text>    The description shown for the stack on the Compose page.
+  --credential <name>     A git credential (an HTTPS token) from the Credentials tab, by
+                          its name or id, for a private repository.
 
 Example:
   compose-git add whoami --url https://github.com/you/stacks.git --path whoami/compose.yaml
@@ -106,8 +111,22 @@ Options:
   --clones-root <folder>  The folder the clone goes in, as <stack>-<id>. It must be on a
                           share, disk or pool, and the share must exist.
                           Default: /mnt/user/appdata/compose.manager/git.
+  --credential <name>     A git credential (an HTTPS token) from the Credentials tab, by
+                          its name or id, for a private repository.
 
 Then deploy it: compose-git deploy <stack>
+TEXT,
+        'credential' => <<<'TEXT'
+Usage: compose-git credential <stack> <name>
+       compose-git credential <stack> --none
+
+Change the git credential a stack uses to reach its repository, or remove it. <name> is a
+git credential (an HTTPS token) from the plugin's Credentials tab, by its name or id. The
+repository is reached with the new setting first, and nothing is saved unless that works.
+No container is touched.
+
+Options:
+  --none   Reach the repository without a credential, as for a public one.
 TEXT,
         'check' => <<<'TEXT'
 Usage: compose-git check <stack>
@@ -412,6 +431,9 @@ function compose_git_print_status(array $status): void
     echo '  repository:   ' . $status['url'] . ' (' . $status['branch'] . ")\n";
     echo '  compose file: ' . $status['composePath'] . "\n";
     echo '  clone:        ' . $status['cloneDir'] . "\n";
+    if ($status['credential'] !== null) {
+        echo '  credential:   ' . $status['credential'] . "\n";
+    }
     echo '  deployed:     ' . $short($status['deployedCommit']) . "\n";
     if ($status['failedCommit'] !== null) {
         echo '  failed:       ' . $short($status['failedCommit']) . " (fix it and deploy again)\n";
@@ -449,29 +471,42 @@ function compose_git_main(array $argv, string $composeRoot, $errors = null): int
     try {
         switch ($command) {
             case 'add':
-                [$positional, $options] = compose_git_parse($args, ['url', 'path', 'branch', 'clones-root', 'description'], []);
+                [$positional, $options] = compose_git_parse($args, ['url', 'path', 'branch', 'clones-root', 'description', 'credential'], []);
                 $folder = $manager->add(
                     compose_git_one_stack($positional),
                     compose_git_required($options, 'url'),
                     (string) ($options['branch'] ?? GitStackManager::DEFAULT_BRANCH),
                     compose_git_required($options, 'path'),
                     isset($options['clones-root']) ? (string) $options['clones-root'] : null,
-                    (string) ($options['description'] ?? '')
+                    (string) ($options['description'] ?? ''),
+                    isset($options['credential']) ? $manager->findGitCredential((string) $options['credential']) : null
                 );
                 echo "Deploy it with: compose-git deploy $folder\n";
                 return COMPOSE_GIT_EXIT_OK;
 
             case 'convert':
-                [$positional, $options] = compose_git_parse($args, ['url', 'path', 'branch', 'clones-root'], []);
+                [$positional, $options] = compose_git_parse($args, ['url', 'path', 'branch', 'clones-root', 'credential'], []);
                 $folder = compose_git_one_stack($positional);
                 $backup = $manager->convert(
                     $folder,
                     compose_git_required($options, 'url'),
                     (string) ($options['branch'] ?? GitStackManager::DEFAULT_BRANCH),
                     compose_git_required($options, 'path'),
-                    isset($options['clones-root']) ? (string) $options['clones-root'] : null
+                    isset($options['clones-root']) ? (string) $options['clones-root'] : null,
+                    isset($options['credential']) ? $manager->findGitCredential((string) $options['credential']) : null
                 );
                 echo "The replaced files are in $backup.\nDeploy it with: compose-git deploy $folder\n";
+                return COMPOSE_GIT_EXIT_OK;
+
+            case 'credential':
+                [$positional, $options] = compose_git_parse($args, [], ['none']);
+                if (count($positional) === 2 && !isset($options['none'])) {
+                    $manager->setCredential($positional[0], $manager->findGitCredential($positional[1]));
+                } elseif (count($positional) === 1 && isset($options['none'])) {
+                    $manager->setCredential($positional[0], null);
+                } else {
+                    throw new ComposeGitUsageError('credential needs a stack and either a credential name or --none.');
+                }
                 return COMPOSE_GIT_EXIT_OK;
 
             case 'check':
