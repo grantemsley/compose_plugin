@@ -6,6 +6,7 @@ require_once '/usr/local/emhttp/plugins/compose.manager/include/Defines.php';
 require_once '/usr/local/emhttp/plugins/compose.manager/include/GitPathGuard.php';
 require_once '/usr/local/emhttp/plugins/compose.manager/include/GitCommand.php';
 require_once '/usr/local/emhttp/plugins/compose.manager/include/GitStackSettings.php';
+require_once '/usr/local/emhttp/plugins/compose.manager/include/GitCredentials.php';
 
 /**
  * Thrown when a clone folder is not one this plugin can prove it made for this stack.
@@ -668,12 +669,59 @@ final class GitClone
      * it ("dubious ownership"). The stack's own repository path is trusted
      * for the run, and nothing else (see GitCommand).
      *
+     * A stack with a credential gets it for every run, not only clone and
+     * fetch: the clone is partial (--filter=blob:none), so a checkout or diff
+     * can fetch file contents from the repository too.
+     *
      * @param string[] $args
      */
     private function git(array $args, ?string $workingDirectory, int $timeoutSeconds = GitCommand::DEFAULT_TIMEOUT_SECONDS): ProcessResult
     {
         $trusted = $this->isLocalRepository() ? [$this->settings->url] : [];
-        return GitCommand::run($args, $workingDirectory, $timeoutSeconds, [], $trusted);
+        if ($this->settings->credentialId === null) {
+            $result = GitCommand::run($args, $workingDirectory, $timeoutSeconds, [], $trusted);
+        } else {
+            $credentialFile = GitCredentials::writeFile($this->settings->credentialId, $this->settings->url);
+            try {
+                $result = GitCommand::run(
+                    $args,
+                    $workingDirectory,
+                    $timeoutSeconds,
+                    [],
+                    $trusted,
+                    GitCredentials::settingsFor($credentialFile)
+                );
+            } finally {
+                GitCredentials::remove($credentialFile);
+            }
+        }
+        if (!$result->succeeded()) {
+            $hint = self::httpsFailureHint($result->stderr, $this->settings->credentialId !== null);
+            if ($hint !== null) {
+                throw new RuntimeException($result->errorSummary() . "\n" . $hint);
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * What to tell the person when git's own message for a failed https run
+     * points the wrong way, or null when it is clear enough.
+     */
+    public static function httpsFailureHint(string $stderr, bool $hasCredential): ?string
+    {
+        // The token is offered only for the exact address the stack uses (credential.useHttpPath),
+        // so after a redirect git asks for the new address and gets nothing.
+        if ($hasCredential && preg_match('/^warning: redirecting to (\S+)/m', $stderr, $match) === 1) {
+            return "The server redirected to {$match[1]}, and the stack's credential is offered only for the address "
+                . 'the stack uses. Use the address the server redirects to (usually the one ending in .git).';
+        }
+        if (!$hasCredential && str_contains($stderr, 'terminal prompts disabled')) {
+            return 'The repository asks for a user name and password, so it needs a credential: add a git token on the '
+                . 'Credentials tab, then name it with --credential when adding the stack, or with compose-git credential '
+                . '<stack> <name> for a stack that exists.';
+        }
+        return null;
     }
 
     /**

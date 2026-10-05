@@ -52,6 +52,7 @@ define('COMPOSE_GIT_MNT_DIR', sys_get_temp_dir() . '/compose_git_mnt');
 define('COMPOSE_UNRAID_VAR_INI', sys_get_temp_dir() . '/compose_git_var.ini');
 define('COMPOSE_MOUNTS_FILE', sys_get_temp_dir() . '/compose_git_mounts');
 define('COMPOSE_GIT_HOME_DIR', sys_get_temp_dir() . '/compose_git_home');
+define('COMPOSE_GIT_CREDENTIAL_DIR', sys_get_temp_dir() . '/compose_git_credentials');
 // A scripted stand-in for the docker CLI (see FakeDocker in the git deploy tests).
 define('COMPOSE_DOCKER_BIN', sys_get_temp_dir() . '/compose_fake_docker/docker');
 define('COMPOSE_LOCK_DIR', sys_get_temp_dir() . '/compose_manager_locks');
