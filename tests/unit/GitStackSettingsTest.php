@@ -235,6 +235,52 @@ final class GitStackSettingsTest extends TestCase
         $this->assertSame($settings->cloneDir, $loaded->cloneDir);
     }
 
+    public function testNoCredentialByDefaultAndNoneWrittenToTheFile(): void
+    {
+        $settings = $this->makeSettings();
+        $this->assertNull($settings->credentialId);
+
+        $settings->save($this->stackDir);
+
+        // Left out, so a version from before credentials existed still loads the file.
+        $data = json_decode((string) file_get_contents($this->stackDir . '/git.json'), true);
+        $this->assertArrayNotHasKey('credentialId', $data);
+        $this->assertNull(GitStackSettings::load($this->stackDir)?->credentialId);
+    }
+
+    public function testCredentialIsSavedAndLoaded(): void
+    {
+        $credentialId = str_repeat('ab', 16);
+        $this->makeSettings()->withCredentialId($credentialId)->save($this->stackDir);
+
+        $loaded = GitStackSettings::load($this->stackDir);
+
+        $this->assertNotNull($loaded);
+        $this->assertSame($credentialId, $loaded->credentialId);
+        $this->assertNull($loaded->withCredentialId(null)->credentialId);
+    }
+
+    public function testRepositoryOnThisServerTakesNoCredential(): void
+    {
+        $settings = GitStackSettings::createNew(
+            $this->mnt . '/user/repos/stacks.git',
+            'main',
+            'whoami/compose.yaml',
+            $this->mnt . '/user/appdata/git',
+            'whoami'
+        );
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('needs no credential');
+        $settings->withCredentialId(str_repeat('ab', 16));
+    }
+
+    public function testCredentialIdThatIsNotAVaultIdIsRefused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->makeSettings()->withCredentialId('../../vault');
+    }
+
     public function testStackWithoutGitJsonIsNotAGitStack(): void
     {
         $this->assertNull(GitStackSettings::load($this->stackDir));
@@ -268,6 +314,14 @@ final class GitStackSettingsTest extends TestCase
             }],
             'number instead of string' => [static function (array $data): string {
                 $data['branch'] = 5;
+                return (string) json_encode($data);
+            }],
+            'credential id not a vault id' => [static function (array $data): string {
+                $data['credentialId'] = 'not-an-id';
+                return (string) json_encode($data);
+            }],
+            'credential id not a string' => [static function (array $data): string {
+                $data['credentialId'] = 7;
                 return (string) json_encode($data);
             }],
             'string instead of true or false' => [static function (array $data): string {
@@ -344,6 +398,7 @@ final class GitStackSettingsTest extends TestCase
         $this->assertSame('https://github.com/owner/repo.git', $settings->url);
         $this->assertSame('whoami/compose.yaml', $settings->composePath);
         $this->assertTrue($settings->recreateOnFolderChange);
+        $this->assertNull($settings->credentialId);
     }
 
     public function testSettingFromANewerVersionIsRefusedByName(): void

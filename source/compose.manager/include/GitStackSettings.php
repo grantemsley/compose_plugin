@@ -16,9 +16,11 @@ require_once '/usr/local/emhttp/plugins/compose.manager/include/GitCommand.php';
  * Changing the format later. Every git.json any released version wrote must
  * keep loading, and must keep meaning what it meant:
  *  - The keys of format 1 (KEYS) are always required.
- *  - A key added later may be missing from a file. It then takes a default
- *    that does exactly what the plugin did before the key existed, or less,
- *    never more: a stack written by an older version must behave as it did.
+ *  - A key added later (OPTIONAL_KEYS) may be missing from a file. It then
+ *    takes a default that does exactly what the plugin did before the key
+ *    existed, or less, never more: a stack written by an older version must
+ *    behave as it did. save() writes it only when it differs from that
+ *    default, so a stack that never uses it still loads in an older version.
  *  - A key this code does not know is refused, naming the key: it was
  *    written by a newer version (after a downgrade), and ignoring a setting
  *    could make the stack do something its owner turned off.
@@ -33,13 +35,18 @@ final class GitStackSettings
     public const FILE_NAME = 'git.json';
     public const FORMAT_VERSION = 1;
 
-    /** @var string[] The keys git.json must contain, no more and no fewer. */
+    /** @var string[] The keys git.json must contain (format 1). */
     private const KEYS = ['version', 'url', 'branch', 'composePath', 'cloneId', 'cloneDir', 'recreateOnFolderChange'];
+
+    /** @var string[] Keys added later, which a file may leave out. */
+    private const OPTIONAL_KEYS = ['credentialId'];
 
     /**
      * @param bool $recreateOnFolderChange Recreate the stack's containers when a deploy changes
      *     anything in the stack's folder, not only when the compose definition changes. A commit
      *     that only edits a bind-mounted config file then takes effect.
+     * @param string|null $credentialId The credential vault entry used to reach the repository, or
+     *     null for a repository that needs none (the default: format 1 had no credentials).
      */
     private function __construct(
         public readonly string $url,
@@ -47,7 +54,8 @@ final class GitStackSettings
         public readonly string $composePath,
         public readonly string $cloneId,
         public readonly string $cloneDir,
-        public readonly bool $recreateOnFolderChange
+        public readonly bool $recreateOnFolderChange,
+        public readonly ?string $credentialId = null
     ) {
     }
 
@@ -75,7 +83,33 @@ final class GitStackSettings
      */
     public function withRecreateOnFolderChange(bool $recreateOnFolderChange): self
     {
-        return new self($this->url, $this->branch, $this->composePath, $this->cloneId, $this->cloneDir, $recreateOnFolderChange);
+        return new self(
+            $this->url,
+            $this->branch,
+            $this->composePath,
+            $this->cloneId,
+            $this->cloneDir,
+            $recreateOnFolderChange,
+            $this->credentialId
+        );
+    }
+
+    /**
+     * The same settings with another credential, or none.
+     *
+     * @throws InvalidArgumentException if the id is not a credential vault id
+     */
+    public function withCredentialId(?string $credentialId): self
+    {
+        return self::fromValues(
+            $this->url,
+            $this->branch,
+            $this->composePath,
+            $this->cloneId,
+            $this->cloneDir,
+            $this->recreateOnFolderChange,
+            $credentialId
+        );
     }
 
     /**
@@ -107,7 +141,7 @@ final class GitStackSettings
             throw new RuntimeException("$file is not a valid git settings file (expected a JSON object).");
         }
 
-        $unknown = array_values(array_diff(array_keys($data), self::KEYS));
+        $unknown = array_values(array_diff(array_keys($data), self::KEYS, self::OPTIONAL_KEYS));
         if ($unknown !== []) {
             throw new RuntimeException(
                 "$file has settings this version of the plugin does not know: " . implode(', ', $unknown)
@@ -132,6 +166,10 @@ final class GitStackSettings
         if (!is_bool($data['recreateOnFolderChange'])) {
             throw new RuntimeException("$file: 'recreateOnFolderChange' must be true or false.");
         }
+        $credentialId = $data['credentialId'] ?? null;
+        if ($credentialId !== null && !is_string($credentialId)) {
+            throw new RuntimeException("$file: 'credentialId' must be a string.");
+        }
 
         try {
             return self::fromValues(
@@ -140,7 +178,8 @@ final class GitStackSettings
                 $data['composePath'],
                 $data['cloneId'],
                 $data['cloneDir'],
-                $data['recreateOnFolderChange']
+                $data['recreateOnFolderChange'],
+                $credentialId
             );
         } catch (InvalidArgumentException $error) {
             throw new RuntimeException("$file: " . $error->getMessage(), 0, $error);
@@ -163,7 +202,7 @@ final class GitStackSettings
             throw new RuntimeException("Stack folder $stackDir does not exist.");
         }
 
-        $json = json_encode([
+        $data = [
             'version' => self::FORMAT_VERSION,
             'url' => $this->url,
             'branch' => $this->branch,
@@ -171,7 +210,12 @@ final class GitStackSettings
             'cloneId' => $this->cloneId,
             'cloneDir' => $this->cloneDir,
             'recreateOnFolderChange' => $this->recreateOnFolderChange,
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        ];
+        // Keys added later are written only when they differ from their default (see the class comment).
+        if ($this->credentialId !== null) {
+            $data['credentialId'] = $this->credentialId;
+        }
+        $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         if ($json === false) {
             throw new RuntimeException('Could not encode the git settings.');
         }
@@ -344,6 +388,18 @@ final class GitStackSettings
     }
 
     /**
+     * Check a credential vault id: null for none, or the 32 hex characters the vault gives every entry.
+     *
+     * @throws InvalidArgumentException naming the problem
+     */
+    public static function validateCredentialId(?string $credentialId): void
+    {
+        if ($credentialId !== null && preg_match('/^[0-9a-f]{32}$/', $credentialId) !== 1) {
+            throw new InvalidArgumentException("The credential id is not valid: $credentialId");
+        }
+    }
+
+    /**
      * Validate every value and build the settings.
      *
      * @throws InvalidArgumentException naming the first problem found
@@ -354,7 +410,8 @@ final class GitStackSettings
         string $composePath,
         string $cloneId,
         string $cloneDir,
-        bool $recreateOnFolderChange
+        bool $recreateOnFolderChange,
+        ?string $credentialId = null
     ): self {
         self::validateUrl($url);
         self::validateBranch($branch);
@@ -371,6 +428,11 @@ final class GitStackSettings
             throw new InvalidArgumentException("The clone folder $cloneDir does not belong to clone id $cloneId.");
         }
 
-        return new self($url, $branch, $composePath, $cloneId, $cloneDir, $recreateOnFolderChange);
+        self::validateCredentialId($credentialId);
+        if ($credentialId !== null && str_starts_with($url, '/')) {
+            throw new InvalidArgumentException('A repository on this server needs no credential.');
+        }
+
+        return new self($url, $branch, $composePath, $cloneId, $cloneDir, $recreateOnFolderChange, $credentialId);
     }
 }
