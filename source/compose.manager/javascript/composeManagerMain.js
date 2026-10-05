@@ -7312,7 +7312,8 @@ function saveSettings(saveErrors) {
     }
 
     // Save icon URL, webui URL, env path, default profile, and external compose settings if any are modified
-    if (editorModal.modifiedSettings.has('icon-url') || editorModal.modifiedSettings.has('webui-url') || editorModal.modifiedSettings.has('env-path') || editorModal.modifiedSettings.has('extra-compose-files') || editorModal.modifiedSettings.has('default-profile') || editorModal.modifiedSettings.has('credential-id') || editorModal.modifiedSettings.has('wait-for-healthy') || editorModal.modifiedSettings.has('wait-timeout') || editorModal.modifiedSettings.has('external-compose-path') || editorModal.modifiedSettings.has('external-compose-file') || editorModal.modifiedSettings.has('use-default-compose-files')) {
+    if (editorModal.modifiedSettings.has('icon-url') || editorModal.modifiedSettings.has('webui-url') || editorModal.modifiedSettings.has('env-path') || editorModal.modifiedSettings.has('extra-compose-files') || editorModal.modifiedSettings.has('default-profile') || editorModal.modifiedSettings.has('credential-id') || editorModal.modifiedSettings.has('wait-for-healthy') || editorModal.modifiedSettings.has('wait-timeout') || editorModal.modifiedSettings.has('build-on-update') || editorModal.modifiedSettings.has('external-compose-path') || editorModal.modifiedSettings.has('external-compose-file') || editorModal.modifiedSettings.has('use-default-compose-files')) {
+
         // Inline validation blocks Apply when errors are present, so by the
         // time we reach saveSettings the visible form state is valid.
         var iconUrl = $('#settings-icon-url').val();
