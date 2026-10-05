@@ -1081,9 +1081,20 @@ switch ($_POST['action']) {
             break;
         }
         try {
-            $test = (new CredentialVault())->testCredential($credentialId);
+            if (((new CredentialVault())->getCredentialSummary($credentialId)['provider'] ?? '') === 'git') {
+                // A git credential is tested by reaching a repository that uses it, not with a registry handshake.
+                require_once("/usr/local/emhttp/plugins/compose.manager/include/GitStackManager.php");
+                $test = (new GitStackManager($compose_root))->testCredential($credentialId);
+                if ($test === null) {
+                    echo json_encode(['result' => 'error', 'message' => 'No git stack uses this credential yet. '
+                        . 'It is tested by reaching a repository: give it to a stack with compose-git, then test it again.']);
+                    break;
+                }
+            } else {
+                $test = (new CredentialVault())->testCredential($credentialId);
+            }
             composeLogger(
-                "Tested registry credential '{$test['name']}': " . ($test['valid'] ? 'valid' : 'invalid') . ' - ' . $test['message'],
+                "Tested credential '{$test['name']}': " . ($test['valid'] ? 'valid' : 'invalid') . ' - ' . $test['message'],
                 null,
                 'user',
                 $test['valid'] ? 'info' : 'warning',
@@ -1443,6 +1454,9 @@ switch ($_POST['action']) {
                 CredentialVault::withCredentialAssignmentLock(function () use ($credentialId, $credentialIdFile): void {
                     if ($credentialId !== '' && !(new CredentialVault())->hasCredential($credentialId)) {
                         throw new RuntimeException('Selected credential no longer exists.');
+                    }
+                    if ($credentialId !== '' && ((new CredentialVault())->getCredentialSummary($credentialId)['provider'] ?? '') === 'git') {
+                        throw new RuntimeException('A git repository credential cannot be used to pull images.');
                     }
                     if ($credentialId === '') {
                         if (is_file($credentialIdFile)) {

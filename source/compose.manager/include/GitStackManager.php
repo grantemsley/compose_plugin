@@ -346,6 +346,35 @@ final class GitStackManager
     }
 
     /**
+     * Test a git credential by reaching the repository of a git stack that uses it.
+     *
+     * @return array{id: string, name: string, registry: string, valid: bool, message: string}|null
+     *     null when no git stack uses the credential, so there is no repository to try
+     */
+    public function testCredential(string $credentialId): ?array
+    {
+        foreach ($this->listGitStacks() as $folder) {
+            try {
+                $settings = $this->settings($this->stack($folder));
+            } catch (Throwable) {
+                continue;
+            }
+            if ($settings->credentialId !== $credentialId) {
+                continue;
+            }
+            $summary = (new CredentialVault())->getCredentialSummary($credentialId);
+            $result = ['id' => $credentialId, 'name' => $summary['name'], 'registry' => $summary['registry']];
+            try {
+                (new GitClone($settings))->remoteBranchCommit();
+                return $result + ['valid' => true, 'message' => "Reached {$settings->url} (used by '$folder')."];
+            } catch (Throwable $error) {
+                return $result + ['valid' => false, 'message' => "Could not reach {$settings->url} (used by '$folder'): " . $error->getMessage()];
+            }
+        }
+        return null;
+    }
+
+    /**
      * A credential's name for messages, or a note that it is gone.
      */
     private function credentialName(string $credentialId): string

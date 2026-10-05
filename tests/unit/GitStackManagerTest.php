@@ -364,6 +364,28 @@ final class GitStackManagerTest extends TestCase
         $this->assertNull(GitStackSettings::load($this->composeRoot . '/' . $folder)?->credentialId);
     }
 
+    public function testCredentialTestReachesTheRepositoryOfAStackThatUsesIt(): void
+    {
+        $credential = $this->emptyVault()->saveCredential(
+            ['name' => 'Local', 'provider' => 'git', 'registry' => '127.0.0.1:9', 'username' => 'bot', 'secret' => 'token']
+        );
+        $this->assertNull($this->manager->testCredential($credential['id']));
+
+        // A stack whose repository cannot be reached (nothing listens on port 9).
+        $folder = $this->manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+        $stackDir = $this->composeRoot . '/' . $folder;
+        $data = json_decode((string) file_get_contents($stackDir . '/git.json'), true);
+        $data['url'] = 'https://127.0.0.1:9/team/stacks.git';
+        $data['credentialId'] = $credential['id'];
+        file_put_contents($stackDir . '/git.json', (string) json_encode($data));
+
+        $test = $this->manager->testCredential($credential['id']);
+
+        $this->assertNotNull($test);
+        $this->assertFalse($test['valid']);
+        $this->assertStringContainsString("Could not reach https://127.0.0.1:9/team/stacks.git (used by '$folder')", $test['message']);
+    }
+
     public function testCommandLineCredentialNeedsAStackAndANameOrNone(): void
     {
         $this->assertSame(2, $this->runCli(['compose-git', 'credential', 'whoami']));

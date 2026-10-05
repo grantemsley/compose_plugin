@@ -858,6 +858,32 @@ class ExecActionsTest extends TestCase
         $this->assertSame(['git-stack'], $deleteResult['stacks']);
     }
 
+    public function testGitCredentialIsNotTestedAsARegistryAndCannotBeARegistryCredential(): void
+    {
+        $stackPath = $this->createTestStack('test-stack');
+        file_put_contents($stackPath . '/envpath', 'old.env');
+        file_put_contents($stackPath . '/credential_id', 'registry-credential');
+        $saved = json_decode($this->executeAction('saveCredential', [
+            'name' => 'Git stacks', 'provider' => 'git', 'registry' => 'github.com',
+            'username' => 'bot', 'secret' => 'repository-token',
+        ]), true);
+        $credentialId = $saved['credential']['id'];
+
+        // No git stack uses it, so there is no repository to try.
+        $test = json_decode($this->executeAction('testCredential', ['id' => $credentialId]), true);
+        $this->assertSame('error', $test['result']);
+        $this->assertStringContainsString('No git stack uses this credential', $test['message']);
+
+        $settings = json_decode($this->executeAction('setStackSettings', [
+            'script' => 'test-stack', 'credentialId' => $credentialId, 'envPath' => 'new.env',
+        ]), true);
+        $this->assertSame('error', $settings['result']);
+        $this->assertStringContainsString('cannot be used to pull images', $settings['message']);
+        // Refused before anything is saved: the other settings and the stack's registry credential are unchanged.
+        $this->assertSame('old.env', file_get_contents($stackPath . '/envpath'));
+        $this->assertSame('registry-credential', file_get_contents($stackPath . '/credential_id'));
+    }
+
     public function testGetStackSettingsReturnsExternalComposeFileForFileMode(): void
     {
         $stackPath = $this->createTestStack('test-stack');

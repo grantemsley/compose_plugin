@@ -102,6 +102,18 @@
             tokenUrlLabel: '',
             instructions: 'Enter your custom registry hostname (e.g. <code>registry.example.com</code>), username, and authentication token or password.',
             canOAuth: false
+        },
+        git: {
+            label: 'Git repository (HTTPS token, for git stacks)',
+            defaultRegistry: '',
+            registryReadonly: false,
+            namePlaceholder: 'e.g. GitHub stacks repository',
+            usernamePlaceholder: 'Git user name (any value for a GitHub token)',
+            secretPlaceholder: 'Read-only access token',
+            tokenUrl: '',
+            tokenUrlLabel: '',
+            instructions: 'For a private repository that a git stack deploys from. Set the host to the git server only, such as <code>github.com</code> or <code>git.example.com:3000</code>. Use a token that can only read the repository, such as a GitHub fine-grained token with read access to its contents. Give it to a stack with <code>compose-git</code> (<code>--credential</code>).',
+            canOAuth: false
         }
     };
 
@@ -110,7 +122,7 @@
         $('body').append(
             '<div id="compose-credential-modal" class="credential-modal-backdrop" style="display:none;">' +
                 '<div class="credential-modal" role="dialog" aria-modal="true" aria-labelledby="credential-modal-title">' +
-                    '<div class="credential-modal-header"><h3 id="credential-modal-title">Add registry credential</h3><button type="button" class="credential-close" title="Close"><i class="fa fa-times"></i></button></div>' +
+                    '<div class="credential-modal-header"><h3 id="credential-modal-title">Add credential</h3><button type="button" class="credential-close" title="Close"><i class="fa fa-times"></i></button></div>' +
                     '<input type="hidden" id="credential-id">' +
                     '<label for="credential-provider">Provider</label><select id="credential-provider">' +
                         '<option value="github">GitHub Container Registry (ghcr.io)</option>' +
@@ -121,6 +133,7 @@
                         '<option value="azure">Azure Container Registry (ACR)</option>' +
                         '<option value="gcr">Google Artifact / Container Registry</option>' +
                         '<option value="generic">Other / Custom Registry</option>' +
+                        '<option value="git">Git repository (HTTPS token, for git stacks)</option>' +
                     '</select>' +
                     '<div id="credential-github-oauth-section">' +
                         '<button type="button" id="credential-github-signin"><i class="fa fa-github"></i> Sign in with GitHub</button>' +
@@ -365,13 +378,20 @@
         }, Math.max(5, interval) * 1000);
     }
 
-    function openModal(credential, callback) {
+    // options.registryOnly: opened from a stack's registry credential picker, so the git repository
+    // kind is not offered. A git credential cannot be chosen there, and picking one would leave the
+    // picker on "Missing credential", which clears the stack's registry credential when saved.
+    function openModal(credential, callback, options) {
         ensureModal();
         credential = credential || {};
+        options = options || {};
         activeCredential = credential;
         onSaved = callback || null;
-        $('#credential-modal-title').text(credential.id ? 'Edit registry credential' : 'Add registry credential');
+        $('#credential-modal-title').text(credential.id ? 'Edit credential' : 'Add credential');
         $('#credential-id').val(credential.id || '');
+        $('#credential-provider option[value="git"]')
+            .prop('disabled', options.registryOnly === true)
+            .prop('hidden', options.registryOnly === true);
         $('#credential-provider').val(credential.provider || 'github').prop('disabled', false);
         $('#credential-name').val(credential.name || '');
         $('#credential-registry').val(credential.registry || '');
@@ -499,6 +519,8 @@
     function populateSelect($select, selectedId) {
         $select.empty().append($('<option value="">').text('Anonymous / no credential'));
         credentials.forEach(function(credential) {
+            // A git repository token is not a registry login; git stacks choose theirs with compose-git.
+            if (credential.provider === 'git') return;
             $select.append($('<option>').val(credential.id).text(credential.name + ' (' + credential.registry + ' / ' + credential.username + ')'));
         });
         $select.val(selectedId || '');
