@@ -1081,7 +1081,7 @@ switch ($_POST['action']) {
             break;
         }
         try {
-            if (((new CredentialVault())->getCredentialSummary($credentialId)['provider'] ?? '') === 'git') {
+            if (in_array((new CredentialVault())->getCredentialSummary($credentialId)['provider'] ?? '', ['git', 'git-ssh'], true)) {
                 // A git credential is tested by reaching a repository that uses it, not with a registry handshake.
                 require_once("/usr/local/emhttp/plugins/compose.manager/include/GitStackManager.php");
                 $test = (new GitStackManager($compose_root))->testCredential($credentialId);
@@ -1455,7 +1455,7 @@ switch ($_POST['action']) {
                     if ($credentialId !== '' && !(new CredentialVault())->hasCredential($credentialId)) {
                         throw new RuntimeException('Selected credential no longer exists.');
                     }
-                    if ($credentialId !== '' && ((new CredentialVault())->getCredentialSummary($credentialId)['provider'] ?? '') === 'git') {
+                    if ($credentialId !== '' && in_array((new CredentialVault())->getCredentialSummary($credentialId)['provider'] ?? '', ['git', 'git-ssh'], true)) {
                         throw new RuntimeException('A git repository credential cannot be used to pull images.');
                     }
                     if ($credentialId === '') {

@@ -114,6 +114,19 @@
             tokenUrlLabel: '',
             instructions: 'For a private repository that a git stack deploys from. Set the host to the git server only, such as <code>github.com</code> or <code>git.example.com:3000</code>. Use a token that can only read the repository, such as a GitHub fine-grained token with read access to its contents. Give it to a stack with <code>compose-git</code> (<code>--credential</code>).',
             canOAuth: false
+        },
+        'git-ssh': {
+            // Made by compose-git for one git stack; never created or edited here.
+            label: 'SSH deploy key (git stack)',
+            defaultRegistry: '',
+            registryReadonly: true,
+            namePlaceholder: '',
+            usernamePlaceholder: '',
+            secretPlaceholder: '',
+            tokenUrl: '',
+            tokenUrlLabel: '',
+            instructions: '',
+            canOAuth: false
         }
     };
 
@@ -459,7 +472,10 @@
             $row.append($('<td>').text((credential.stacks || []).join(', ') || 'Not assigned'));
             var $actions = $('<td class="credential-list-actions">');
             $('<button type="button" title="Test credential"><i class="fa fa-plug"></i></button>').on('click', function() { testCredential(credential, $(this)); }).appendTo($actions);
-            $('<button type="button" title="Edit"><i class="fa fa-pencil"></i></button>').on('click', function() { openModal(credential); }).appendTo($actions);
+            // A git stack's deploy key is a key pair compose-git made; there is nothing to edit.
+            if (credential.provider !== 'git-ssh') {
+                $('<button type="button" title="Edit"><i class="fa fa-pencil"></i></button>').on('click', function() { openModal(credential); }).appendTo($actions);
+            }
             $('<button type="button" title="Delete"><i class="fa fa-trash"></i></button>').on('click', function() { deleteCredential(credential); }).appendTo($actions);
             $row.append($actions).appendTo($body);
         });
@@ -476,6 +492,23 @@
             }
             if (response.valid) {
                 swal({ title: 'Credential is valid', text: response.message || (credential.name + ' authenticated successfully.'), type: 'success' });
+            } else if (credential.provider === 'git-ssh') {
+                // A deploy key cannot be edited (the modal has no form for it), and its
+                // message already says what failed: a key not added yet, a changed host key.
+                swal({ title: 'Credential rejected', text: response.message || 'The repository refused this deploy key.', type: 'warning' });
+            } else if (credential.provider === 'git') {
+                swal({
+                    title: 'Credential rejected',
+                    text: response.message || 'The repository refused this token.',
+                    type: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Edit credential',
+                    cancelButtonText: 'Later'
+                }, function(confirmed) {
+                    if (!confirmed) return;
+                    openModal(credential, null);
+                    $('#credential-secret').trigger('focus');
+                });
             } else {
                 var isOAuth = credential.authMethod === 'oauth_device';
                 swal({
@@ -519,8 +552,8 @@
     function populateSelect($select, selectedId) {
         $select.empty().append($('<option value="">').text('Anonymous / no credential'));
         credentials.forEach(function(credential) {
-            // A git repository token is not a registry login; git stacks choose theirs with compose-git.
-            if (credential.provider === 'git') return;
+            // Git repository credentials are not registry logins; git stacks choose theirs with compose-git.
+            if (credential.provider === 'git' || credential.provider === 'git-ssh') return;
             $select.append($('<option>').val(credential.id).text(credential.name + ' (' + credential.registry + ' / ' + credential.username + ')'));
         });
         $select.val(selectedId || '');

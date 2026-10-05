@@ -884,6 +884,24 @@ class ExecActionsTest extends TestCase
         $this->assertSame('registry-credential', file_get_contents($stackPath . '/credential_id'));
     }
 
+    public function testDeployKeyIsNotTestedAsARegistryAndCannotBeARegistryCredential(): void
+    {
+        $this->createTestStack('test-stack');
+        $credentialId = (new \CredentialVault())->saveCredential([
+            'name' => 'whoami deploy key', 'provider' => 'git-ssh', 'registry' => 'github.com',
+            'username' => 'git', 'secret' => 'private key',
+        ])['id'];
+
+        $test = json_decode($this->executeAction('testCredential', ['id' => $credentialId]), true);
+        $this->assertStringContainsString('No git stack uses this credential', $test['message']);
+
+        $settings = json_decode($this->executeAction('setStackSettings', [
+            'script' => 'test-stack', 'credentialId' => $credentialId,
+        ]), true);
+        $this->assertSame('error', $settings['result']);
+        $this->assertStringContainsString('cannot be used to pull images', $settings['message']);
+    }
+
     public function testGetStackSettingsReturnsExternalComposeFileForFileMode(): void
     {
         $stackPath = $this->createTestStack('test-stack');
