@@ -51,11 +51,12 @@ final class CredentialVault
             if ($name === '' || $registry === '' || $username === '' || $secret === '') {
                 throw new InvalidArgumentException('Name, registry, username, and token are required.');
             }
-            if (!in_array($provider, ['github', 'docker', 'gitlab', 'quay', 'aws', 'azure', 'gcr', 'generic', 'git'], true)) {
+            if (!in_array($provider, ['github', 'docker', 'gitlab', 'quay', 'aws', 'azure', 'gcr', 'generic', 'git', 'git-ssh'], true)) {
                 throw new InvalidArgumentException('Unsupported credential provider.');
             }
-            // A git repository credential (an HTTPS token for git stacks) is for one host, such as github.com.
-            if ($provider === 'git' && preg_match('/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?$/', $registry) !== 1) {
+            // A git repository credential (an HTTPS token, or a git stack's ssh deploy key in
+            // "git-ssh") is for one host, such as github.com.
+            if (($provider === 'git' || $provider === 'git-ssh') && preg_match('/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?$/', $registry) !== 1) {
                 throw new InvalidArgumentException('A git credential needs the repository host only, such as github.com.');
             }
             if (!in_array($authMethod, ['manual', 'oauth_device'], true)) {
@@ -189,9 +190,9 @@ final class CredentialVault
     public function materializeDockerConfig(string $id): string
     {
         $credential = $this->withLock(LOCK_SH, fn(): array => $this->findCredential($id));
-        // A git token is never a registry login. Stack settings refuse to assign one, but a hand-edited
-        // or restored credential_id could still name one: never write it out as a Docker login.
-        if (($credential['provider'] ?? '') === 'git') {
+        // A git token or deploy key is never a registry login. Stack settings refuse to assign one, but a
+        // hand-edited or restored credential_id could still name one: never write it out as a Docker login.
+        if (in_array($credential['provider'] ?? '', ['git', 'git-ssh'], true)) {
             throw new RuntimeException("The credential '{$credential['name']}' is a git repository credential, not a registry login.");
         }
         // Confirms which named credential a compose operation is using, without ever logging the secret.

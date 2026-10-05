@@ -218,6 +218,40 @@ final class CredentialVaultTest extends TestCase
         ]);
     }
 
+    public function testDeployKeyIsKeptLikeAnyOtherSecret(): void
+    {
+        $vault = new CredentialVault();
+        $privateKey = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----";
+        $saved = $vault->saveCredential([
+            'name' => 'whoami deploy key',
+            'provider' => 'git-ssh',
+            'registry' => 'git.example.com:2222',
+            'username' => 'git',
+            'secret' => $privateKey,
+        ]);
+
+        $this->assertSame('git-ssh', $saved['provider']);
+        $this->assertArrayNotHasKey('secret', $vault->listCredentials()[0]);
+        $this->assertStringNotContainsString('PRIVATE KEY', (string) file_get_contents(COMPOSE_CREDENTIAL_VAULT_FILE));
+        $this->assertSame($privateKey, $vault->useCredential($saved['id'], static fn(array $credential): string => $credential['secret']));
+    }
+
+    public function testDeployKeyIsNeverWrittenOutAsADockerLogin(): void
+    {
+        $vault = new CredentialVault();
+        $saved = $vault->saveCredential([
+            'name' => 'whoami deploy key',
+            'provider' => 'git-ssh',
+            'registry' => 'github.com',
+            'username' => 'git',
+            'secret' => "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----",
+        ]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('is a git repository credential, not a registry login');
+        $vault->materializeDockerConfig($saved['id']);
+    }
+
     public function testUseCredentialHandsTheSecretToTheCallbackOnly(): void
     {
         $vault = new CredentialVault();
