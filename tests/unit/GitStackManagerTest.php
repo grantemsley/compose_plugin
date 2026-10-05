@@ -386,6 +386,39 @@ final class GitStackManagerTest extends TestCase
         $this->assertStringContainsString("Could not reach https://127.0.0.1:9/team/stacks.git (used by '$folder')", $test['message']);
     }
 
+    public function testOnlyAnSshStackHasADeployKeyOrPinnedHostKeys(): void
+    {
+        $folder = $this->manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+
+        try {
+            $this->manager->deployKey($folder);
+            $this->fail('Showed a deploy key for a stack that does not use ssh');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('has no deploy key', $error->getMessage());
+        }
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('does not reach its repository over ssh');
+        $this->manager->trustHost($folder);
+    }
+
+    public function testAnSshStackCannotBeLeftWithoutItsDeployKey(): void
+    {
+        $folder = $this->manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+        $stackDir = $this->composeRoot . '/' . $folder;
+        GitStackSettings::createNew('git@github.com:owner/repo.git', 'main', 'whoami/compose.yaml', $this->clonesRoot, $folder)
+            ->withCredentialId(str_repeat('cd', 16))
+            ->withSshKnownHosts("github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n")
+            ->save($stackDir);
+
+        try {
+            $this->manager->setCredential($folder, null);
+            $this->fail('An ssh stack was left without its deploy key.');
+        } catch (\InvalidArgumentException $error) {
+            $this->assertStringContainsString('always uses its deploy key', $error->getMessage());
+        }
+        $this->assertSame(str_repeat('cd', 16), GitStackSettings::load($stackDir)->credentialId);
+    }
+
     public function testCommandLineCredentialNeedsAStackAndANameOrNone(): void
     {
         $this->assertSame(2, $this->runCli(['compose-git', 'credential', 'whoami']));
@@ -634,6 +667,8 @@ final class GitStackManagerTest extends TestCase
             'add' => ['add', ['--url', '--path', '--branch', '--clones-root', '--description', '--credential']],
             'convert' => ['convert', ['--url', '--path', '--branch', '--clones-root', '--credential']],
             'credential' => ['credential', ['--none']],
+            'deploy-key' => ['deploy-key', []],
+            'trust-host' => ['trust-host', []],
             'check' => ['check', ['--all']],
             'deploy' => ['deploy', ['--commit', '--save-local-changes', '--wait', '--no-wait', '--wait-timeout', '--profile']],
             'reclone' => ['reclone', []],

@@ -32,16 +32,22 @@ Usage:
   compose-git add <name> --url <url> --path <compose file> [--branch <branch>] [--clones-root <folder>] [--description <text>] [--credential <name>]
   compose-git convert <stack> --url <url> --path <compose file> [--branch <branch>] [--clones-root <folder>] [--credential <name>]
   compose-git credential <stack> <name>|--none
+  compose-git deploy-key <stack>
+  compose-git trust-host <stack>
   compose-git check <stack>|--all
   compose-git deploy <stack> [--commit <full commit id>] [--save-local-changes] [--wait|--no-wait] [--wait-timeout <seconds>] [--profile <name>]...
   compose-git reclone <stack>
   compose-git status [<stack>|--all] [--json]
 
-<url> is an https address (no user name or password in it) or the path of a repository under /mnt.
+<url> is an https address (no user name or password in it), an ssh address (ssh://git@host/path
+or git@host:path), or the path of a repository under /mnt.
 <compose file> is the compose file's path inside the repository, such as stacks/whoami/compose.yaml.
 --branch defaults to main. <stack> is the stack's exact folder name.
 --credential names a git credential (an HTTPS token) from the plugin's Credentials tab, for a
 private repository; credential changes or removes it on an existing stack.
+An ssh stack gets a deploy key of its own when it is added; deploy-key shows it again, to add to
+the repository as a read-only deploy key. Its host's keys are pinned when it is added;
+trust-host pins them again after the server's keys change.
 deploy waits for healthy containers when the stack's wait-for-healthy setting says so;
 --wait and --no-wait override it.
 
@@ -131,6 +137,23 @@ No container is touched.
 
 Options:
   --none   Reach the repository without a credential, as for a public one.
+TEXT,
+        'deploy-key' => <<<'TEXT'
+Usage: compose-git deploy-key <stack>
+
+Print the public half of an ssh stack's deploy key, to add to the repository as a read-only
+deploy key (on GitHub: the repository's Settings, Deploy keys). The key was made for the
+stack when it was added, and is kept in the plugin's credential vault. Changes nothing.
+TEXT,
+        'trust-host' => <<<'TEXT'
+Usage: compose-git trust-host <stack>
+
+Pin an ssh stack's repository server keys again, after the server was rebuilt or its keys
+were changed on purpose. Until then every fetch fails, because a changed host key is also
+what an attacker in between would look like. The pinned and the offered fingerprints are
+printed: compare the new ones with the ones your git host publishes before you deploy. The
+new keys are saved only after the repository has been reached with them. No container is
+touched.
 TEXT,
         'check' => <<<'TEXT'
 Usage: compose-git check <stack>
@@ -511,6 +534,16 @@ function compose_git_main(array $argv, string $composeRoot, $errors = null): int
                 } else {
                     throw new ComposeGitUsageError('credential needs a stack and either a credential name or --none.');
                 }
+                return COMPOSE_GIT_EXIT_OK;
+
+            case 'deploy-key':
+                [$positional] = compose_git_parse($args, [], []);
+                echo $manager->deployKey(compose_git_one_stack($positional)) . "\n";
+                return COMPOSE_GIT_EXIT_OK;
+
+            case 'trust-host':
+                [$positional] = compose_git_parse($args, [], []);
+                $manager->trustHost(compose_git_one_stack($positional));
                 return COMPOSE_GIT_EXIT_OK;
 
             case 'check':
