@@ -14,7 +14,8 @@ require_once '/usr/local/emhttp/plugins/compose.manager/include/ProcessRunner.ph
  *    up for other uses of git on the server),
  *  - never asks for input (no password prompt that could hang a deploy),
  *  - runs no repository hooks and no filesystem monitor,
- *  - allows only the https and local-path transports,
+ *  - allows only the https and local-path transports (and ssh for a stack
+ *    with a deploy key, through its own run settings: see GitSsh),
  *  - starts from an empty environment, so stray GIT_DIR or GIT_WORK_TREE
  *    variables cannot point it at a different repository,
  *  - is stopped after a time limit, gets no input, and runs without a shell

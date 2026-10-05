@@ -57,19 +57,31 @@ final class GitCredentials
             }
         );
 
+        return self::writeRunFile($line);
+    }
+
+    /**
+     * Write a secret to a new file that only root can read, for one git run.
+     *
+     * Also used for a git stack's ssh deploy key. Remove it with remove() afterwards.
+     *
+     * @throws RuntimeException if the file cannot be written
+     */
+    public static function writeRunFile(string $content): string
+    {
         $directory = self::prepareDirectory();
         self::removeStaleFiles($directory);
 
         $file = $directory . '/' . bin2hex(random_bytes(16));
-        // Created empty with root-only permissions first, so the token is never in a file others can read.
+        // Created empty with root-only permissions first, so the secret is never in a file others can read.
         $handle = @fopen($file, 'x');
         if ($handle === false) {
             throw new RuntimeException('Could not create a credential file for git.');
         }
         chmod($file, 0600);
-        $written = fwrite($handle, $line);
+        $written = fwrite($handle, $content);
         fclose($handle);
-        if ($written !== strlen($line)) {
+        if ($written !== strlen($content)) {
             @unlink($file);
             throw new RuntimeException('Could not write the credential file for git.');
         }
