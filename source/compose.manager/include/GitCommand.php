@@ -54,18 +54,27 @@ final class GitCommand
      * @param string|null $workingDirectory Folder to run in (the clone), or null for a neutral folder
      * @param array<string, string> $extraEnvironment Extra environment variables for this run
      * @param string[] $trustedRepositories Repositories git may use even when another user owns them
+     * @param string[] $extraConfig Settings for this run only, passed with -c after the forced ones, such as
+     *                              a credential helper for one stack. Built by the plugin, never from user
+     *                              input, and never holding a secret: anyone on the server can read a
+     *                              command line.
      */
     public static function run(
         array $args,
         ?string $workingDirectory = null,
         int $timeoutSeconds = self::DEFAULT_TIMEOUT_SECONDS,
         array $extraEnvironment = [],
-        array $trustedRepositories = []
+        array $trustedRepositories = [],
+        array $extraConfig = []
     ): ProcessResult {
         $homeDirectory = self::prepareHomeDirectory();
 
         $command = ['git'];
         foreach (self::FORCED_CONFIG as $setting) {
+            $command[] = '-c';
+            $command[] = $setting;
+        }
+        foreach ($extraConfig as $setting) {
             $command[] = '-c';
             $command[] = $setting;
         }

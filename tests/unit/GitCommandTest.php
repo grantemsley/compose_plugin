@@ -132,6 +132,37 @@ final class GitCommandTest extends TestCase
         $this->assertStringContainsString('refs/heads/main', $result->stdout);
     }
 
+    public function testExtraConfigComesAfterTheForcedSettings(): void
+    {
+        $result = GitCommand::run(
+            ['config', '--get-all', 'credential.helper'],
+            null,
+            GitCommand::DEFAULT_TIMEOUT_SECONDS,
+            [],
+            [],
+            ['credential.helper=store --file=/var/tmp/example']
+        );
+
+        // The forced empty helper resets the list first, so the extra helper is the only one used.
+        $this->assertTrue($result->succeeded(), $result->stderr);
+        $this->assertSame("\nstore --file=/var/tmp/example\n", $result->stdout);
+    }
+
+    public function testExtraConfigCanAllowAnotherTransport(): void
+    {
+        $result = GitCommand::run(
+            ['config', '--get', 'protocol.ssh.allow'],
+            null,
+            GitCommand::DEFAULT_TIMEOUT_SECONDS,
+            [],
+            [],
+            ['protocol.ssh.allow=always']
+        );
+
+        $this->assertTrue($result->succeeded(), $result->stderr);
+        $this->assertSame("always\n", $result->stdout);
+    }
+
     public function testArgumentsArePassedLiterallyWithoutAShell(): void
     {
         $repo = $this->makeRepo();
