@@ -97,6 +97,39 @@ final class GitStackWebActions
     }
 
     /**
+     * What deleting a git stack leaves behind, to tell the person.
+     *
+     * Delete removes only the stack folder. The clone is not deleted (a
+     * container may keep data in it), nor moved: once git.json is gone the
+     * plugin cannot prove the clone is its own, so it is the person's to
+     * remove. An ssh stack's deploy key stays on the Credentials tab.
+     *
+     * @return array{path: ?string, note: string}|null null for a stack that is not
+     *     a git stack. path is the clone, or null when git.json cannot be read; note
+     *     says what it is and what else stays.
+     */
+    public static function leftBehindByDelete(string $stackDir): ?array
+    {
+        if (!is_file($stackDir . '/' . GitStackSettings::FILE_NAME)) {
+            return null;
+        }
+        try {
+            $settings = GitStackSettings::load($stackDir);
+        } catch (Throwable) {
+            return ['path' => null, 'note' => "It is in the git stack's clone of its repository (its git.json could not be read)."];
+        }
+        if ($settings === null) {
+            // git.json went away since the check above.
+            return null;
+        }
+        $note = "This is the stack's clone of its repository: delete it yourself once nothing in it is needed.";
+        if ($settings->isSsh() && $settings->credentialId !== null) {
+            $note .= " Its ssh deploy key stays on the Credentials tab of the plugin settings, and in the repository's deploy keys.";
+        }
+        return ['path' => $settings->cloneDir, 'note' => $note];
+    }
+
+    /**
      * What the stack list shows for a git stack. Read from the stack's own
      * files only: no git command is run, so the list stays fast.
      *

@@ -315,6 +315,28 @@ final class GitStackWebActionsTest extends TestCase
         $this->assertStringContainsString('no stack folder', $result['message']);
     }
 
+    // ----- delete -----
+
+    public function testDeleteLeavesTheCloneAndSaysWhereItIs(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        $cloneDir = GitStackSettings::load($this->composeRoot . '/' . $folder)->cloneDir;
+
+        $result = $this->executeAction('deleteStack', ['stackName' => $folder]);
+
+        $this->assertSame('warning', $result['result']);
+        $this->assertStringStartsWith($cloneDir . '. This is the stack\'s clone', $result['message']);
+        $this->assertDirectoryDoesNotExist($this->composeRoot . '/' . $folder);
+        $this->assertDirectoryExists($cloneDir);
+    }
+
+    public function testNothingIsLeftBehindByDeletingAStackThatIsNotAGitStack(): void
+    {
+        $stack = \StackInfo::createNew($this->composeRoot, 'plain');
+
+        $this->assertNull(GitStackWebActions::leftBehindByDelete($this->composeRoot . '/' . $stack->projectFolder));
+    }
+
     // ----- the stack list -----
 
     public function testListSummaryReadsTheBranchAndCommitsFromTheStackFolder(): void

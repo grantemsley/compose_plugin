@@ -507,6 +507,13 @@ switch ($_POST['action']) {
         $isInvalidIndirect = !$isIndirect && is_file("$folderName/indirect.invalid");
         $filesRemain = $isIndirect ? file_get_contents("$folderName/indirect")
             : ($isInvalidIndirect ? file_get_contents("$folderName/indirect.invalid") : "");
+        // A git stack's indirect file points into its clone: name the clone instead, and say what it is.
+        $filesRemainNote = '';
+        $gitLeftBehind = GitStackWebActions::leftBehindByDelete($folderName);
+        if ($gitLeftBehind !== null) {
+            $filesRemain = $gitLeftBehind['path'] ?? $filesRemain;
+            $filesRemainNote = $gitLeftBehind['note'];
+        }
         composeLogger("Deleting stack: $stackName", [
             'folderName' => $folderName,
             'isIndirect' => $isIndirect,
@@ -547,14 +554,14 @@ switch ($_POST['action']) {
             composeSendNotification("Stack delete complete: $stackName", $message);
             echo json_encode(['result' => 'success', 'message' => '', 'cachePurge' => $cachePurgeMeta]);
         } else {
-            $message = "Stack '$stackName' was deleted. Files remain on disk at '$filesRemain'.";
+            $message = "Stack '$stackName' was deleted. Files remain on disk at '$filesRemain'." . ($filesRemainNote !== '' ? " $filesRemainNote" : '');
             composeLogger("Deleted stack: $stackName (indirect, external files remain at $filesRemain)", [
                 'deleteMeta' => $deleteMeta,
                 'filesRemain' => $filesRemain,
                 'cachePurgeMeta' => $cachePurgeMeta,
             ], 'user', 'warning', 'stack');
             composeSendNotification("Stack delete complete: $stackName", $message, 'warning');
-            echo json_encode(['result' => 'warning', 'message' => $filesRemain, 'cachePurge' => $cachePurgeMeta]);
+            echo json_encode(['result' => 'warning', 'message' => $filesRemain . ($filesRemainNote !== '' ? ". $filesRemainNote" : ''), 'cachePurge' => $cachePurgeMeta]);
         }
         break;
     case 'changeName':
