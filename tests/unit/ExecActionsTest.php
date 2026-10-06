@@ -934,6 +934,32 @@ class ExecActionsTest extends TestCase
         $this->assertEquals('success', $result['result']);
     }
 
+    public function testSetStackSettingsRejectsMissingCredentialBeforePersistingOtherSettings(): void
+    {
+        $stackPath = $this->createTestStack('test-stack');
+        file_put_contents($stackPath . '/envpath', 'old.env');
+        file_put_contents($stackPath . '/icon_url', 'https://old.example/icon.png');
+        file_put_contents($stackPath . '/webui_url', 'https://old.example/');
+        file_put_contents($stackPath . '/default_profile', 'old-profile');
+
+        $output = $this->executeAction('setStackSettings', [
+            'script' => 'test-stack',
+            'credentialId' => 'missing-credential',
+            'envPath' => 'new.env',
+            'iconUrl' => 'https://new.example/icon.png',
+            'webuiUrl' => 'https://new.example/',
+            'defaultProfile' => 'new-profile',
+        ]);
+
+        $result = json_decode($output, true);
+        $this->assertSame('error', $result['result']);
+        $this->assertSame('old.env', file_get_contents($stackPath . '/envpath'));
+        $this->assertSame('https://old.example/icon.png', file_get_contents($stackPath . '/icon_url'));
+        $this->assertSame('https://old.example/', file_get_contents($stackPath . '/webui_url'));
+        $this->assertSame('old-profile', file_get_contents($stackPath . '/default_profile'));
+        $this->assertFileDoesNotExist($stackPath . '/credential_id');
+    }
+
     public function testSetStackSettingsPreservesExtraComposeFilesWhenFieldMissing(): void
     {
         $stackPath = $this->createTestStack('test-stack');

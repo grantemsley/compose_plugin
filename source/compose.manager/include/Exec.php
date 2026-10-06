@@ -1440,6 +1440,30 @@ switch ($_POST['action']) {
 
         // --- All validation passed, now write everything ---
 
+        // Assign or clear credentials before persisting any other settings. A
+        // stale credential ID must reject the request without partial updates.
+        if ($credentialIdProvided) {
+            $credentialIdFile = "$compose_root/$script/credential_id";
+            try {
+                CredentialVault::withCredentialAssignmentLock(function () use ($credentialId, $credentialIdFile): void {
+                    if ($credentialId !== '' && !(new CredentialVault())->hasCredential($credentialId)) {
+                        throw new RuntimeException('Selected credential no longer exists.');
+                    }
+                    if ($credentialId === '') {
+                        if (is_file($credentialIdFile)) {
+                            @unlink($credentialIdFile);
+                        }
+                    } else {
+                        file_put_contents($credentialIdFile, $credentialId);
+                    }
+                });
+            } catch (\Throwable $error) {
+                composeLogger('Unable to update stack credential', ['error' => $error->getMessage()], 'user', 'error', 'credentials');
+                echo json_encode(['result' => 'error', 'message' => $error->getMessage()]);
+                break;
+            }
+        }
+
         // Set env path
         $envPathFile = "$compose_root/$script/envpath";
         if (empty($envPath)) {
@@ -1524,28 +1548,6 @@ switch ($_POST['action']) {
                     @unlink($extraComposeFilesFile);
             } else {
                 file_put_contents($extraComposeFilesFile, implode("\n", $extraComposeFilesNormalized) . "\n");
-            }
-        }
-
-        if ($credentialIdProvided) {
-            $credentialIdFile = "$compose_root/$script/credential_id";
-            try {
-                CredentialVault::withCredentialAssignmentLock(function () use ($credentialId, $credentialIdFile): void {
-                    if ($credentialId !== '' && !(new CredentialVault())->hasCredential($credentialId)) {
-                        throw new RuntimeException('Selected credential no longer exists.');
-                    }
-                    if ($credentialId === '') {
-                        if (is_file($credentialIdFile)) {
-                            @unlink($credentialIdFile);
-                        }
-                    } else {
-                        file_put_contents($credentialIdFile, $credentialId);
-                    }
-                });
-            } catch (\Throwable $error) {
-                composeLogger('Unable to update stack credential', ['error' => $error->getMessage()], 'user', 'error', 'credentials');
-                echo json_encode(['result' => 'error', 'message' => $error->getMessage()]);
-                break;
             }
         }
 
