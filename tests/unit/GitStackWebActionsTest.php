@@ -1,0 +1,248 @@
+<?php
+
+declare(strict_types=1);
+
+namespace ComposeManager\Tests;
+
+use ComposeManager\Tests\Support\FakeDocker;
+use GitCommand;
+use GitStackManager;
+use GitStackSettings;
+use GitStackWebActions;
+use PluginTests\Mocks\FunctionMocks;
+use PluginTests\TestCase;
+
+require_once '/usr/local/emhttp/plugins/compose.manager/include/GitStackWebActions.php';
+require_once __DIR__ . '/support/FakeDocker.php';
+
+/**
+ * What the web UI asks of git stacks (GitStackWebActions and its Exec.php
+ * actions), with real git.
+ */
+final class GitStackWebActionsTest extends TestCase
+{
+    private string $mnt;
+    private string $upstream;
+    private string $author;
+    private string $composeRoot;
+    private string $clonesRoot;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        \StackInfo::clearCache();
+        $this->mnt = COMPOSE_GIT_MNT_DIR;
+        FakeDocker::removeTree($this->mnt);
+        mkdir($this->mnt . '/user/appdata', 0755, true);
+        mkdir($this->mnt . '/user/repos', 0755, true);
+        file_put_contents(COMPOSE_UNRAID_VAR_INI, "mdState=\"STARTED\"\n");
+        file_put_contents(COMPOSE_MOUNTS_FILE, "rootfs {$this->mnt} rootfs rw 0 0\nshfs {$this->mnt}/user fuse.shfs rw 0 0\n");
+
+        $this->upstream = $this->mnt . '/user/repos/stacks.git';
+        $this->author = sys_get_temp_dir() . '/compose_git_web_author';
+        FakeDocker::removeTree($this->author);
+        $this->git(['init', '-q', '--bare', '-b', 'main', $this->upstream], null);
+        $this->git(['clone', '-q', $this->upstream, $this->author], null);
+        $this->git(['checkout', '-q', '-b', 'main'], $this->author);
+        $this->writeAndPush(['whoami/compose.yaml' => "services:\n  whoami:\n    image: traefik/whoami\n"], 'first');
+
+        $this->composeRoot = sys_get_temp_dir() . '/compose_git_web_projects';
+        FakeDocker::removeTree($this->composeRoot);
+        mkdir($this->composeRoot);
+        FakeDocker::removeTree(COMPOSE_LOCK_DIR);
+        $this->clonesRoot = $this->mnt . '/user/appdata/git';
+
+        global $compose_root, $plugin_root, $sName;
+        $compose_root = $this->composeRoot;
+        $plugin_root = '/usr/local/emhttp/plugins/compose.manager';
+        $sName = 'compose.manager';
+        FunctionMocks::setPluginConfig('compose.manager', ['PROJECTS_FOLDER' => $this->composeRoot]);
+    }
+
+    protected function tearDown(): void
+    {
+        FakeDocker::removeTree($this->mnt);
+        FakeDocker::removeTree($this->author);
+        FakeDocker::removeTree($this->composeRoot);
+        FakeDocker::removeTree(COMPOSE_LOCK_DIR);
+        $_POST = [];
+        parent::tearDown();
+    }
+
+    // ----- status -----
+
+    public function testStatusShowsTheRepositoryAndWhatIsDeployed(): void
+    {
+        $folder = $this->addGitStack('whoami');
+
+        $result = (new GitStackWebActions($this->composeRoot))->status($folder);
+
+        $this->assertSame('success', $result['result']);
+        $this->assertSame($this->upstream, $result['git']['url']);
+        $this->assertSame('main', $result['git']['branch']);
+        $this->assertSame('whoami/compose.yaml', $result['git']['composePath']);
+        $this->assertNull($result['git']['deployedCommit']);
+        $this->assertSame([], $result['git']['localChanges']);
+        $this->assertNull($result['git']['deployKey']);
+    }
+
+    public function testStatusSaysWhyAnSshStacksDeployKeyCannotBeShown(): void
+    {
+        if (trim((string) shell_exec('command -v ssh-keygen')) === '') {
+            $this->markTestSkipped('ssh-keygen is not installed.');
+        }
+        $folder = $this->addGitStack('whoami');
+        $stackDir = $this->composeRoot . '/' . $folder;
+        // An ssh stack whose deploy key in the vault is not a key ssh-keygen can read.
+        $credentialId = (new \CredentialVault())->saveCredential([
+            'name' => 'whoami deploy key', 'provider' => 'git-ssh', 'registry' => 'git.example.com',
+            'username' => 'git', 'secret' => 'not a key',
+        ])['id'];
+        $hostKey = \GitSsh::generateKey('host key')['public'];
+        $url = 'git@git.example.com:team/stacks.git';
+        $data = json_decode((string) file_get_contents($stackDir . '/git.json'), true);
+        $data['url'] = $url;
+        $data['credentialId'] = $credentialId;
+        $data['sshKnownHosts'] = 'git.example.com ' . implode(' ', array_slice(explode(' ', $hostKey), 0, 2)) . "\n";
+        file_put_contents($stackDir . '/git.json', (string) json_encode($data));
+        $this->git(['remote', 'set-url', 'origin', $url], GitStackSettings::load($stackDir)->cloneDir);
+
+        $result = (new GitStackWebActions($this->composeRoot))->status($folder);
+
+        $this->assertSame('success', $result['result']);
+        $this->assertNull($result['git']['deployKey']);
+        $this->assertStringStartsWith('Could not read the deploy key: ', (string) $result['git']['problem']);
+        $this->assertStringNotContainsString('Could not read the deploy key: Could not read', (string) $result['git']['problem']);
+    }
+
+    public function testStatusListsFilesChangedInTheClone(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        $settings = GitStackSettings::load($this->composeRoot . '/' . $folder);
+        file_put_contents($settings->composeFileInClone(), "services: {}\n");
+
+        $result = (new GitStackWebActions($this->composeRoot))->status($folder);
+
+        $this->assertSame(['whoami/compose.yaml'], $result['git']['localChanges']);
+    }
+
+    public function testStatusOfAStackThatIsNotAGitStackIsAnError(): void
+    {
+        \StackInfo::createNew($this->composeRoot, 'plain');
+
+        $result = (new GitStackWebActions($this->composeRoot))->status('plain');
+
+        $this->assertSame('error', $result['result']);
+        $this->assertStringContainsString('not a git stack', $result['message']);
+    }
+
+    public function testGetGitStackStatusAction(): void
+    {
+        $folder = $this->addGitStack('whoami');
+
+        $result = $this->executeAction('getGitStackStatus', ['script' => $folder]);
+
+        $this->assertSame('success', $result['result']);
+        $this->assertSame('main', $result['git']['branch']);
+    }
+
+    // ----- the editor's settings -----
+
+    public function testGetStackSettingsSaysWhetherTheStackIsAGitStack(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        \StackInfo::createNew($this->composeRoot, 'plain');
+
+        $this->assertTrue($this->executeAction('getStackSettings', ['script' => $folder])['isGitStack']);
+        $this->assertFalse($this->executeAction('getStackSettings', ['script' => 'plain'])['isGitStack']);
+    }
+
+    public function testSavingSettingsNeverChangesAGitStacksComposeFile(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        $stackDir = $this->composeRoot . '/' . $folder;
+        $indirect = (string) file_get_contents($stackDir . '/indirect');
+
+        // A form that sends no compose source would otherwise turn it back into a project-folder stack.
+        $result = $this->executeAction('setStackSettings', ['script' => $folder, 'externalComposePath' => '', 'externalComposeFilePath' => '']);
+
+        $this->assertSame('success', $result['result']);
+        $this->assertSame($indirect, file_get_contents($stackDir . '/indirect'));
+        $this->assertSame('file', file_get_contents($stackDir . '/indirect_mode'));
+        foreach (COMPOSE_FILE_NAMES as $composeFileName) {
+            $this->assertFileDoesNotExist($stackDir . '/' . $composeFileName);
+        }
+    }
+
+    public function testSavingSettingsIgnoresAnotherComposeFileForAGitStack(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        $stackDir = $this->composeRoot . '/' . $folder;
+        $indirect = (string) file_get_contents($stackDir . '/indirect');
+        $other = $this->mnt . '/user/appdata/other.compose.yaml';
+        file_put_contents($other, "services: {}\n");
+
+        $result = $this->executeAction('setStackSettings', ['script' => $folder, 'externalComposeFilePath' => $other]);
+
+        $this->assertSame('success', $result['result']);
+        $this->assertSame($indirect, file_get_contents($stackDir . '/indirect'));
+    }
+
+    // ----- helpers -----
+
+    private function addGitStack(string $name): string
+    {
+        return (new GitStackManager($this->composeRoot))->add($name, $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+    }
+
+    /**
+     * Run an Exec.php action and decode its JSON answer.
+     *
+     * @param array<string, string> $post
+     * @return array<string, mixed>
+     */
+    private function executeAction(string $action, array $post): array
+    {
+        global $compose_root, $plugin_root, $sName;
+        $compose_root = $this->composeRoot;
+        $plugin_root = '/usr/local/emhttp/plugins/compose.manager';
+        $sName = 'compose.manager';
+        \StackInfo::clearCache();
+
+        $_POST = array_merge(['action' => $action], $post);
+        ob_start();
+        include '/usr/local/emhttp/plugins/compose.manager/include/Exec.php';
+        $output = (string) ob_get_clean();
+        $_POST = [];
+
+        $decoded = json_decode($output, true);
+        $this->assertIsArray($decoded, "Exec.php $action answered: $output");
+        return $decoded;
+    }
+
+    /**
+     * @param array<string, string> $files
+     */
+    private function writeAndPush(array $files, string $message): void
+    {
+        foreach ($files as $path => $content) {
+            $full = $this->author . '/' . $path;
+            if (!is_dir(dirname($full))) {
+                mkdir(dirname($full), 0755, true);
+            }
+            file_put_contents($full, $content);
+            $this->git(['add', '--', $path], $this->author);
+        }
+        $this->git(['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', $message], $this->author);
+        $this->git(['push', '-q', 'origin', 'main'], $this->author);
+    }
+
+    /**
+     * @param string[] $args
+     */
+    private function git(array $args, ?string $dir): void
+    {
+        $result = GitCommand::run($args, $dir);
+        $this->assertTrue($result->succeeded(), 'git ' . implode(' ', $args) . ': ' . $result->stderr);
+    }
+}

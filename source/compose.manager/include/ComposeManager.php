@@ -621,7 +621,33 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                     <div class="settings-section">
                         <div class="settings-section-title"><i class="fa fa-files-o"></i> Compose Sources &amp; Files</div>
 
-                        <div class="settings-field">
+                        <!-- Shown instead of Compose Source for a git stack -->
+                        <div class="settings-field" id="settings-git-source" style="display:none;">
+                            <label>Git Repository</label>
+                            <div class="settings-field-help" style="margin-bottom:8px;">This stack is deployed from a git repository. Its compose file is the one in the plugin's clone of the repository.</div>
+                            <div id="settings-git-source-loading" class="compose-text-muted">Loading...</div>
+                            <div id="settings-git-source-error" class="compose-status-danger" style="display:none;"></div>
+                            <table id="settings-git-source-table" class="settings-git-source-table" style="display:none;">
+                                <tbody>
+                                    <tr><th>Repository</th><td><code id="settings-git-url"></code></td></tr>
+                                    <tr><th>Branch</th><td><code id="settings-git-branch"></code></td></tr>
+                                    <tr><th>Compose file</th><td><code id="settings-git-compose-path"></code></td></tr>
+                                    <tr><th>Clone</th><td><code id="settings-git-clone-dir"></code></td></tr>
+                                    <tr id="settings-git-credential-row"><th>Credential</th><td id="settings-git-credential"></td></tr>
+                                    <tr><th>Deployed commit</th><td id="settings-git-deployed"></td></tr>
+                                    <tr id="settings-git-failed-row"><th>Failed commit</th><td id="settings-git-failed" class="compose-status-danger"></td></tr>
+                                    <tr><th>Checked out</th><td id="settings-git-checked-out"></td></tr>
+                                </tbody>
+                            </table>
+                            <div id="settings-git-local-changes" class="compose-status-warning" style="display:none;margin-top:8px;"></div>
+                            <div id="settings-git-problem" class="compose-status-danger" style="display:none;margin-top:8px;"></div>
+                            <div id="settings-git-deploy-key-wrap" style="display:none;margin-top:8px;">
+                                <div class="settings-field-help">This stack's deploy key. Add it to the repository as a read-only deploy key:</div>
+                                <textarea id="settings-git-deploy-key" rows="2" readonly></textarea>
+                            </div>
+                        </div>
+
+                        <div class="settings-field" id="settings-compose-source-field">
                             <label>Compose Source</label>
                             <div class="settings-field-help" style="margin-bottom:8px;">Where does this stack's compose file live?</div>
                             <div id="settings-compose-source-radios" style="display:flex;flex-direction:column;gap:6px;">

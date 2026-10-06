@@ -5990,6 +5990,8 @@ function openEditorModalByProject(project, projectName, initialTab) {
     $('#editor-validation-override').html('<i class="fa fa-check editor-validation-icon"></i> Ready').removeClass('valid error warning');
     $('#env-empty-state').hide();
     $('#env-editor-wrap').show();
+    // A git stack's Sources readout is shown again from getStackSettings.
+    showGitSourceForStack(project, false);
 
     // Set modal title
     $('#editor-modal-title').text('Editing: ' + projectName);
@@ -6151,6 +6153,81 @@ function switchComposeFile(path) {
 }
 
 // Load settings data into the settings panel
+// The first 12 characters of a commit id, as git shows it, or a dash for none.
+function gitShortCommit(commit) {
+    return commit ? String(commit).substring(0, 12) : '-';
+}
+
+// On the Sources tab, show a git stack's repository and deploy state in place
+// of the Compose Source choice: a git stack's compose file is in its clone,
+// and is chosen by the stack's git settings, not here.
+function showGitSourceForStack(project, isGitStack) {
+    $('#settings-compose-source-field').toggle(!isGitStack);
+    $('#settings-git-source').toggle(isGitStack);
+    if (!isGitStack) {
+        return;
+    }
+
+    $('#settings-git-source-loading').show();
+    $('#settings-git-source-error, #settings-git-source-table, #settings-git-local-changes, #settings-git-problem, #settings-git-deploy-key-wrap').hide();
+    $.post(caURL, {
+        action: 'getGitStackStatus',
+        script: project
+    }).then(function(data) {
+        // The editor may have moved on to another stack while this loaded.
+        if (editorModal.currentProject !== project) {
+            return;
+        }
+        $('#settings-git-source-loading').hide();
+        var response;
+        try {
+            response = JSON.parse(data);
+        } catch (e) {
+            response = { result: 'error', message: 'Unexpected response from server.' };
+        }
+        if (response.result !== 'success') {
+            $('#settings-git-source-error').text(response.message || 'Could not read the git stack.').show();
+            return;
+        }
+        renderGitSource(response.git);
+    }).fail(function() {
+        if (editorModal.currentProject !== project) {
+            return;
+        }
+        $('#settings-git-source-loading').hide();
+        $('#settings-git-source-error').text('Could not read the git stack.').show();
+    });
+}
+
+// Fill the Sources tab's git readout from getGitStackStatus.
+function renderGitSource(git) {
+    $('#settings-git-url').text(git.url);
+    $('#settings-git-branch').text(git.branch);
+    $('#settings-git-compose-path').text(git.composePath);
+    $('#settings-git-clone-dir').text(git.cloneDir);
+    $('#settings-git-credential').text(git.credential || '');
+    $('#settings-git-credential-row').toggle(!!git.credential);
+    $('#settings-git-deployed').text(git.deployedCommit ? gitShortCommit(git.deployedCommit) : 'Not deployed yet');
+    $('#settings-git-failed').text(gitShortCommit(git.failedCommit) + ' (fix it and deploy again)');
+    $('#settings-git-failed-row').toggle(!!git.failedCommit);
+    $('#settings-git-checked-out').text(gitShortCommit(git.checkedOutCommit));
+    $('#settings-git-source-table').show();
+
+    var changes = git.localChanges || [];
+    if (changes.length > 0) {
+        $('#settings-git-local-changes')
+            .text('Files changed in the clone, which the next deploy will stop on: ' + changes.join(', '))
+            .show();
+    }
+    if (git.problem) {
+        $('#settings-git-problem').text(git.problem).show();
+    }
+    if (git.deployKey) {
+        $('#settings-git-deploy-key').val(git.deployKey);
+        $('#settings-git-deploy-key-wrap').show();
+    }
+}
+
 function loadSettingsData(project, projectName) {
     // Set the name from projectName (display name)
     $('#settings-name').val(projectName || '');
@@ -6296,6 +6373,9 @@ function loadSettingsData(project, projectName) {
                         $('#settings-external-compose-info').hide();
                     }
                 }
+
+                // A git stack shows its repository instead of the Compose Source choice
+                showGitSourceForStack(project, response.isGitStack === true);
 
                 // Default profile
                 var defaultProfile = response.defaultProfile || '';

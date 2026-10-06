@@ -5,6 +5,7 @@ require_once("/usr/local/emhttp/plugins/compose.manager/include/Util.php");
 require_once("/usr/local/emhttp/plugins/compose.manager/include/ColumnLayout.php");
 require_once("/usr/local/emhttp/plugins/compose.manager/include/CredentialVault.php");
 require_once("/usr/local/emhttp/plugins/compose.manager/include/GitHubDeviceAuth.php");
+require_once("/usr/local/emhttp/plugins/compose.manager/include/GitStackWebActions.php");
 require_once("/usr/local/emhttp/plugins/dynamix/include/Wrappers.php");
 require_once('/usr/local/emhttp/plugins/dynamix.docker.manager/include/DockerClient.php');
 
@@ -1256,7 +1257,16 @@ switch ($_POST['action']) {
             'projectPath' => "$compose_root/$script",
             'projectOverridePath' => $stackInfo->overrideInfo->getProjectOverridePath(),
             'effectiveOverridePath' => $stackInfo->getPreferredOverridePath(),
+            'isGitStack' => $stackInfo->isGitStack(),
         ]);
+        break;
+    case 'getGitStackStatus':
+        $script = getPostScript();
+        if (!$script) {
+            echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
+            break;
+        }
+        echo json_encode((new GitStackWebActions($compose_root))->status($script));
         break;
     case 'setLabelsViewMode':
         $script = getPostScript();
@@ -1365,6 +1375,15 @@ switch ($_POST['action']) {
         $externalComposePath = isset($_POST['externalComposePath']) ? trim($_POST['externalComposePath']) : "";
         $externalComposePath = rtrim($externalComposePath, '/');
         $externalComposeFilePath = isset($_POST['externalComposeFilePath']) ? trim($_POST['externalComposeFilePath']) : "";
+
+        // A git stack's compose file is the one in its clone, set by git.json.
+        // The Sources tab cannot change it, so the form's values are ignored
+        // and the stack's indirect files are left as they are.
+        $isGitStack = is_file("$compose_root/$script/git.json");
+        if ($isGitStack) {
+            $externalComposePath = '';
+            $externalComposeFilePath = '';
+        }
 
         if (!empty($externalComposePath) && !empty($externalComposeFilePath)) {
             echo json_encode(['result' => 'error', 'message' => 'Set either External Compose Path or External Compose File, not both.']);
@@ -1585,7 +1604,9 @@ switch ($_POST['action']) {
             $indirectTarget = $externalComposePath;
         }
 
-        if ($indirectTarget === '') {
+        if ($isGitStack) {
+            // Left as they are (see above).
+        } elseif ($indirectTarget === '') {
             // Removing indirect: move compose file back to project folder if it only exists externally
             if (is_file($indirectFile)) {
                 $oldIndirectPath = trim(file_get_contents($indirectFile));

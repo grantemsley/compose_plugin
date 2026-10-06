@@ -305,6 +305,28 @@
   line-height: 1.4;
 }
 
+/* A git stack's repository and deploy state on the Sources tab */
+.settings-git-source-table {
+  width: auto;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.settings-git-source-table th {
+  text-align: left;
+  font-weight: normal;
+  color: var(--alt-text-color);
+  width: 1%;
+  padding: 2px 16px 2px 0;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.settings-git-source-table td {
+  padding: 2px 0;
+  word-break: break-all;
+}
+
 .settings-effective-command-wrap {
   border: 1px solid var(--border-color, var(--dynamix-box-inner-div-border-color));
   border-radius: 6px;
