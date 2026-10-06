@@ -3562,17 +3562,15 @@ class StackInfo
      * whole project over it ("has neither an image nor a build context"), so
      * they must be left out when asking which services are valid.
      *
-     * With default file discovery there are no -f flags to leave one out of,
-     * so this returns the same as buildComposeFileFlags().
+     * With default file discovery, compose would find the managed override by
+     * itself: it sits next to the compose file under the override name
+     * compose looks for. So the files are named with -f in that mode too,
+     * from the same project directory compose would use.
      *
      * @return string
      */
     private function buildComposeFileFlagsWithoutManagedOverride(): string
     {
-        if ($this->useDefaultComposeFileDiscovery()) {
-            return $this->buildComposeFileFlags();
-        }
-
         $leftOut = [];
         foreach ([$this->overrideInfo->getProjectOverridePath(), $this->getIconNormalizationOverridePath()] as $path) {
             if ($path !== null) {
@@ -3581,6 +3579,9 @@ class StackInfo
         }
 
         $flags = [];
+        if ($this->useDefaultComposeFileDiscovery()) {
+            $flags[] = '--project-directory ' . escapeshellarg($this->composeSource);
+        }
         foreach ($this->getComposeFilePaths() as $filePath) {
             if (isset($leftOut[$this->normalizeComposeFilePath($filePath)])) {
                 continue;
