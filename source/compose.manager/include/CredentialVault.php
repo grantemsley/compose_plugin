@@ -189,9 +189,15 @@ final class CredentialVault
         }
 
         $auth = base64_encode($credential['username'] . ':' . $credential['secret']);
-        // Merge onto the operator's existing Docker CLI config so credHelpers,
-        // other registries' auths, and proxy settings still apply during the run.
+        // Merge onto the operator's existing Docker CLI config so other registries'
+        // auths and proxy settings still apply during the run. Docker's configured
+        // credential stores take precedence over inline auths, so remove the global
+        // store and this registry's helper from the temporary config.
         $config = self::loadExistingDockerConfig();
+        unset($config['credsStore']);
+        if (isset($config['credHelpers']) && is_array($config['credHelpers'])) {
+            unset($config['credHelpers'][$credential['registry']]);
+        }
         if (!isset($config['auths']) || !is_array($config['auths'])) {
             $config['auths'] = [];
         }

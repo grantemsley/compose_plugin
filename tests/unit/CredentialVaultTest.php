@@ -93,6 +93,47 @@ final class CredentialVaultTest extends TestCase
         $this->assertSame(base64_encode('user:token'), $config['auths']['ghcr.io']['auth']);
     }
 
+    public function testSelectedCredentialOverridesDockerCredentialHelpers(): void
+    {
+        $dockerConfigDirectory = sys_get_temp_dir() . '/docker-config-test-' . bin2hex(random_bytes(8));
+        mkdir($dockerConfigDirectory, 0700, true);
+        file_put_contents($dockerConfigDirectory . '/config.json', json_encode([
+            'credsStore' => 'secretservice',
+            'credHelpers' => [
+                'ghcr.io' => 'pass',
+                'registry.example.com' => 'desktop',
+            ],
+            'auths' => [
+                'registry.example.com' => ['auth' => base64_encode('other:token')],
+            ],
+            'proxies' => ['default' => ['httpProxy' => 'http://proxy.example.com']],
+        ], JSON_UNESCAPED_SLASHES));
+
+        $previousDockerConfig = getenv('DOCKER_CONFIG');
+        putenv('DOCKER_CONFIG=' . $dockerConfigDirectory);
+        try {
+            $vault = new CredentialVault();
+            $saved = $vault->saveCredential([
+                'name' => 'GitHub', 'provider' => 'github', 'registry' => 'ghcr.io',
+                'username' => 'selected-user', 'secret' => 'selected-token',
+            ]);
+
+            $directory = $vault->materializeDockerConfig($saved['id']);
+            $config = json_decode((string) file_get_contents($directory . '/config.json'), true);
+            $this->assertSame(base64_encode('selected-user:selected-token'), $config['auths']['ghcr.io']['auth']);
+            $this->assertArrayNotHasKey('credsStore', $config);
+            $this->assertArrayNotHasKey('ghcr.io', $config['credHelpers']);
+            $this->assertSame('desktop', $config['credHelpers']['registry.example.com']);
+            $this->assertSame('http://proxy.example.com', $config['proxies']['default']['httpProxy']);
+
+            CredentialVault::removeDockerConfig($directory);
+        } finally {
+            $previousDockerConfig === false ? putenv('DOCKER_CONFIG') : putenv('DOCKER_CONFIG=' . $previousDockerConfig);
+            @unlink($dockerConfigDirectory . '/config.json');
+            @rmdir($dockerConfigDirectory);
+        }
+    }
+
     public function testStaleSweepPreservesConfigUsedByComposeProcess(): void
     {
         $baseDir = COMPOSE_DOCKER_CONFIG_DIR;
