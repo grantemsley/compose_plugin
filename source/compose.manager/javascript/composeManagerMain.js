@@ -6394,8 +6394,9 @@ function openEditorModalByProject(project, projectName, initialTab) {
     $('#editor-validation-override').html('<i class="fa fa-check editor-validation-icon"></i> Ready').removeClass('valid error warning');
     $('#env-empty-state').hide();
     $('#env-editor-wrap').show();
-    // A git stack's Sources readout is shown again from getStackSettings.
+    // A git stack's Sources readout and banner are shown again from getStackSettings.
     showGitSourceForStack(project, false);
+    $('#editor-compose-git-banner').hide();
 
     // Set modal title
     $('#editor-modal-title').text('Editing: ' + projectName);
@@ -6784,8 +6785,12 @@ function loadSettingsData(project, projectName) {
                     }
                 }
 
-                // A git stack shows its repository instead of the Compose Source choice
+                // A git stack shows its repository instead of the Compose Source choice,
+                // and the Compose tab says where its file lives
                 showGitSourceForStack(project, response.isGitStack === true);
+                $('#editor-compose-git-banner').toggle(response.isGitStack === true);
+                // The banner takes room from the editor below it, which was sized without it.
+                refreshEditorContents('compose');
 
                 // Default profile
                 var defaultProfile = response.defaultProfile || '';
