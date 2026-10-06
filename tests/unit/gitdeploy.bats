@@ -13,6 +13,8 @@ test_setup() {
     # The framework exports mock docker/php functions; these tests use scripts on PATH instead.
     unset -f docker php 2>/dev/null || true
     export COMPOSE_LOCK_TIMEOUT=5
+    # /var/run is not writable when the tests run without root (as in CI).
+    export COMPOSE_LOCK_DIR="$TEST_TEMP_DIR/locks"
     REAL_PHP="$(command -v php)"
     export REAL_PHP
     export CALLS="$TEST_TEMP_DIR/calls.log"
@@ -108,8 +110,8 @@ calls_matching() {
 
 @test "gitdeploy waits for the stack's lock and changes nothing when it stays taken" {
     # Another operation on the stack (a Start from the web UI, say) holds its lock.
-    mkdir -p /var/run/compose.manager
-    exec 8>/var/run/compose.manager/whoami.lock
+    mkdir -p "$COMPOSE_LOCK_DIR"
+    exec 8>"$COMPOSE_LOCK_DIR/whoami.lock"
     flock 8
     export COMPOSE_LOCK_TIMEOUT=1
     run_gitdeploy
