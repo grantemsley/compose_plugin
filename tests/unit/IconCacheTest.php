@@ -198,6 +198,18 @@ SH
         $this->assertFalse(compose_icon_is_safe_host('fd00::1'));
     }
 
+    public function testSafeHostRejectsIpv4MappedIpv6LoopbackAndPrivateAddresses(): void
+    {
+        $this->assertFalse(compose_icon_is_safe_host('::ffff:127.0.0.1'));
+        $this->assertFalse(compose_icon_is_safe_host('::ffff:10.0.0.1'));
+        $this->assertFalse(compose_icon_is_safe_host('::ffff:192.168.1.1'));
+
+        $resolver = static fn (string $host): array => [
+            ['host' => $host, 'class' => 'IN', 'type' => 'AAAA', 'ipv6' => '::ffff:127.0.0.1'],
+        ];
+        $this->assertFalse(compose_icon_is_safe_host('mapped-loopback.example', $resolver));
+    }
+
     public function testSafeHostAcceptsPublicIpv6OnlyResolution(): void
     {
         $resolver = static fn (string $host): array => [

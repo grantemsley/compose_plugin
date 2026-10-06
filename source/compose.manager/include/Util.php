@@ -227,6 +227,18 @@ if (!function_exists('compose_icon_is_safe_host')) {    /** Block loopback, priv
         }
 
         foreach ($addresses as $address) {
+            $packedAddress = @inet_pton($address);
+            if (
+                $packedAddress !== false
+                && strlen($packedAddress) === 16
+                && substr($packedAddress, 0, 12) === str_repeat("\0", 10) . "\xff\xff"
+            ) {
+                $mappedIpv4 = inet_ntop(substr($packedAddress, 12));
+                if ($mappedIpv4 !== false) {
+                    $address = $mappedIpv4;
+                }
+            }
+
             if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
                 return false;
             }
