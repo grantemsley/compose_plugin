@@ -36,15 +36,11 @@
 >
 
 <CHANGES>
-###2026.10.06.1458
-- Bug Fixes (credentials): reload list after deletion
-- Bug Fixes (settings): validate credentials before saving
-- Bug Fixes (credentials): honor selected registry auth
-- Bug Fixes (icon): block IPv4-mapped private hosts
-- Bug Fixes (override): leave the override out with default file discovery too
-- Bug Fixes (override): prune services the compose file no longer has
+###2026.10.06.1617
+- Bug Fixes (loadlist): log HTTP status when a stack row request fails
+- Bug Fixes (credentials): log GitHub sign-in lifecycle and deletions
 - [PR #155](https://github.com/mstrhakr/compose_plugin/pull/155)
-- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.09.13...v2026.10.06.1458)
+- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.09.13...v2026.10.06.1617)
 </CHANGES>
 
 <!-- The 'pre-install' script. -->
