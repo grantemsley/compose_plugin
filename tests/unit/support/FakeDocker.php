@@ -41,6 +41,16 @@ final class FakeDocker
     }
 
     /**
+     * What `docker compose config --services` prints.
+     *
+     * @param string[] $services
+     */
+    public function setServices(array $services): void
+    {
+        file_put_contents($this->dir . '/services.txt', implode("\n", $services) . "\n");
+    }
+
+    /**
      * A network that exists, with its driver (empty for the default, bridge).
      */
     public function addNetwork(string $name, string $driver = ''): void

@@ -301,6 +301,8 @@ final class GitDeploy
             throw new RuntimeException("{$settings->composePath} leads outside the repository (through a symlink), so it was not used.");
         }
 
+        $this->pruneOverrideServicesTheComposeFileNoLongerHas();
+
         $args = $this->composeArgs();
         foreach ($profiles as $profile) {
             $args[] = '--profile';
@@ -334,6 +336,26 @@ final class GitDeploy
         }
         foreach ($check->foldersDockerWillCreate() as $folder) {
             ($this->say)("Docker will create the missing folder $folder");
+        }
+    }
+
+    /**
+     * Remove services from the plugin-managed override that the new commit's
+     * compose file no longer has, as the web UI does before every "up".
+     *
+     * An override entry for a renamed or removed service defines a service
+     * with no image, and compose would refuse the whole stack over a file the
+     * user did not write. The entries only hold the plugin's UI labels. If the
+     * checks then fail and the previous commit is put back, the labels of a
+     * removed service are not restored; they are only labels.
+     */
+    private function pruneOverrideServicesTheComposeFileNoLongerHas(): void
+    {
+        StackInfo::clearCache();
+        $stack = StackInfo::fromProject(dirname(rtrim($this->stackDir, '/')), basename(rtrim($this->stackDir, '/')));
+        $pruned = $stack->pruneOrphanOverrideServices();
+        foreach ($pruned['removed'] as $service) {
+            ($this->say)("Removed '$service' from the plugin's override: the compose file no longer has that service.");
         }
     }
 }

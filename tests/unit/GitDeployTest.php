@@ -419,6 +419,38 @@ final class GitDeployTest extends TestCase
         $this->assertSame($before, $this->clone->checkedOutCommit());
     }
 
+    public function testOverrideEntryForAServiceTheCommitRemovedIsPrunedBeforeTheChecks(): void
+    {
+        // The override has UI labels for 'gone', which the new commit renames to 'whoami2'.
+        $override = (string) \StackInfo::fromProject($this->composeRoot, 'whoami')->getOverridePath();
+        $this->assertStringStartsWith($this->stackDir . '/', $override);
+        file_put_contents(
+            $override,
+            "services:\n  whoami:\n    labels:\n      net.unraid.docker.webui: http://x\n"
+            . "  gone:\n    labels:\n      net.unraid.docker.webui: http://y\n"
+        );
+        $this->writeAndPush(['whoami/compose.yaml' => "services:\n  whoami:\n    image: traefik/whoami\n  whoami2:\n    image: busybox\n"], 'rename gone');
+        $this->docker->setServices(['whoami', 'whoami2']);
+        $said = [];
+        $deploy = new GitDeploy($this->stackDir, static function (string $message) use (&$said): void {
+            $said[] = $message;
+        });
+
+        // StackInfo runs "docker" from the PATH, so put the scripted one first.
+        $originalPath = (string) getenv('PATH');
+        putenv('PATH=' . $this->docker->dir . ':' . $originalPath);
+        try {
+            $deploy->prepare('whoami', [], null, false);
+        } finally {
+            putenv('PATH=' . $originalPath);
+        }
+
+        $content = (string) file_get_contents($override);
+        $this->assertStringNotContainsString('gone', $content);
+        $this->assertStringContainsString('whoami', $content);
+        $this->assertContains("Removed 'gone' from the plugin's override: the compose file no longer has that service.", $said);
+    }
+
     // ----- helpers -----
 
     private function deploy(): GitDeploy
