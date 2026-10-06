@@ -236,6 +236,53 @@ final class GitStackWebActionsTest extends TestCase
         $this->assertSame('main', $result['git']['branch']);
     }
 
+    // ----- the stack list -----
+
+    public function testListSummaryReadsTheBranchAndCommitsFromTheStackFolder(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        $stackDir = $this->composeRoot . '/' . $folder;
+        $deployed = str_repeat('a', 40);
+        $failed = str_repeat('b', 40);
+        (new \GitStackState($deployed, $failed))->save($stackDir);
+
+        $this->assertSame(
+            ['branch' => 'main', 'deployedCommit' => $deployed, 'failedCommit' => $failed, 'problem' => null],
+            GitStackWebActions::listSummary($stackDir)
+        );
+    }
+
+    public function testListSummaryNamesAProblemInsteadOfFailing(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        file_put_contents($this->composeRoot . '/' . $folder . '/git.json', '{"version": 99}');
+
+        $summary = GitStackWebActions::listSummary($this->composeRoot . '/' . $folder);
+
+        $this->assertNull($summary['branch']);
+        $this->assertNotNull($summary['problem']);
+    }
+
+    public function testTheStackListShowsTheBranchDeployedCommitAndAFailedDeploy(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        $deployed = '1234567' . str_repeat('a', 33);
+        (new \GitStackState($deployed, str_repeat('b', 40)))->save($this->composeRoot . '/' . $folder);
+
+        $html = $this->stackListHtml();
+
+        $this->assertStringContainsString("main @ <span title='Deployed commit $deployed'>1234567</span>", $html);
+        $this->assertStringContainsString('>failed</span>', $html);
+    }
+
+    public function testTheStackListSaysWhenAGitStacksSettingsCannotBeRead(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        file_put_contents($this->composeRoot . '/' . $folder . '/git.json', '{"version": 99}');
+
+        $this->assertStringContainsString('git settings cannot be read', $this->stackListHtml());
+    }
+
     // ----- the editor's settings -----
 
     public function testGetStackSettingsSaysWhetherTheStackIsAGitStack(): void
@@ -444,6 +491,23 @@ final class GitStackWebActionsTest extends TestCase
         $this->assertCount(1, $commands);
         $this->assertMatchesRegularExpression("#^'[^']*/scripts/compose\\.sh' #", $commands[0]);
         return substr($commands[0], strpos($commands[0], "' ") + 2);
+    }
+
+    /**
+     * The Compose page's stack list (ComposeList.php), as the page loads it.
+     */
+    private function stackListHtml(): string
+    {
+        global $compose_root, $plugin_root, $sName;
+        $compose_root = $this->composeRoot;
+        $plugin_root = '/usr/local/emhttp/plugins/compose.manager';
+        $sName = 'compose.manager';
+        \StackInfo::clearCache();
+
+        $_GET = [];
+        ob_start();
+        include '/usr/local/emhttp/plugins/compose.manager/include/ComposeList.php';
+        return (string) ob_get_clean();
     }
 
     private function addGitStack(string $name): string

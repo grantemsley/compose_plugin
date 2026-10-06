@@ -70,6 +70,28 @@ final class GitStackWebActions
     }
 
     /**
+     * What the stack list shows for a git stack. Read from the stack's own
+     * files only: no git command is run, so the list stays fast.
+     *
+     * @return array{branch: ?string, deployedCommit: ?string, failedCommit: ?string, problem: ?string}
+     */
+    public static function listSummary(string $stackDir): array
+    {
+        try {
+            $settings = GitStackSettings::load($stackDir);
+            $state = GitStackState::load($stackDir);
+        } catch (Throwable $error) {
+            return ['branch' => null, 'deployedCommit' => null, 'failedCommit' => null, 'problem' => $error->getMessage()];
+        }
+        return [
+            'branch' => $settings?->branch,
+            'deployedCommit' => $state->deployedCommit,
+            'failedCommit' => $state->failedCommit,
+            'problem' => null,
+        ];
+    }
+
+    /**
      * A git stack's repository, deployed commit and local changes, for the
      * editor's Sources tab. Asks nothing of the remote.
      *
