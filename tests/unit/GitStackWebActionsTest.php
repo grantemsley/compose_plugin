@@ -143,6 +143,40 @@ final class GitStackWebActionsTest extends TestCase
         $this->assertDirectoryDoesNotExist($this->composeRoot . '/whoami');
     }
 
+    // ----- convert -----
+
+    public function testConvertTurnsAStackIntoAGitStackAndKeepsTheOldComposeFile(): void
+    {
+        $stack = \StackInfo::createNew($this->composeRoot, 'myapp');
+        $stackDir = $this->composeRoot . '/' . $stack->projectFolder;
+
+        $result = $this->executeAction('convertToGitStack', [
+            'script' => $stack->projectFolder,
+            'gitUrl' => $this->upstream,
+            'gitComposePath' => 'whoami/compose.yaml',
+        ]);
+
+        $this->assertSame('success', $result['result'], $result['message'] ?? '');
+        $this->assertFileExists($result['backupDir'] . '/compose.yaml');
+        $this->assertNotNull(GitStackSettings::load($stackDir));
+        $this->assertNotEmpty($result['messages']);
+    }
+
+    public function testConvertThatFailsChangesNothing(): void
+    {
+        $stack = \StackInfo::createNew($this->composeRoot, 'myapp');
+        $stackDir = $this->composeRoot . '/' . $stack->projectFolder;
+
+        $result = (new GitStackWebActions($this->composeRoot))->convert($stack->projectFolder, [
+            'gitUrl' => $this->upstream,
+            'gitComposePath' => 'whoami/missing.yaml',
+        ]);
+
+        $this->assertSame('error', $result['result']);
+        $this->assertFileExists($stackDir . '/compose.yaml');
+        $this->assertFileDoesNotExist($stackDir . '/git.json');
+    }
+
     // ----- status -----
 
     public function testStatusShowsTheRepositoryAndWhatIsDeployed(): void

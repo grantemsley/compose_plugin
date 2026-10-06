@@ -119,6 +119,40 @@ final class GitStackWebActions
     }
 
     /**
+     * Turn an existing stack into a git stack, from the editor's Sources tab,
+     * as compose-git convert does. Its old compose file, when it is in the
+     * stack folder, goes into a dated backup folder there (an indirect stack's
+     * file stays where it is); its containers change at the next deploy.
+     *
+     * @param array<string, mixed> $input gitUrl, gitBranch, gitComposePath, gitCredentialId
+     * @return array<string, mixed>
+     */
+    public function convert(string $folder, array $input): array
+    {
+        $messages = [];
+        $manager = new GitStackManager($this->composeRoot, static function (string $message) use (&$messages): void {
+            $messages[] = $message;
+        });
+
+        $branch = trim((string) ($input['gitBranch'] ?? ''));
+        $credentialId = trim((string) ($input['gitCredentialId'] ?? ''));
+        try {
+            $backupDir = $manager->convert(
+                $folder,
+                trim((string) ($input['gitUrl'] ?? '')),
+                $branch === '' ? GitStackManager::DEFAULT_BRANCH : $branch,
+                trim((string) ($input['gitComposePath'] ?? '')),
+                null,
+                // Only a git credential is accepted, never a registry login.
+                $credentialId === '' ? null : $manager->findGitCredential($credentialId)
+            );
+        } catch (Throwable $error) {
+            return self::errorAnswer($error, $messages);
+        }
+        return ['result' => 'success', 'backupDir' => $backupDir, 'messages' => $messages];
+    }
+
+    /**
      * A git stack's repository, deployed commit and local changes, for the
      * editor's Sources tab. Asks nothing of the remote.
      *

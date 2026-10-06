@@ -6709,6 +6709,140 @@ function showGitSourceForStack(project, isGitStack) {
     });
 }
 
+// Turn the stack open in the editor into a git stack (the Sources tab's
+// "Move this stack into git..."), through the same code as compose-git convert.
+function openConvertToGitModal() {
+    var project = editorModal.currentProject;
+    if (!project) {
+        return;
+    }
+    if (editorModal.modifiedTabs.size + editorModal.modifiedSettings.size + editorModal.modifiedLabels.size > 0) {
+        swal({
+            title: 'Unsaved changes',
+            text: 'Save or discard the changes in the editor first.',
+            type: 'warning'
+        });
+        return;
+    }
+
+    var modalHtml = `
+        <div id="compose-convert-git-overlay" class="compose-modal-overlay" style="display:flex;z-index:100005;">
+            <div class="compose-modal" role="dialog" aria-modal="true" aria-labelledby="compose-convert-git-title" style="max-width:640px;">
+                <div class="compose-modal-header">
+                    <span id="compose-convert-git-title"></span>
+                    <button type="button" class="editor-btn editor-btn-cancel" onclick="closeConvertToGitModal()" aria-label="Close"><i class="fa fa-times"></i></button>
+                </div>
+                <div class="compose-modal-body">
+                    <div id="compose-convert-git-error" class="compose-status-danger" style="margin-bottom:12px;display:none;white-space:pre-wrap;"></div>
+                    <div id="compose-convert-git-deploy-key-panel" class="compose-git-deploy-key-panel" style="display:none;"></div>
+                    <div class="settings-field-help" style="margin-bottom:12px;">
+                        The stack keeps its name, its .env and the plugin's override. Its current compose file, when it
+                        is in the stack folder, is moved into a dated <code>pre-git-...</code> folder there, so this can
+                        be undone by hand (a compose file kept elsewhere stays where it is). Running containers are left
+                        alone until the stack is deployed.
+                    </div>
+                    <div class="settings-field">
+                        <label for="compose-convert-git-url">Repository address</label>
+                        <input type="text" id="compose-convert-git-url" placeholder="https://github.com/me/stacks.git">
+                        <div class="settings-field-help">An <code>https://</code> address, an ssh address (<code>git@host:me/stacks.git</code>), or the path of a repository under <code>/mnt/</code>.</div>
+                        <div id="compose-convert-git-ssh-note" class="settings-field-help" style="display:none;">An ssh repository needs no credential: a deploy key is made for the stack when you select Move into git, and shown here to add to the repository.</div>
+                    </div>
+                    <div class="settings-field">
+                        <label for="compose-convert-git-branch">Branch</label>
+                        <input type="text" id="compose-convert-git-branch" value="main" placeholder="main">
+                    </div>
+                    <div class="settings-field">
+                        <label for="compose-convert-git-compose-path">Compose file in the repository</label>
+                        <input type="text" id="compose-convert-git-compose-path" placeholder="myapp/compose.yaml">
+                    </div>
+                    <div class="settings-field" id="compose-convert-git-credential-wrap">
+                        <label for="compose-convert-git-credential">Credential</label>
+                        <select id="compose-convert-git-credential"><option value="">None (a public repository)</option></select>
+                        <div class="settings-field-help">For a private https repository, first add a git token on the Credentials tab of the plugin's settings, then choose it here. For an ssh repository, no credential is needed: a deploy key is made for the stack.</div>
+                    </div>
+                </div>
+                <div class="compose-modal-footer">
+                    <button class="editor-btn editor-btn-cancel" onclick="closeConvertToGitModal()">Cancel</button>
+                    <button class="editor-btn editor-btn-save-all" id="compose-convert-git-btn" onclick="submitConvertToGit()">Move into git</button>
+                </div>
+            </div>
+        </div>
+    `;
+    closeConvertToGitModal();
+    var holder = document.createElement('div');
+    holder.innerHTML = modalHtml;
+    document.body.appendChild(holder.firstElementChild);
+    $('#compose-convert-git-title').text('Move ' + (editorModal.currentProjectName || project) + ' into git');
+
+    $('#compose-convert-git-url').on('input', function() {
+        var isSsh = isGitSshAddress(($(this).val() || '').trim());
+        $('#compose-convert-git-credential-wrap').toggle(!isSsh);
+        $('#compose-convert-git-ssh-note').toggle(isSsh);
+    });
+    fillGitCredentialSelect($('#compose-convert-git-credential'));
+}
+
+function closeConvertToGitModal() {
+    $('#compose-convert-git-overlay').remove();
+}
+
+function submitConvertToGit() {
+    var project = editorModal.currentProject;
+    var projectName = editorModal.currentProjectName || project;
+    var url = ($('#compose-convert-git-url').val() || '').trim();
+    var composePath = ($('#compose-convert-git-compose-path').val() || '').trim();
+    var $error = $('#compose-convert-git-error');
+    if (!url || !composePath) {
+        $error.text('Enter the repository address and the path of the compose file in the repository.').show();
+        return;
+    }
+    var $buttons = $('#compose-convert-git-overlay button');
+    $buttons.prop('disabled', true);
+    $('#compose-convert-git-btn').text('Cloning...');
+    $error.hide();
+    $('#compose-convert-git-deploy-key-panel').hide().empty();
+
+    $.post(caURL, {
+        action: 'convertToGitStack',
+        script: project,
+        gitUrl: url,
+        gitBranch: ($('#compose-convert-git-branch').val() || '').trim(),
+        gitComposePath: composePath,
+        gitCredentialId: isGitSshAddress(url) ? '' : ($('#compose-convert-git-credential').val() || '')
+    }).then(function(data) {
+        var response = tryParseJson(data);
+        if (!response || response.result !== 'success') {
+            // What the server said before it stopped (an ssh stack's deploy key hint, say).
+            var messages = ((response && response.messages) || []).join('\n\n');
+            $buttons.prop('disabled', false);
+            $('#compose-convert-git-btn').text('Move into git');
+            if (response && response.deployKey) {
+                showGitDeployKeyPanel($('#compose-convert-git-deploy-key-panel'), response.deployKey,
+                    (messages ? messages + '\n\n' : '') + (response.message || ''), 'Move into git');
+                return;
+            }
+            $error.text((messages ? messages + '\n\n' : '') + ((response && response.message) || 'Unexpected response from server.')).show();
+            return;
+        }
+        closeConvertToGitModal();
+        // Reopen the editor on the stack as it is now, and refresh its row.
+        doCloseEditorModal();
+        composeLoadlist();
+        swal({
+            title: projectName + ' is now a git stack',
+            text: (response.messages || []).join('\n\n') + '\n\nDeploy it with Pull and Redeploy from its stack menu.',
+            type: 'success'
+        }, function() {
+            openEditorModalByProject(project, projectName, 'sources');
+        });
+    }).fail(function() {
+        $buttons.prop('disabled', false);
+        $('#compose-convert-git-btn').text('Move into git');
+        $error.text('Request failed. If the repository is large, the clone may still be running: '
+            + 'reopen the stack before trying again.').show();
+    });
+}
+
 // Fill the Sources tab's git readout from getGitStackStatus.
 function renderGitSource(git) {
     $('#settings-git-url').text(git.url);

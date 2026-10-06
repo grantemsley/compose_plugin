@@ -685,6 +685,10 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                                 <span class="compose-status-warning" style="font-size:0.9em;"><i class="fa fa-info-circle"></i> This stack uses an external compose source. The Compose editor tab loads and saves from that location.</span>
                             </div>
                             <div id="settings-external-compose-file-error" class="compose-status-danger" style="margin-top:6px;display:none;font-size:0.9em;"></div>
+                            <div id="settings-convert-to-git" style="margin-top:12px;">
+                                <button type="button" class="btn btn-sm" style="padding:2px 12px;font-size:0.9em;" onclick="openConvertToGitModal()"><i class="fa fa-code-fork"></i> Move this stack into git...</button>
+                                <div class="settings-field-help">Deploy this stack from a git repository from now on. Put its compose file in the repository first.</div>
+                            </div>
                         </div>
 
                         <div class="settings-field">

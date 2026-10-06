@@ -1277,6 +1277,20 @@ switch ($_POST['action']) {
         }
         echo json_encode((new GitStackWebActions($compose_root))->status($script));
         break;
+    case 'convertToGitStack':
+        $script = getPostScript();
+        if (!$script) {
+            echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
+            break;
+        }
+        $result = (new GitStackWebActions($compose_root))->convert($script, $_POST);
+        if ($result['result'] === 'success') {
+            composeLogger("Converted stack to a git stack: $script", ['backupDir' => $result['backupDir']], 'user', 'info', 'stack');
+        } else {
+            composeLogger("Failed to convert stack to a git stack: $script", ['error' => $result['message']], 'user', 'error', 'stack');
+        }
+        echo json_encode($result);
+        break;
     case 'checkGitStack':
         $script = getPostScript();
         if (!$script) {
