@@ -1068,6 +1068,9 @@ switch ($_POST['action']) {
                 }
                 return (new CredentialVault())->deleteCredential($credentialId);
             });
+            if ($deleted) {
+                composeLogger('Deleted registry credential', ['id' => $credentialId], 'user', 'info', 'credential');
+            }
             echo json_encode(['result' => $deleted ? 'success' : 'error', 'message' => $deleted ? '' : 'Credential not found.']);
         } catch (\Throwable $error) {
             if (str_starts_with($error->getMessage(), 'Credential is assigned to: ')) {

@@ -58,6 +58,13 @@ final class GitHubDeviceAuth
             'nextPollAt' => 0,
             'renewCredentialId' => $renewCredentialId,
         ]);
+        composeLogger(
+            $renewCredentialId !== '' ? 'GitHub sign-in started to renew credential' : 'GitHub sign-in started for new credential',
+            $renewCredentialId !== '' ? ['id' => $renewCredentialId] : null,
+            'user',
+            'info',
+            'credential'
+        );
         return [
             'state' => $state,
             'userCode' => (string) $response['user_code'],
@@ -74,6 +81,7 @@ final class GitHubDeviceAuth
         $session = $this->readState($state);
         if ((int) $session['expiresAt'] <= time()) {
             $this->deleteState($state);
+            composeLogger('GitHub sign-in expired before authorization completed', null, 'user', 'warning', 'credential');
             return ['status' => 'expired'];
         }
         if ((int) $session['nextPollAt'] > time()) {
@@ -98,6 +106,7 @@ final class GitHubDeviceAuth
         }
         if ($error !== '') {
             $this->deleteState($state);
+            composeLogger('GitHub sign-in failed', ['error' => $error], 'user', 'warning', 'credential');
             return ['status' => $error === 'access_denied' ? 'denied' : 'expired'];
         }
         $token = trim((string) ($response['access_token'] ?? ''));
@@ -130,6 +139,14 @@ final class GitHubDeviceAuth
             'secret' => $token,
         ]);
         $this->deleteState($state);
+        // Suffix matches GitHub's security log ("token ending in ...") for correlation.
+        composeLogger(
+            "GitHub sign-in " . ($renewCredentialId !== '' ? 'renewed' : 'created') . " credential '{$credential['name']}' for {$username}",
+            ['id' => $credential['id'], 'tokenSuffix' => substr($token, -8)],
+            'user',
+            'info',
+            'credential'
+        );
         return ['status' => 'success', 'credential' => $credential];
     }
 
