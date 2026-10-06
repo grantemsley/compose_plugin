@@ -4380,7 +4380,8 @@ function composeActionStateText(actionName) {
         pull: 'pulling...',
         update: 'updating...',
         forceUpdate: 'updating...',
-        composeUpPullBuild: 'pulling and rebuilding...'
+        composeUpPullBuild: 'pulling and rebuilding...',
+        gitDeploy: 'deploying...'
     };
     return map[actionName] || 'checking...';
 }
@@ -4501,6 +4502,21 @@ function performComposeAction(opts) {
                 setStackActionInProgress(stackName, false);
             }
             composeHandleIdentityError(parsed);
+            if (typeof onComplete === 'function') {
+                onComplete(parsed, data);
+            }
+            return;
+        }
+        // Any other refusal comes back as {error, message} instead of a terminal URL.
+        if (parsed && parsed.error && parsed.message) {
+            if (stackName) {
+                setStackActionInProgress(stackName, false);
+            }
+            swal({
+                title: title,
+                text: parsed.message,
+                type: 'error'
+            });
             if (typeof onComplete === 'function') {
                 onComplete(parsed, data);
             }
@@ -5090,6 +5106,153 @@ function UpdateStackConfirmed(path, opts) {
 
 function UpdateStack(path, profile = "") {
     showStackActionDialog('update', path, profile);
+}
+
+// Deploy a git stack from its stack menu: the branch's latest commit, or the
+// commit given. A stack with compose profiles is first asked which to use, as
+// Update asks, preselected from the profiles it runs with.
+function gitDeployStackChoosingProfiles(path, project, commit) {
+    var $row = $('#compose_stacks tr.compose-sortable').filter(function() {
+        return $(this).attr('data-path') === path;
+    }).first();
+    var profiles = $row.data('profiles') || [];
+    if (profiles.length === 0) {
+        gitDeployStack(path, project, commit, null);
+        return;
+    }
+    showProfileSelector('gitDeploy', path, profiles, $row.data('running-profile') || '', $row.data('default-profile') || '', {
+        project: project,
+        commit: commit
+    });
+}
+
+// Files changed in the clone would stop the deploy, so they are listed first,
+// with the choice to save them as a patch and discard them. profile is the
+// chosen profiles ('' for the default services only), or null when nothing was
+// chosen: the deploy then uses the profiles the stack runs with, as
+// compose-git deploy does.
+function gitDeployStack(path, project, commit, profile) {
+    $.post(caURL, {
+        action: 'getGitStackStatus',
+        script: project
+    }).then(function(data) {
+        var response = tryParseJson(data);
+        if (!response || response.result !== 'success') {
+            swal({
+                title: 'Cannot deploy ' + project,
+                text: (response && response.message) || 'Could not read the git stack.',
+                type: 'error'
+            });
+            return;
+        }
+        var git = response.git;
+        var target = commit ? 'commit ' + gitShortCommit(commit) : 'the latest commit on ' + git.branch;
+        var deployedNow = git.deployedCommit ? gitShortCommit(git.deployedCommit) : 'nothing yet';
+        var changes = git.localChanges || [];
+        // A problem found without asking the remote (the clone missing, say) stops the
+        // deploy, so say it here and offer no Deploy, rather than fail in the terminal window.
+        if (git.problem) {
+            swal({
+                title: 'Cannot deploy ' + project,
+                text: 'Problem found: ' + git.problem + '\n\nDeployed now: ' + deployedNow + '. Nothing was changed.',
+                type: 'error'
+            });
+            return;
+        }
+        if (changes.length === 0 && !git.commitMadeByHand) {
+            swal({
+                title: 'Deploy ' + project + '?',
+                text: 'Deploy will fetch ' + target + ' from ' + git.url + ', check it, and start the stack from it. Deployed now: ' + deployedNow + '.',
+                type: 'info',
+                showCancelButton: true,
+                confirmButtonText: 'Deploy'
+            }, function(confirmed) {
+                if (confirmed) {
+                    gitDeployConfirmed(path, commit, false, profile);
+                }
+            });
+            return;
+        }
+        // The deploy refuses either kind of change unless it may save and discard it.
+        var found = [];
+        if (git.commitMadeByHand) {
+            found.push('the checked-out commit ' + gitShortCommit(git.checkedOutCommit) + ' was made in the clone by hand');
+        }
+        if (changes.length > 0) {
+            found.push('these files differ from the repository: ' + changes.join(', '));
+        }
+        swal({
+            title: 'Changes made in the clone',
+            text: 'In the clone of ' + project + ', ' + found.join('; and ') +
+                '. Save the changes as a patch in the stack folder\'s git-changes folder, discard them, and deploy ' + target + '?',
+            type: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Save, discard and deploy'
+        }, function(confirmed) {
+            if (confirmed) {
+                gitDeployConfirmed(path, commit, true, profile);
+            }
+        });
+    }).fail(function() {
+        swal({
+            title: 'Cannot deploy ' + project,
+            text: 'Could not read the git stack.',
+            type: 'error'
+        });
+    });
+}
+
+// Ask for a commit id, then deploy that commit (to go back to an older version).
+function promptGitDeployCommit(path, project) {
+    swal({
+        title: 'Deploy a commit of ' + project,
+        text: 'Enter the full commit id (40 characters). A later Pull and Redeploy brings the stack back to the branch\'s latest.',
+        type: 'input',
+        inputPlaceholder: 'Full commit id',
+        showCancelButton: true,
+        closeOnConfirm: true,
+        confirmButtonText: 'Next'
+    }, function(commit) {
+        if (commit === false) {
+            return;
+        }
+        commit = String(commit || '').trim().toLowerCase();
+        if (!commit) {
+            return;
+        }
+        // The stack list shows short ids; the deploy needs the full one, so say so now.
+        if (!/^([0-9a-f]{40}|[0-9a-f]{64})$/.test(commit)) {
+            setTimeout(function() {
+                swal({
+                    title: 'Not a full commit id',
+                    text: 'Enter the full commit id (40 characters), not a short one or a branch name.',
+                    type: 'error'
+                });
+            }, 200);
+            return;
+        }
+        // The next dialog opens after this one has closed.
+        setTimeout(function() {
+            gitDeployStackChoosingProfiles(path, project, commit);
+        }, 200);
+    });
+}
+
+function gitDeployConfirmed(path, commit, saveLocalChanges, profile) {
+    confirmedComposeAction(path, {
+        actionName: 'gitDeploy',
+        titlePrefix: 'Deploy',
+        requestUrl: compURL,
+        payload: {
+            action: 'composeGitDeploy',
+            path: path,
+            commit: commit || '',
+            saveLocalChanges: saveLocalChanges ? 1 : 0,
+            profile: profile || '',
+            profileChosen: profile === null ? 0 : 1
+        },
+        pendingReload: true
+    });
 }
 
 // Start All Stacks function
@@ -6040,7 +6203,8 @@ function executeStackAction(action) {
     }
 }
 
-function showProfileSelector(action, path, profiles, runningProfile, defaultProfile) {
+// gitOptions is for action 'gitDeploy' only: {project, commit}.
+function showProfileSelector(action, path, profiles, runningProfile, defaultProfile, gitOptions) {
     if (typeof runningProfile === 'undefined') {
         runningProfile = '';
     }
@@ -6055,7 +6219,8 @@ function showProfileSelector(action, path, profiles, runningProfile, defaultProf
         'update': 'Update',
         'forceUpdate': 'Force Update',
         'pull': 'Compose Pull',
-        'logs': 'Compose Logs'
+        'logs': 'Compose Logs',
+        'gitDeploy': 'the git deploy'
     };
 
     // Build profile selection UI:
@@ -6151,6 +6316,13 @@ function showProfileSelector(action, path, profiles, runningProfile, defaultProf
                         break;
                     case 'logs':
                         ComposeLogs(path, profileStr);
+                        break;
+                    case 'gitDeploy':
+                        // gitDeployStack asks the server first and then opens a dialog; one opened
+                        // while this dialog is still fading out is hidden with it, so wait for that.
+                        setTimeout(function() {
+                            gitDeployStack(path, gitOptions.project, gitOptions.commit, profileStr);
+                        }, 200);
                         break;
                 }
             }, 0);
@@ -6445,11 +6617,17 @@ function renderGitSource(git) {
     $('#settings-git-checked-out').text(gitShortCommit(git.checkedOutCommit));
     $('#settings-git-source-table').show();
 
+    // What the next deploy will stop on (or offer to save and discard, from the stack menu).
     var changes = git.localChanges || [];
+    var changeLines = [];
+    if (git.commitMadeByHand) {
+        changeLines.push('The checked-out commit was made in the clone by hand, which the next deploy will stop on.');
+    }
     if (changes.length > 0) {
-        $('#settings-git-local-changes')
-            .text('Files changed in the clone, which the next deploy will stop on: ' + changes.join(', '))
-            .show();
+        changeLines.push('Files changed in the clone, which the next deploy will stop on: ' + changes.join(', '));
+    }
+    if (changeLines.length > 0) {
+        $('#settings-git-local-changes').text(changeLines.join(' ')).show();
     }
     if (git.problem) {
         $('#settings-git-problem').text(git.problem).show();
@@ -9277,6 +9455,7 @@ function addComposeStackContext(elementId) {
     var defaultProfile = $row.data('default-profile') || '';
     var webuiUrl = $row.data('webui') || '';
     var hasBuild = $row.data('hasbuild') == "1";
+    var isGitStack = $row.data('gitstack') == "1";
     var hasExistingContainers = false;
     var hasKnownNetworks = false;
 
@@ -9502,6 +9681,29 @@ function addComposeStackContext(elementId) {
     opts.push({
         divider: true
     });
+
+    // A git stack deploys from its repository (see docs/git-stacks.md)
+    if (isGitStack) {
+        opts.push({
+            text: 'Pull and Redeploy',
+            icon: 'fa-code-fork',
+            action: function(e) {
+                e.preventDefault();
+                gitDeployStackChoosingProfiles(path, project, '');
+            }
+        });
+        opts.push({
+            text: 'Deploy Commit...',
+            icon: 'fa-history',
+            action: function(e) {
+                e.preventDefault();
+                promptGitDeployCommit(path, project);
+            }
+        });
+        opts.push({
+            divider: true
+        });
+    }
 
     // Check for Updates (always available)
     opts.push({

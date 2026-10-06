@@ -13,6 +13,7 @@ use PluginTests\Mocks\FunctionMocks;
 use PluginTests\TestCase;
 
 require_once '/usr/local/emhttp/plugins/compose.manager/include/GitStackWebActions.php';
+require_once '/usr/local/emhttp/plugins/compose.manager/include/Helpers.php';
 require_once __DIR__ . '/support/FakeDocker.php';
 
 /**
@@ -70,6 +71,7 @@ final class GitStackWebActionsTest extends TestCase
         @unlink(COMPOSE_CREDENTIAL_VAULT_FILE);
         @unlink(COMPOSE_CREDENTIAL_KEY_FILE);
         $_POST = [];
+        \ProjectIdentity::setProbe(null);
         parent::tearDown();
     }
 
@@ -198,6 +200,22 @@ final class GitStackWebActionsTest extends TestCase
         $this->assertSame(['whoami/compose.yaml'], $result['git']['localChanges']);
     }
 
+    public function testStatusSaysWhenTheCloneHasACommitMadeByHand(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        $settings = GitStackSettings::load($this->composeRoot . '/' . $folder);
+        $actions = new GitStackWebActions($this->composeRoot);
+        $this->assertFalse($actions->status($folder)['git']['commitMadeByHand']);
+
+        file_put_contents($settings->composeFileInClone(), "services: {}\n");
+        $this->git(['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-am', 'by hand'], $settings->cloneDir);
+
+        // The same test the deploy uses, so the UI offers to save it exactly when the deploy would refuse.
+        $result = $actions->status($folder);
+        $this->assertTrue($result['git']['commitMadeByHand']);
+        $this->assertSame([], $result['git']['localChanges']);
+    }
+
     public function testStatusOfAStackThatIsNotAGitStackIsAnError(): void
     {
         \StackInfo::createNew($this->composeRoot, 'plain');
@@ -260,7 +278,173 @@ final class GitStackWebActionsTest extends TestCase
         $this->assertSame($indirect, file_get_contents($stackDir . '/indirect'));
     }
 
+    // ----- deploy from the stack menu -----
+
+    public function testDeployOpensATerminalForAGitStack(): void
+    {
+        $folder = $this->addGitStack('whoami');
+
+        $output = $this->deploy(['path' => $this->composeRoot . '/' . $folder]);
+
+        $this->assertSame('/plugins/compose.manager/include/ShowTtyd.php?done=1', $output);
+        $this->assertSame(
+            "'-cgitdeploy' '-pwhoami' '-s{$this->composeRoot}/{$folder}'",
+            $this->terminalCommand()
+        );
+    }
+
+    public function testTheWebDeployPassesOnTheCommitLocalChangesProfilesWaitAndDebug(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        FunctionMocks::setPluginConfig('compose.manager', [
+            'PROJECTS_FOLDER' => $this->composeRoot,
+            'DEBUG_TO_LOG' => 'true',
+            'WAIT_FOR_HEALTHY_DEFAULT' => 'true',
+            'WAIT_FOR_HEALTHY_TIMEOUT_DEFAULT' => '60',
+        ]);
+        $commit = str_repeat('a', 40);
+
+        $output = $this->deploy([
+            'path' => $this->composeRoot . '/' . $folder,
+            'commit' => strtoupper($commit),
+            'saveLocalChanges' => '1',
+            'profile' => 'gpu,tools',
+            'profileChosen' => '1',
+        ]);
+
+        $this->assertSame('/plugins/compose.manager/include/ShowTtyd.php?done=1', $output);
+        $this->assertSame(
+            "'-cgitdeploy' '-pwhoami' '-s{$this->composeRoot}/{$folder}'"
+            . " '-ggpu' '-gtools' '--git-commit' '$commit' '--save-local-changes' '--wait' '--wait-timeout' '60' '--debug'",
+            $this->terminalCommand()
+        );
+    }
+
+    public function testTheWebDeployUsesTheRunningProfilesWhenNoneWereChosen(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        file_put_contents($this->composeRoot . '/' . $folder . '/running_profiles', 'gpu');
+
+        $this->deploy(['path' => $this->composeRoot . '/' . $folder, 'profile' => '']);
+
+        $this->assertStringEndsWith(" '-ggpu'", $this->terminalCommand());
+    }
+
+    public function testDeployRefusesAStackWhoseProjectNameIsNotSettled(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        $stackDir = $this->composeRoot . '/' . $folder;
+        // An imported stack whose name differs from its folder, while Docker cannot be asked
+        // which of the two project names its containers use.
+        @unlink($stackDir . '/' . \ProjectIdentity::METADATA_FILE);
+        file_put_contents($stackDir . '/name', 'Legacy Name');
+        \ProjectIdentity::setProbe(static fn() => null);
+
+        $answer = json_decode($this->deploy(['path' => $stackDir]), true);
+
+        $this->assertSame('identity', $answer['error']);
+        $this->assertSame([], $this->terminalCommands());
+    }
+
+    public function testTheWebDeployUsesTheChosenProfilesOrElseTheRunningOnes(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        $stackDir = $this->composeRoot . '/' . $folder;
+        file_put_contents($stackDir . '/running_profiles', 'gpu');
+        \StackInfo::clearCache();
+        $stack = \StackInfo::fromProject($this->composeRoot, $folder);
+
+        // Nothing chosen (no profiles in the compose file, or an older page): as compose-git deploy.
+        $this->assertSame(['gpu'], gitDeployProfilesFromRequest($stack, ['profile' => '']));
+        // Chosen in the profile dialog.
+        $this->assertSame(['gpu', 'tools'], gitDeployProfilesFromRequest($stack, ['profile' => 'gpu, tools', 'profileChosen' => '1']));
+        // Chosen: the default services only.
+        $this->assertSame([], gitDeployProfilesFromRequest($stack, ['profile' => '', 'profileChosen' => '1']));
+    }
+
+    public function testDeployRefusesAStackThatIsNotAGitStack(): void
+    {
+        \StackInfo::createNew($this->composeRoot, 'plain');
+
+        $answer = json_decode($this->deploy(['path' => $this->composeRoot . '/plain']), true);
+
+        $this->assertSame('git', $answer['error']);
+        $this->assertStringContainsString('not a git stack', $answer['message']);
+    }
+
+    public function testDeployAsksForAFullCommitId(): void
+    {
+        $folder = $this->addGitStack('whoami');
+
+        $answer = json_decode($this->deploy(['path' => $this->composeRoot . '/' . $folder, 'commit' => 'abc1234']), true);
+
+        $this->assertSame('git', $answer['error']);
+        $this->assertStringContainsString('full commit id', $answer['message']);
+    }
+
+    public function testDeployDoesNothingWhileTheArrayIsStopped(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        file_put_contents(COMPOSE_UNRAID_VAR_INI, "mdState=\"STOPPED\"\n");
+
+        $output = $this->deploy(['path' => $this->composeRoot . '/' . $folder]);
+
+        $this->assertStringContainsString('arrayNotStarted.sh', $output);
+    }
+
     // ----- helpers -----
+
+    /**
+     * Run the web UI's git deploy (ComposeUtil.php composeGitDeploy) and return what it echoes.
+     *
+     * @param array<string, string> $post
+     */
+    private function deploy(array $post): string
+    {
+        global $compose_root, $plugin_root, $sName;
+        $compose_root = $this->composeRoot;
+        $plugin_root = '/usr/local/emhttp/plugins/compose.manager/';
+        $sName = 'compose.manager';
+        \PluginTests\StreamWrapper\UnraidStreamWrapper::addMapping('/var/local/emhttp/var.ini', COMPOSE_UNRAID_VAR_INI);
+        \StackInfo::clearCache();
+
+        $_POST = $post;
+        $GLOBALS['composeLoggerMessages'] = [];
+        ob_start();
+        echoGitDeployCommand();
+        $output = (string) ob_get_clean();
+        $_POST = [];
+        return $output;
+    }
+
+    /**
+     * The commands the last deploy() would have run in the terminal window. Tests
+     * do not start ttyd; execComposeCommandInTTY() logs the command instead.
+     *
+     * @return list<string>
+     */
+    private function terminalCommands(): array
+    {
+        $prefix = 'Skipping ttyd execution in test mode: ';
+        $commands = [];
+        foreach ($GLOBALS['composeLoggerMessages'] ?? [] as $message) {
+            if (str_starts_with($message, $prefix)) {
+                $commands[] = substr($message, strlen($prefix));
+            }
+        }
+        return $commands;
+    }
+
+    /**
+     * compose.sh's arguments in the one command the last deploy() ran in the terminal.
+     */
+    private function terminalCommand(): string
+    {
+        $commands = $this->terminalCommands();
+        $this->assertCount(1, $commands);
+        $this->assertMatchesRegularExpression("#^'[^']*/scripts/compose\\.sh' #", $commands[0]);
+        return substr($commands[0], strpos($commands[0], "' ") + 2);
+    }
 
     private function addGitStack(string $name): string
     {

@@ -293,7 +293,7 @@ final class GitStackManager
     /**
      * What is known about a git stack locally, without asking the remote.
      *
-     * @return array{stack: string, url: string, branch: string, composePath: string, cloneDir: string, recreateOnFolderChange: bool, credential: ?string, deployedCommit: ?string, failedCommit: ?string, checkedOutCommit: ?string, localChanges: list<string>, problem: ?string}
+     * @return array{stack: string, url: string, branch: string, composePath: string, cloneDir: string, recreateOnFolderChange: bool, credential: ?string, deployedCommit: ?string, failedCommit: ?string, checkedOutCommit: ?string, localChanges: list<string>, commitMadeByHand: bool, problem: ?string}
      */
     public function status(string $folder): array
     {
@@ -302,11 +302,13 @@ final class GitStackManager
         $state = GitStackState::load($stack->path);
         $checkedOut = null;
         $changes = [];
+        $madeByHand = false;
         $problem = null;
         try {
             $clone = new GitClone($settings);
             $checkedOut = $clone->checkedOutCommit();
             $changes = $clone->locallyChangedFiles();
+            $madeByHand = $clone->isMadeByHand($checkedOut, $state->deployedCommit, $state->failedCommit);
         } catch (Throwable $error) {
             $problem = $error->getMessage();
         }
@@ -322,6 +324,7 @@ final class GitStackManager
             'failedCommit' => $state->failedCommit,
             'checkedOutCommit' => $checkedOut,
             'localChanges' => $changes,
+            'commitMadeByHand' => $madeByHand,
             'problem' => $problem,
         ];
     }

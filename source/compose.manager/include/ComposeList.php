@@ -346,7 +346,7 @@ foreach ($stackInfos as $stackInfo) {
     $hasBuild = $stackInfo->hasBuildConfig() ? '1' : '0';
 
     // Main row - Docker tab structure with expand arrow on left
-    $o .= "<tr class='compose-sortable' id='stack-row-$id' data-project='$projectHtml' data-projectname='$projectNameHtml' data-path='$pathHtml' data-isup='$isup' data-profiles='$profilesJson' data-running-profile='$runningProfilesHtml' data-default-profile='$defaultProfilesHtml' data-webui='$webuiUrlHtml' data-containers='$containerNamesAttr' data-ctids='$containerIdsAttr' data-hasbuild='$hasBuild' data-invalid-indirect='" . ($hasInvalidIndirect ? '1' : '0') . "' data-invalid-indirect-path='$invalidIndirectPathHtml' data-identity-blocked='" . ($identityBlocked ? '1' : '0') . "' data-identity-message='$identityMessageHtml' data-identity-folder='$identityFolderHtml' data-identity-legacy='$identityLegacyHtml'>";
+    $o .= "<tr class='compose-sortable' id='stack-row-$id' data-project='$projectHtml' data-projectname='$projectNameHtml' data-path='$pathHtml' data-isup='$isup' data-profiles='$profilesJson' data-running-profile='$runningProfilesHtml' data-default-profile='$defaultProfilesHtml' data-webui='$webuiUrlHtml' data-containers='$containerNamesAttr' data-ctids='$containerIdsAttr' data-hasbuild='$hasBuild' data-invalid-indirect='" . ($hasInvalidIndirect ? '1' : '0') . "' data-invalid-indirect-path='$invalidIndirectPathHtml' data-identity-blocked='" . ($identityBlocked ? '1' : '0') . "' data-identity-message='$identityMessageHtml' data-identity-folder='$identityFolderHtml' data-identity-legacy='$identityLegacyHtml' data-gitstack='" . ($stackInfo->isGitStack() ? '1' : '0') . "'>";
 
     // Arrow column
     $o .= "<td class='col-arrow'>";

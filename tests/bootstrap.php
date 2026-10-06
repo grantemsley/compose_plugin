@@ -20,10 +20,12 @@ if (!function_exists('logger')) {
 
 // Stub composeLogger before source files are loaded.
 // It calls exec("logger ...") internally which doesn't exist on Windows.
+// The messages are kept in $GLOBALS['composeLoggerMessages'], so a test can
+// see what was logged (the command a ttyd action would have run, for one).
 if (!function_exists('composeLogger')) {
     function composeLogger($message, $data = null, $type = 'daemon', $level = 'info'): void
     {
-        // no-op in test environment
+        $GLOBALS['composeLoggerMessages'][] = (string) $message;
     }
 }
 

@@ -446,6 +446,7 @@ function compose_git_unreadable_status(string $folder, string $problem): array
         'failedCommit' => null,
         'checkedOutCommit' => null,
         'localChanges' => [],
+        'commitMadeByHand' => false,
         'problem' => $problem,
     ];
 }
@@ -475,6 +476,9 @@ function compose_git_print_status(array $status): void
     echo '  checked out:  ' . $short($status['checkedOutCommit']) . "\n";
     if ($status['localChanges'] !== []) {
         echo '  local changes: ' . implode(', ', $status['localChanges']) . "\n";
+    }
+    if ($status['commitMadeByHand']) {
+        echo "  made by hand: the checked-out commit was committed in the clone (deploy --save-local-changes saves it)\n";
     }
     if ($status['problem'] !== null) {
         echo '  problem:      ' . $status['problem'] . "\n";

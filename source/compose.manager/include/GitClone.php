@@ -598,6 +598,29 @@ final class GitClone
     }
 
     /**
+     * Whether the checked-out commit was committed in the clone by hand.
+     *
+     * A checked-out commit that is on the branch came from the repository: the
+     * deployed one, one whose "up" failed, or one left checked out when a
+     * deploy was interrupted. The deployed and failed commits also count when a
+     * rewritten branch no longer holds them. Anything else was committed in the
+     * clone by hand. The deploy and the stack's status both ask this, so the
+     * web UI offers to save such a commit when the deploy would refuse it. One
+     * rare case differs: the deploy asks after a fetch and the status without
+     * one, so a commit left by an interrupted deploy on a branch that was then
+     * force-pushed is fine to the status and made by hand to the deploy, which
+     * refuses it with its own message.
+     *
+     * @throws RuntimeException if git cannot tell
+     */
+    public function isMadeByHand(string $checkedOut, ?string $deployedCommit, ?string $failedCommit): bool
+    {
+        return $checkedOut !== $deployedCommit
+            && $checkedOut !== $failedCommit
+            && !$this->isOnBranch($checkedOut);
+    }
+
+    /**
      * The last commit a commit shares with the stack's branch as last fetched,
      * or null when they share none.
      *
