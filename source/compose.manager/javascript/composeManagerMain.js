@@ -823,7 +823,7 @@ function composeLoadlist() {
                                 missingMetadataFiles: (rowResp && Array.isArray(rowResp.missingMetadataFiles)) ? rowResp.missingMetadataFiles.slice(0, 8) : []
                             };
                         })
-                        .fail(function() {
+                        .fail(function(xhr, textStatus, errorThrown) {
                             var failElapsedMs = Date.now() - (stackLoadTimers[project] || Date.now());
                             pendingRowsByIndex[index] = {
                                 ok: false,
@@ -834,7 +834,7 @@ function composeLoadlist() {
                                 reason: 'request_failed',
                                 projectPath: compose_root + '/' + project,
                                 errorMessage: 'Row request failed before payload returned.',
-                                failureDetail: '',
+                                failureDetail: 'HTTP ' + (xhr && xhr.status ? xhr.status : 0) + ' ' + (textStatus || '') + (errorThrown ? ' - ' + errorThrown : ''),
                                 checkedComposePaths: [],
                                 missingMetadataFiles: []
                             };
