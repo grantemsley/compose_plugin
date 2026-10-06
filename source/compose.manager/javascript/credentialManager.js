@@ -490,7 +490,9 @@
         }
         swal({ title: 'Delete credential?', text: credential.name, type: 'warning', showCancelButton: true }, function(confirmed) {
             if (!confirmed) return;
-            $.post(window.caURL || '/plugins/compose.manager/include/Exec.php', { action: 'deleteCredential', id: credential.id }).done(loadCredentials);
+            $.post(window.caURL || '/plugins/compose.manager/include/Exec.php', { action: 'deleteCredential', id: credential.id }).done(function() {
+                loadCredentials();
+            });
         });
     }
 
