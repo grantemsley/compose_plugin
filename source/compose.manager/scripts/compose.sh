@@ -9,7 +9,7 @@ export HOME=/root
 
 # Configuration - can be overridden via environment
 LOCK_TIMEOUT=${COMPOSE_LOCK_TIMEOUT:-30}
-LOCK_DIR="/var/run/compose.manager"
+LOCK_DIR=${COMPOSE_LOCK_DIR:-/var/run/compose.manager}
 
 SHORT=e:,c:,f:,p:,d:,o:,g:,s:,w:
 LONG=env,command:,file:,project_name:,project_dir:,override:,profile:,debug,recreate,remove-orphans,stack-path:,workdir:,follow-logs,wait,wait-timeout:,build,credential-id:,git-commit:,save-local-changes
