@@ -46,7 +46,8 @@ to your shell profile.
 - **Nothing of yours is deleted.** Files the plugin replaces are moved into a backup folder, local changes are
   saved as a patch before they are discarded, and an old clone is moved aside rather than removed. The plugin
   removes only a clone it has just made itself, when setting it up fails (for example, the branch has no
-  compose file at the given path), and images a deploy has replaced.
+  compose file at the given path), images a deploy has replaced, and override entries for services the
+  compose file no longer has.
 - **The array must be started.** Git stacks never write anything while the array is stopped, and a path that
   is not on a mounted disk, pool or share is refused, because on Unraid it would land in RAM.
 
@@ -333,6 +334,10 @@ without changing anything when:
 - a `container_name` or published port is already taken by another stack or container.
 
 The deploy log says which `.env` was used.
+
+Before the checks, the plugin's override loses its entries (UI labels) for services the compose file no
+longer has, as it does before every Compose Up from the web UI. An entry for a renamed service would
+otherwise make compose refuse the stack. The log names each one removed.
 
 ## Command reference
 

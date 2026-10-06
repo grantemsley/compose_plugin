@@ -3,6 +3,8 @@
 #
 # It answers from files next to itself (the tests write them):
 #   config.json / config.stderr / config.exit   docker compose ... config --format json
+#   services.txt                                docker compose ... config --services (refused,
+#                                               as compose does, when given an override file)
 #   networks/<name>, volumes/<name>             these exist (network/volume inspect succeeds);
 #                                               a network file holds its driver, if any
 #   containers/<name>.json                      docker container inspect <name>
@@ -13,6 +15,22 @@ printf '%s\n' "$*" >> "$here/calls.log"
 
 case "$1" in
   compose)
+    for arg in "$@"; do
+      if [ "$arg" = "--services" ]; then
+        # The override in the tests holds an entry for a service with no image,
+        # which makes compose refuse the project when the override is loaded.
+        for file in "$@"; do
+          case "$file" in
+            *override*)
+              echo 'service "gone" has neither an image nor a build context specified: invalid compose project' >&2
+              exit 1
+              ;;
+          esac
+        done
+        cat "$here/services.txt" 2>/dev/null
+        exit 0
+      fi
+    done
     for arg in "$@"; do
       if [ "$arg" = "config" ]; then
         [ -f "$here/config.stderr" ] && cat "$here/config.stderr" >&2
