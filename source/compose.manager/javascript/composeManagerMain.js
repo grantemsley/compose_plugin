@@ -164,7 +164,194 @@ function updateAddStackValidity() {
         $fileErr.hide().text('');
     }
 
+    var $gitUrlErr = $('#compose-stack-git-url-error');
+    var $gitPathErr = $('#compose-stack-git-compose-path-error');
+    if (mode === 'git') {
+        // The server checks both properly; this only catches empty fields early.
+        var gitUrl = ($('#compose-stack-git-url').val() || '').trim();
+        if (!gitUrl) {
+            errors.push('git-url');
+            $gitUrlErr.text('Enter the repository address.').show();
+        } else {
+            $gitUrlErr.hide().text('');
+        }
+        var gitComposePath = ($('#compose-stack-git-compose-path').val() || '').trim();
+        if (!gitComposePath) {
+            errors.push('git-compose-path');
+            $gitPathErr.text('Enter the path of the compose file in the repository.').show();
+        } else if (gitComposePath.charAt(0) === '/') {
+            errors.push('git-compose-path');
+            $gitPathErr.text('Give the path from the top of the repository, without a leading /.').show();
+        } else {
+            $gitPathErr.hide().text('');
+        }
+    } else {
+        $gitUrlErr.hide().text('');
+        $gitPathErr.hide().text('');
+    }
+
     $('#compose-stack-create-btn').prop('disabled', errors.length > 0);
+}
+
+// Whether a repository address is an ssh one (ssh://... or user@host:path), as
+// GitStackSettings::isSshUrl() decides on the server.
+function isGitSshAddress(url) {
+    return /^ssh:\/\//i.test(url) || /^[^\/\s@]+@[^\/\s:]+:/.test(url);
+}
+
+// In the Add Stack dialog, show the fields that apply to the chosen source.
+// A git stack's compose file is in its clone and its .env in its stack
+// folder, so the env path and discovery choices are hidden for it. An ssh
+// repository gets a deploy key of its own, so the credential choice is for
+// https only.
+function updateAddStackFieldsForSource() {
+    var mode = ($('input[name="compose-stack-compose-source"]:checked').val()) || 'project';
+    var isGit = mode === 'git';
+    $('#compose-stack-env-path').closest('.settings-field').toggle(!isGit);
+    $('#compose-stack-discovery-mode-row').closest('.settings-field').toggle(!isGit);
+
+    var isSsh = isGitSshAddress(($('#compose-stack-git-url').val() || '').trim());
+    $('#compose-stack-git-credential-wrap').toggle(!isSsh);
+    $('#compose-stack-git-ssh-note').toggle(isSsh);
+}
+
+// Fill a git credential choice with the git tokens from the credential vault
+// (registry logins and deploy keys are left out). When the vault cannot be
+// read, say so in the choice, so it does not look as if there were no tokens.
+function fillGitCredentialSelect($select) {
+    var showUnreadable = function(message) {
+        $select.append($('<option>').val('').prop('disabled', true)
+            .text('Could not read the credentials' + (message ? ': ' + message : '')));
+    };
+    $.post(caURL, { action: 'listCredentials' }).then(function(data) {
+        var response = tryParseJson(data);
+        if (!response) {
+            showUnreadable('unexpected response from server');
+            return;
+        }
+        if (response.result !== 'success') {
+            showUnreadable(response.message || '');
+            return;
+        }
+        (response.credentials || []).forEach(function(credential) {
+            if (credential.provider !== 'git') {
+                return;
+            }
+            $select.append($('<option>').val(credential.id).text(credential.name + ' (' + credential.registry + ')'));
+        });
+    }).fail(function() {
+        showUnreadable('request failed');
+    });
+}
+
+// Fill the Add Stack dialog's git credential choice.
+function loadAddStackGitCredentials() {
+    fillGitCredentialSelect($('#compose-stack-git-credential'));
+}
+
+// Show a new ssh stack's deploy key in $panel, as the next step: the repository has
+// to know the key before the stack can be made. What git said goes underneath, smaller.
+// buttonName is the dialog's button to select again once the key is added.
+function showGitDeployKeyPanel($panel, publicKey, details, buttonName) {
+    var $key = $('<textarea class="compose-git-deploy-key" rows="3" readonly>').val(publicKey);
+    var $copy = $('<button type="button" class="btn btn-sm">').text('Copy key').on('click', function() {
+        // The clipboard API needs https, which Unraid often is not on, so copy the selection.
+        $key[0].select();
+        var copied = false;
+        try {
+            copied = document.execCommand('copy');
+        } catch (e) {
+            copied = false;
+        }
+        $copy.text(copied ? 'Copied' : 'Select the key and copy it');
+    });
+    $panel.empty().append(
+        $('<div class="compose-git-deploy-key-panel-title">').append(
+            $('<i class="fa fa-key">'),
+            $('<span>').text('Add this deploy key to the repository')
+        ),
+        $('<div>').text('In the repository\'s settings, add this key as a read-only deploy key (on GitHub: '
+            + 'Settings, then Deploy keys), then select ' + buttonName + ' again. The stack keeps this key, '
+            + 'so this is needed only once.'),
+        $key,
+        $copy,
+        $('<div class="compose-git-deploy-key-panel-details">').text(details)
+    ).show();
+    $panel[0].scrollIntoView({ block: 'nearest' });
+}
+
+// Create a git stack from the Add Stack dialog. Cloning can take a while, so
+// the dialog stays open with its buttons disabled, and an error is shown in
+// it. When the repository does not know an ssh stack's deploy key yet, the
+// key is shown as the next step instead. After an ssh stack is added, its
+// pinned host key fingerprints are shown.
+function submitGitStackFromAddStackModal(name, desc, overrideManagementAutomatic) {
+    var $modal = $('#compose-stack-modal-overlay');
+    var $error = $('#compose-stack-modal-error');
+    var $deployKeyPanel = $('#compose-stack-git-deploy-key-panel');
+    var $createButton = $('#compose-stack-create-btn');
+    var isSsh = isGitSshAddress(($('#compose-stack-git-url').val() || '').trim());
+    $error.hide().text('');
+    $deployKeyPanel.hide().empty();
+    $modal.find('button').prop('disabled', true);
+    $createButton.text('Cloning...');
+
+    var enableButtons = function() {
+        $modal.find('button').prop('disabled', false);
+        $createButton.text('Create');
+    };
+    var showError = function(message) {
+        enableButtons();
+        $error.css('white-space', 'pre-wrap').text(message).show();
+        $error[0].scrollIntoView({ block: 'nearest' });
+    };
+
+    $.post(caURL, {
+        action: 'addGitStack',
+        stackName: name,
+        stackDesc: desc,
+        gitUrl: ($('#compose-stack-git-url').val() || '').trim(),
+        gitBranch: ($('#compose-stack-git-branch').val() || '').trim(),
+        gitComposePath: ($('#compose-stack-git-compose-path').val() || '').trim(),
+        gitCredentialId: isSsh ? '' : ($('#compose-stack-git-credential').val() || ''),
+        overrideManagementAutomatic: overrideManagementAutomatic
+    }).then(function(data) {
+        var response;
+        try {
+            response = JSON.parse(data);
+        } catch (e) {
+            showError('Unexpected response from server.');
+            return;
+        }
+        // What the server said on the way (an ssh stack's pinned host key fingerprints,
+        // which deploy key it uses), as compose-git add prints it.
+        var messages = (response.messages || []).join('\n\n');
+        if (response.result !== 'success' && response.deployKey) {
+            enableButtons();
+            showGitDeployKeyPanel($deployKeyPanel, response.deployKey,
+                (messages ? messages + '\n\n' : '') + (response.message || ''), 'Create');
+            return;
+        }
+        if (response.result !== 'success') {
+            showError((messages ? messages + '\n\n' : '') + (response.message || 'The stack was not created.'));
+            return;
+        }
+        window.closeComposeStackModal();
+        composeLoadlist();
+        // Back to the stack list rather than the editor: a git stack's compose file is
+        // changed in the repository, not here. An https stack's messages only say it was
+        // cloned and created. An ssh stack's carry the fingerprints to compare and which
+        // deploy key it uses, so show them.
+        var shown = isSsh && messages !== '' ? messages + '\n\n' : '';
+        swal({
+            title: response.projectName + ' was added',
+            text: shown + 'Deploy it from its stack menu when you are ready.',
+            type: 'success'
+        });
+    }).fail(function() {
+        showError('Request failed. If the repository is large, the clone may still be running: '
+            + 'refresh the stack list before trying again.');
+    });
 }
 
 // Wiring for each surface that owns a Compose File Discovery badge+toggle.
@@ -1719,6 +1906,7 @@ var COMPOSE_SOURCE_SCOPE_CONFIGS = {
         fileInputId: 'compose-stack-external-file',
         pathWrapId: 'compose-stack-external-path-wrap',
         fileWrapId: 'compose-stack-external-file-wrap',
+        gitWrapId: 'compose-stack-git-wrap',
         infoBannerId: null,
         invalidWarningId: null,
         onFileClear: null
@@ -1730,7 +1918,8 @@ var COMPOSE_SOURCE_SCOPE_CONFIGS = {
 function setComposeSourceForScope(scope, mode, suppressChangeTracking) {
     var cfg = COMPOSE_SOURCE_SCOPE_CONFIGS[scope];
     if (!cfg) return;
-    mode = normalizeComposeSourceMode(mode);
+    // 'git' is a choice only where the scope has git inputs (the Add Stack dialog).
+    mode = (mode === 'git' && cfg.gitWrapId) ? 'git' : normalizeComposeSourceMode(mode);
     if (scope === 'settings') {
         editorModal.composeSourceMode = mode;
     }
@@ -1738,6 +1927,9 @@ function setComposeSourceForScope(scope, mode, suppressChangeTracking) {
     $('input[name="' + cfg.radioName + '"][value="' + mode + '"]').prop('checked', true);
     $('#' + cfg.pathWrapId).toggle(mode === 'folder');
     $('#' + cfg.fileWrapId).toggle(mode === 'file');
+    if (cfg.gitWrapId) {
+        $('#' + cfg.gitWrapId).toggle(mode === 'git');
+    }
 
     // Clear whichever input isn't the selected mode so the two states stay
     // mutually exclusive by construction (no save-time both-set error).
@@ -3449,6 +3641,7 @@ function addStack() {
                 </div>
                 <div class="compose-modal-body">
                     <div id="compose-stack-modal-error" class="compose-status-danger" style="margin-bottom:12px;display:none;"></div>
+                    <div id="compose-stack-git-deploy-key-panel" class="compose-git-deploy-key-panel" style="display:none;"></div>
 
                     <div class="settings-section">
                         <div class="settings-section-title"><i class="fa fa-info-circle"></i> Stack Identity</div>
@@ -3491,6 +3684,10 @@ function addStack() {
                                     <input type="radio" name="compose-stack-compose-source" value="file">
                                     <span>Specific compose file <span class="compose-text-muted" style="font-size:0.9em;">(point at one exact <code>.yml</code>/<code>.yaml</code>)</span></span>
                                 </label>
+                                <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
+                                    <input type="radio" name="compose-stack-compose-source" value="git">
+                                    <span>Git repository <span class="compose-text-muted" style="font-size:0.9em;">(deploy from a branch of a git repository; the plugin keeps its own clone)</span></span>
+                                </label>
                             </div>
 
                             <div id="compose-stack-external-path-wrap" class="settings-compose-source-input" style="margin-top:10px;display:none;">
@@ -3503,6 +3700,29 @@ function addStack() {
                                 <input type="text" id="compose-stack-external-file" placeholder="/mnt/user/appdata/myapp/custom.compose.yml" data-pickroot="/" data-picktop="/mnt" data-pickcloseonfile="true" data-pickfilter="yml,yaml">
                                 <div id="compose-stack-external-file-error" class="compose-status-danger" style="margin-top:6px;display:none;font-size:0.9em;"></div>
                                 <div class="settings-field-help">Must be a <code>.yml</code>/<code>.yaml</code> file under <code>/mnt/</code> or <code>/boot/config/</code>.</div>
+                            </div>
+
+                            <div id="compose-stack-git-wrap" class="settings-compose-source-input" style="margin-top:10px;display:none;">
+                                <label for="compose-stack-git-url" style="font-weight:normal;">Repository address</label>
+                                <input type="text" id="compose-stack-git-url" placeholder="https://github.com/me/stacks.git">
+                                <div id="compose-stack-git-url-error" class="compose-status-danger" style="margin-top:6px;display:none;font-size:0.9em;"></div>
+                                <div class="settings-field-help">An <code>https://</code> address, an ssh address (<code>git@host:me/stacks.git</code>), or the path of a repository under <code>/mnt/</code>. No password or token in it.</div>
+                                <div id="compose-stack-git-ssh-note" class="settings-field-help" style="display:none;">An ssh repository needs no credential: a deploy key is made for the stack when you select Create, and shown here to add to the repository.</div>
+
+                                <label for="compose-stack-git-branch" style="font-weight:normal;margin-top:8px;">Branch</label>
+                                <input type="text" id="compose-stack-git-branch" value="main" placeholder="main">
+
+                                <label for="compose-stack-git-compose-path" style="font-weight:normal;margin-top:8px;">Compose file in the repository</label>
+                                <input type="text" id="compose-stack-git-compose-path" placeholder="myapp/compose.yaml">
+                                <div id="compose-stack-git-compose-path-error" class="compose-status-danger" style="margin-top:6px;display:none;font-size:0.9em;"></div>
+                                <div class="settings-field-help">The path from the top of the repository.</div>
+
+                                <div id="compose-stack-git-credential-wrap">
+                                    <label for="compose-stack-git-credential" style="font-weight:normal;margin-top:8px;">Credential</label>
+                                    <select id="compose-stack-git-credential"><option value="">None (a public repository)</option></select>
+                                    <div class="settings-field-help">For a private https repository, first add a git token on the Credentials tab of the plugin's settings, then choose it here. For an ssh repository, no credential is needed: a deploy key is made for the stack.</div>
+                                </div>
+                                <div class="settings-field-help">Create clones the repository but starts nothing. Deploy the stack from its menu when you are ready.</div>
                             </div>
                         </div>
 
@@ -3609,9 +3829,16 @@ function addStack() {
     });
     $('input[name="compose-stack-compose-source"]').off('change.addStackValidate').on('change.addStackValidate', function() {
         updateAddStackValidity();
+        updateAddStackFieldsForSource();
     });
+    $('#compose-stack-git-url, #compose-stack-git-compose-path').off('input.addStackValidate').on('input.addStackValidate', function() {
+        updateAddStackValidity();
+        updateAddStackFieldsForSource();
+    });
+    loadAddStackGitCredentials();
     updateAddStackSlugPreview();
     updateAddStackValidity();
+    updateAddStackFieldsForSource();
 
     window.closeComposeStackModal = function() {
         var overlay = document.getElementById('compose-stack-modal-overlay');
@@ -3633,6 +3860,11 @@ function addStack() {
         if (!name) {
             errorDiv.textContent = "Please enter a stack name.";
             errorDiv.style.display = "block";
+            return;
+        }
+        var sourceRadio = document.querySelector('input[name="compose-stack-compose-source"]:checked');
+        if (sourceRadio && sourceRadio.value === 'git') {
+            submitGitStackFromAddStackModal(name, desc, overrideManagementAutomatic);
             return;
         }
         // Mutual exclusion is enforced structurally by the Compose Source radio

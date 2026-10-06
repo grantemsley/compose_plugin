@@ -11,6 +11,32 @@ require_once '/usr/local/emhttp/plugins/compose.manager/include/GitClone.php';
 require_once '/usr/local/emhttp/plugins/compose.manager/include/CredentialVault.php';
 
 /**
+ * The server refused a new ssh stack's clone, and the usual reason is that the repository
+ * does not know the stack's deploy key yet. The message, which compose-git prints, ends with
+ * the key; the web UI shows the clone's error and the key apart.
+ */
+final class GitDeployKeyNotAddedException extends RuntimeException
+{
+    public function __construct(
+        public readonly string $cloneError,
+        public readonly string $publicKey,
+        Throwable $previous
+    ) {
+        parent::__construct(self::messageWithKey($cloneError, $publicKey), 0, $previous);
+    }
+
+    /**
+     * The clone's error, followed by the deploy key and what to do with it.
+     */
+    public static function messageWithKey(string $cloneError, string $publicKey): string
+    {
+        return $cloneError . "\n\nIf the repository does not know this stack's deploy key yet, add it as a "
+            . "read-only deploy key in the repository's settings, then try again:\n"
+            . $publicKey;
+    }
+}
+
+/**
  * Creates and looks after git stacks: what the compose-git command does,
  * apart from deploying (compose.sh gitdeploy does that).
  *
@@ -63,7 +89,7 @@ final class GitStackManager
         }
         $stackDir = $this->composeRoot . '/' . $folder;
         if (file_exists($stackDir) || @readlink($stackDir) !== false) {
-            throw new RuntimeException("A stack folder named '$folder' already exists. Choose another name, or use convert for that stack.");
+            throw new RuntimeException("A stack folder named '$folder' already exists. Choose another name, or move that stack into git (compose-git convert, or the button on its Sources tab).");
         }
         // Before the clone, so a projects folder whose mount is gone leaves nothing behind.
         $this->assertSafeToWriteStackFolder($stackDir);
@@ -509,12 +535,16 @@ final class GitStackManager
     /**
      * Clone a new stack's repository. When an ssh clone fails, show the deploy
      * key: the usual reason is that it has not been added to the repository yet.
+     *
+     * Only a failure of git clone itself can be the key. A check before or after
+     * it (the folder already exists, the compose file is not on the branch) is
+     * passed on as it is.
      */
     private function createClone(GitStackSettings $settings): void
     {
         try {
             (new GitClone($settings))->create();
-        } catch (RuntimeException $error) {
+        } catch (GitCloneFailedException $error) {
             if (!$settings->isSsh() || $settings->credentialId === null) {
                 throw $error;
             }
@@ -524,10 +554,13 @@ final class GitStackManager
                 // Not a deploy key at all (the wrong --credential): the clone's own message says so.
                 throw $error;
             }
+            if ($error->serverRefusedAccess()) {
+                throw new GitDeployKeyNotAddedException($error->getMessage(), $publicKey, $error);
+            }
+            // Most likely something else (an unreachable host, a wrong branch), but a host may
+            // word a refusal in a way not recognised here, so the key still comes with the error.
             throw new RuntimeException(
-                $error->getMessage() . "\n\nIf the repository does not know this stack's deploy key yet, add it as a "
-                . "read-only deploy key in the repository's settings, then run the same command again:\n"
-                . $publicKey,
+                GitDeployKeyNotAddedException::messageWithKey($error->getMessage(), $publicKey),
                 0,
                 $error
             );

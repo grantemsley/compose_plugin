@@ -486,6 +486,15 @@ switch ($_POST['action']) {
             'overrideManagementAutomatic' => $overrideManagementAutomatic,
         ]);
         break;
+    case 'addGitStack':
+        $result = (new GitStackWebActions($compose_root))->add($_POST);
+        if ($result['result'] === 'success') {
+            composeLogger('Created git stack: ' . $result['project'], null, 'user', 'info', 'stack');
+        } else {
+            composeLogger('Failed to create git stack: ' . $result['message'], null, 'user', 'error', 'stack');
+        }
+        echo json_encode($result);
+        break;
     case 'deleteStack':
         $stackName = isset($_POST['stackName']) ? basename(trim($_POST['stackName'])) : "";
         if (!$stackName) {
@@ -1092,7 +1101,7 @@ switch ($_POST['action']) {
                 $test = (new GitStackManager($compose_root))->testCredential($credentialId);
                 if ($test === null) {
                     echo json_encode(['result' => 'error', 'message' => 'No git stack uses this credential yet. '
-                        . 'It is tested by reaching a repository: give it to a stack with compose-git, then test it again.']);
+                        . 'It is tested by reaching a repository: choose it for a git stack (when adding the stack, or with compose-git), then test it again.']);
                     break;
                 }
             } else {

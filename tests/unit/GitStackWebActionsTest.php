@@ -50,6 +50,8 @@ final class GitStackWebActionsTest extends TestCase
         FakeDocker::removeTree($this->composeRoot);
         mkdir($this->composeRoot);
         FakeDocker::removeTree(COMPOSE_LOCK_DIR);
+        @unlink(COMPOSE_CREDENTIAL_VAULT_FILE);
+        @unlink(COMPOSE_CREDENTIAL_KEY_FILE);
         $this->clonesRoot = $this->mnt . '/user/appdata/git';
 
         global $compose_root, $plugin_root, $sName;
@@ -65,8 +67,78 @@ final class GitStackWebActionsTest extends TestCase
         FakeDocker::removeTree($this->author);
         FakeDocker::removeTree($this->composeRoot);
         FakeDocker::removeTree(COMPOSE_LOCK_DIR);
+        @unlink(COMPOSE_CREDENTIAL_VAULT_FILE);
+        @unlink(COMPOSE_CREDENTIAL_KEY_FILE);
         $_POST = [];
         parent::tearDown();
+    }
+
+    // ----- add -----
+
+    public function testAddMakesAGitStackThatIsNotDeployed(): void
+    {
+        $result = $this->executeAction('addGitStack', [
+            'stackName' => 'Who Am I',
+            'stackDesc' => 'From git',
+            'gitUrl' => $this->upstream,
+            'gitBranch' => '',
+            'gitComposePath' => 'whoami/compose.yaml',
+        ]);
+
+        $this->assertSame('success', $result['result'], $result['message'] ?? '');
+        $this->assertSame('Who Am I', $result['projectName']);
+        $stackDir = $this->composeRoot . '/' . $result['project'];
+        $settings = GitStackSettings::load($stackDir);
+        $this->assertNotNull($settings);
+        $this->assertSame('main', $settings->branch);
+        $this->assertFileExists($settings->composeFileInClone());
+        $this->assertFileDoesNotExist($stackDir . '/labels_view_mode');
+        $this->assertNotEmpty($result['messages']);
+    }
+
+    public function testAddKeepsTheManualOverrideChoice(): void
+    {
+        $result = (new GitStackWebActions($this->composeRoot))->add([
+            'stackName' => 'whoami',
+            'gitUrl' => $this->upstream,
+            'gitComposePath' => 'whoami/compose.yaml',
+            'overrideManagementAutomatic' => 'false',
+        ]);
+
+        $this->assertSame('success', $result['result']);
+        $this->assertSame('advanced', file_get_contents($this->composeRoot . '/whoami/labels_view_mode'));
+    }
+
+    public function testAddExplainsWhyNothingWasCreated(): void
+    {
+        $result = (new GitStackWebActions($this->composeRoot))->add([
+            'stackName' => 'whoami',
+            'gitUrl' => $this->upstream,
+            'gitComposePath' => 'whoami/compose.yml',
+        ]);
+
+        $this->assertSame('error', $result['result']);
+        $this->assertStringContainsString('does not exist on branch main', $result['message']);
+        $this->assertDirectoryDoesNotExist($this->composeRoot . '/whoami');
+    }
+
+    public function testAddRefusesARegistryLoginAsTheRepositoryCredential(): void
+    {
+        $registryLogin = (new \CredentialVault())->saveCredential([
+            'name' => 'Docker Hub', 'provider' => 'docker', 'registry' => 'docker.io',
+            'username' => 'me', 'secret' => 'token',
+        ])['id'];
+
+        $result = (new GitStackWebActions($this->composeRoot))->add([
+            'stackName' => 'whoami',
+            'gitUrl' => $this->upstream,
+            'gitComposePath' => 'whoami/compose.yaml',
+            'gitCredentialId' => $registryLogin,
+        ]);
+
+        $this->assertSame('error', $result['result']);
+        $this->assertStringContainsString('no git credential', $result['message']);
+        $this->assertDirectoryDoesNotExist($this->composeRoot . '/whoami');
     }
 
     // ----- status -----

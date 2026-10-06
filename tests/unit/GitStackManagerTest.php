@@ -7,6 +7,7 @@ namespace ComposeManager\Tests;
 use ComposeManager\Tests\Support\FakeDocker;
 use GitClone;
 use GitCommand;
+use GitDeployKeyNotAddedException;
 use GitStackManager;
 use GitStackSettings;
 use GitStackState;
@@ -104,6 +105,20 @@ final class GitStackManagerTest extends TestCase
         }
         $this->assertSame([], glob($this->clonesRoot . '/*') ?: []);
         $this->assertDirectoryDoesNotExist($this->composeRoot . '/whoami');
+    }
+
+    public function testDeployKeyNotAddedKeepsTheCloneErrorAndTheKeyApart(): void
+    {
+        $cloneError = 'Could not clone the repository: fatal: Could not read from remote repository.';
+        $key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample compose-manager whoami';
+        $error = new GitDeployKeyNotAddedException($cloneError, $key, new RuntimeException($cloneError));
+
+        // The web UI shows these two apart; compose-git prints the message, which has both.
+        $this->assertSame($cloneError, $error->cloneError);
+        $this->assertSame($key, $error->publicKey);
+        $this->assertStringStartsWith($cloneError . "\n\n", $error->getMessage());
+        $this->assertStringEndsWith("\n" . $key, $error->getMessage());
+        $this->assertSame(GitDeployKeyNotAddedException::messageWithKey($cloneError, $key), $error->getMessage());
     }
 
     public function testAddDoesNothingWhileTheArrayIsStopped(): void

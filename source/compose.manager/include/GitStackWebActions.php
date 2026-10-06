@@ -18,6 +18,58 @@ final class GitStackWebActions
     }
 
     /**
+     * Create a git stack from the Add Stack dialog: clone the repository and
+     * make the stack folder, as compose-git add does. Nothing is deployed.
+     *
+     * @param array<string, mixed> $input The dialog's fields: stackName, stackDesc,
+     *     gitUrl, gitBranch, gitComposePath, gitCredentialId, overrideManagementAutomatic
+     * @return array<string, mixed>
+     */
+    public function add(array $input): array
+    {
+        $messages = [];
+        $manager = new GitStackManager($this->composeRoot, static function (string $message) use (&$messages): void {
+            $messages[] = $message;
+        });
+
+        $branch = trim((string) ($input['gitBranch'] ?? ''));
+        $credentialId = trim((string) ($input['gitCredentialId'] ?? ''));
+        try {
+            $folder = $manager->add(
+                trim((string) ($input['stackName'] ?? '')),
+                trim((string) ($input['gitUrl'] ?? '')),
+                $branch === '' ? GitStackManager::DEFAULT_BRANCH : $branch,
+                trim((string) ($input['gitComposePath'] ?? '')),
+                null,
+                trim((string) ($input['stackDesc'] ?? '')),
+                // Only a git credential is accepted, never a registry login.
+                $credentialId === '' ? null : $manager->findGitCredential($credentialId)
+            );
+        } catch (Throwable $error) {
+            return self::errorAnswer($error, $messages);
+        }
+
+        // The same override choice as the dialog's other sources (see addStack in Exec.php).
+        $overrideManagementAutomatic = strtolower(trim((string) ($input['overrideManagementAutomatic'] ?? 'true'))) !== 'false';
+        if (!$overrideManagementAutomatic) {
+            $labelsViewModeFile = $this->composeRoot . '/' . $folder . '/labels_view_mode';
+            if (@file_put_contents($labelsViewModeFile, 'advanced') === false) {
+                // The stack is made; only its Labels tab opens in the basic view, where it can be switched.
+                composeLogger("Added git stack '$folder', but could not write $labelsViewModeFile", null, 'user', 'warning', 'git');
+            }
+        }
+
+        StackInfo::clearCache();
+        $stack = StackInfo::fromProject($this->composeRoot, $folder);
+        return [
+            'result' => 'success',
+            'project' => $folder,
+            'projectName' => $stack->getName(),
+            'messages' => $messages,
+        ];
+    }
+
+    /**
      * A git stack's repository, deployed commit and local changes, for the
      * editor's Sources tab. Asks nothing of the remote.
      *
@@ -49,5 +101,26 @@ final class GitStackWebActions
         }
 
         return ['result' => 'success', 'git' => $status + ['deployKey' => $deployKey]];
+    }
+
+    /**
+     * The answer for a failed add or convert. When the repository did not know an ssh
+     * stack's deploy key, the key comes apart from the clone's error, so the dialog can
+     * show it as the next step rather than inside the error.
+     *
+     * @param list<string> $messages What the manager said before it failed
+     * @return array<string, mixed>
+     */
+    private static function errorAnswer(Throwable $error, array $messages): array
+    {
+        if ($error instanceof GitDeployKeyNotAddedException) {
+            return [
+                'result' => 'error',
+                'message' => $error->cloneError,
+                'deployKey' => $error->publicKey,
+                'messages' => $messages,
+            ];
+        }
+        return ['result' => 'error', 'message' => $error->getMessage(), 'messages' => $messages];
     }
 }
