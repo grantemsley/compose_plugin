@@ -236,6 +236,51 @@ final class GitStackWebActionsTest extends TestCase
         $this->assertSame('main', $result['git']['branch']);
     }
 
+    // ----- check for changes -----
+
+    public function testCheckSaysWhetherANewerCommitIsWaiting(): void
+    {
+        $folder = $this->addGitStack('whoami');
+
+        $result = $this->executeAction('checkGitStack', ['script' => $folder]);
+
+        $this->assertSame('success', $result['result']);
+        $this->assertFalse($result['check']['upToDate']);
+        $this->assertNull($result['check']['deployedCommit']);
+        $this->assertSame('main', $result['check']['branch']);
+        $this->assertTrue($result['check']['changesStack']);
+        $this->assertSame('whoami', $result['check']['stackFolder']);
+    }
+
+    public function testCheckWaitsForNoDeployButSaysOneIsRunning(): void
+    {
+        $folder = $this->addGitStack('whoami');
+        (new \GitStackState($this->upstreamHead(), null))->save($this->composeRoot . '/' . $folder);
+        $this->writeAndPush(['whoami/config.txt' => "setting=1\n"], 'newer');
+        // A deploy holds the stack's lock (compose.sh takes the same one).
+        @mkdir(COMPOSE_LOCK_DIR, 0755, true);
+        $lock = fopen(COMPOSE_LOCK_DIR . '/whoami.lock', 'c');
+        $this->assertTrue(flock($lock, LOCK_EX));
+
+        try {
+            $result = $this->executeAction('checkGitStack', ['script' => $folder]);
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+
+        $this->assertSame('error', $result['result']);
+        $this->assertStringContainsString('Another operation is in progress', $result['message']);
+    }
+
+    public function testCheckOfAMissingStackIsAnError(): void
+    {
+        $result = (new GitStackWebActions($this->composeRoot))->check('nothing-here');
+
+        $this->assertSame('error', $result['result']);
+        $this->assertStringContainsString('no stack folder', $result['message']);
+    }
+
     // ----- the stack list -----
 
     public function testListSummaryReadsTheBranchAndCommitsFromTheStackFolder(): void
@@ -555,6 +600,11 @@ final class GitStackWebActionsTest extends TestCase
         }
         $this->git(['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', $message], $this->author);
         $this->git(['push', '-q', 'origin', 'main'], $this->author);
+    }
+
+    private function upstreamHead(): string
+    {
+        return trim(GitCommand::run(['--git-dir=' . $this->upstream, 'rev-parse', 'refs/heads/main'])->stdout);
     }
 
     /**

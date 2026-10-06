@@ -1277,6 +1277,14 @@ switch ($_POST['action']) {
         }
         echo json_encode((new GitStackWebActions($compose_root))->status($script));
         break;
+    case 'checkGitStack':
+        $script = getPostScript();
+        if (!$script) {
+            echo json_encode(['result' => 'error', 'message' => 'Stack not specified.']);
+            break;
+        }
+        echo json_encode((new GitStackWebActions($compose_root))->check($script));
+        break;
     case 'setLabelsViewMode':
         $script = getPostScript();
         if (!$script) {

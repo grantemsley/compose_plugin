@@ -13,6 +13,14 @@ require_once '/usr/local/emhttp/plugins/compose.manager/include/GitSsh.php';
  */
 final class GitStackWebActions
 {
+    /**
+     * How long Check for Changes waits for the repository to name the branch's latest
+     * commit: the browser waits for the answer, as for the Credentials tab's Test. A
+     * newer commit is then fetched with the usual fetch time limit; by then the
+     * repository has just answered, and the fetch of a few commits takes seconds.
+     */
+    private const CHECK_TIMEOUT_SECONDS = 15;
+
     public function __construct(private readonly string $composeRoot)
     {
     }
@@ -67,6 +75,25 @@ final class GitStackWebActions
             'projectName' => $stack->getName(),
             'messages' => $messages,
         ];
+    }
+
+    /**
+     * Ask the remote for the branch's latest commit and compare it with the
+     * deployed one, as compose-git check does. A newer commit is fetched into the
+     * clone, under the stack's lock; no container and no checked-out file changes.
+     *
+     * @return array<string, mixed>
+     */
+    public function check(string $folder): array
+    {
+        try {
+            return [
+                'result' => 'success',
+                'check' => (new GitStackManager($this->composeRoot))->check($folder, self::CHECK_TIMEOUT_SECONDS),
+            ];
+        } catch (Throwable $error) {
+            return ['result' => 'error', 'message' => $error->getMessage()];
+        }
     }
 
     /**

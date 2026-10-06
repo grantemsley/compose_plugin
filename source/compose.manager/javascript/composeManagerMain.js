@@ -5202,6 +5202,111 @@ function gitDeployStack(path, project, commit, profile) {
     });
 }
 
+// Ask the repository whether a git stack's branch has a newer commit than the
+// deployed one, and offer to deploy it.
+function checkGitStack(path, project) {
+    swal({
+        title: 'Checking ' + project + '...',
+        text: 'Asking the repository for the latest commit.',
+        type: 'info',
+        showConfirmButton: false
+    });
+    $.post(caURL, {
+        action: 'checkGitStack',
+        script: project
+    }).then(function(data) {
+        var response = tryParseJson(data);
+        if (!response || response.result !== 'success') {
+            swal({
+                title: 'Could not check ' + project,
+                text: (response && response.message) || 'Unexpected response from server.',
+                type: 'error'
+            });
+            return;
+        }
+        var check = response.check;
+        if (check.upToDate) {
+            swal({
+                title: project + ' is up to date',
+                text: 'The latest commit on ' + check.branch + ' (' + gitShortCommit(check.remoteCommit) + ') is deployed.',
+                type: 'success'
+            });
+            return;
+        }
+        // One line per fact: the latest commit, the deployed one, then what changed between them.
+        var latestLine = 'Commit ' + gitShortCommit(check.remoteCommit) + ' is the latest on ' + check.branch + '.';
+        var deployedLine = check.deployedCommit
+            ? 'Commit ' + gitShortCommit(check.deployedCommit) + ' is currently deployed'
+            : '';
+        var dialog;
+        if (check.changesStack === false) {
+            // Usually a commit to another stack in the same repository. It can still matter
+            // to this one if it uses files from outside its folder, so deploying stays offered.
+            // A stack at the top of the repository gets this answer only for commits that change no file.
+            var unchanged = check.stackFolder
+                ? 'nothing in ' + check.stackFolder + '/, the folder holding this stack\'s compose file. In a repository '
+                    + 'with several stacks, that is usually a commit to another stack.'
+                : 'no files.';
+            dialog = {
+                title: 'A newer commit is on ' + check.branch + ', outside this stack\'s folder',
+                text: latestLine + '\n' + deployedLine + '.\n'
+                    + 'The commits since then change ' + unchanged
+                    + '\n\nDeploy it anyway if this stack uses files from outside that folder: '
+                    + 'a bind mount or build context of ../something, or an env_file, extends or include in another '
+                    + 'folder. Changes there are not counted as changes to this stack.',
+                confirmButtonText: 'Deploy anyway'
+            };
+        } else if (!check.deployedCommit) {
+            dialog = {
+                title: 'A commit is on ' + check.branch + ' to deploy',
+                text: 'Commit ' + gitShortCommit(check.remoteCommit) + ' on ' + check.branch + ' is ready to deploy.\n'
+                    + 'Nothing is currently deployed.',
+                confirmButtonText: 'Pull and Redeploy'
+            };
+        } else if (check.deployedCommitMissing) {
+            // The clone was made again since the deploy (after a force-push, say), so there is
+            // nothing to compare the new commit with.
+            dialog = {
+                title: 'A newer commit is on ' + check.branch,
+                text: latestLine + '\n' + deployedLine + ', but it is no longer in the clone, so the changes '
+                    + 'cannot be identified.',
+                confirmButtonText: 'Pull and Redeploy'
+            };
+        } else {
+            // The stack's folder is the folder holding its compose file in the repository.
+            var changed = check.stackFolder
+                ? check.stackFolder + '/, this stack\'s folder'
+                : 'this stack\'s files (its compose file is at the top of the repository)';
+            dialog = {
+                title: 'A newer commit is on ' + check.branch,
+                text: latestLine + '\n' + deployedLine + '.\nThe commits since then change ' + changed + '.',
+                confirmButtonText: 'Pull and Redeploy'
+            };
+        }
+        swal({
+            title: dialog.title,
+            text: dialog.text,
+            type: 'info',
+            showCancelButton: true,
+            confirmButtonText: dialog.confirmButtonText,
+            cancelButtonText: 'Not now'
+        }, function(confirmed) {
+            if (confirmed) {
+                // The deploy's own confirmation opens after this one has closed.
+                setTimeout(function() {
+                    gitDeployStackChoosingProfiles(path, project, '');
+                }, 200);
+            }
+        });
+    }).fail(function() {
+        swal({
+            title: 'Could not check ' + project,
+            text: 'Request failed.',
+            type: 'error'
+        });
+    });
+}
+
 // Ask for a commit id, then deploy that commit (to go back to an older version).
 function promptGitDeployCommit(path, project) {
     swal({
@@ -9689,6 +9794,14 @@ function addComposeStackContext(elementId) {
 
     // A git stack deploys from its repository (see docs/git-stacks.md)
     if (isGitStack) {
+        opts.push({
+            text: 'Check for Changes',
+            icon: 'fa-search',
+            action: function(e) {
+                e.preventDefault();
+                checkGitStack(path, project);
+            }
+        });
         opts.push({
             text: 'Pull and Redeploy',
             icon: 'fa-code-fork',

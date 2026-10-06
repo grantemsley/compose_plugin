@@ -269,24 +269,66 @@ final class GitStackManager
     }
 
     /**
-     * Compare the deployed commit with the branch on the remote, changing nothing.
+     * Compare the deployed commit with the branch on the remote. Changes no container and
+     * no file of the stack; when the branch has a newer commit, it is fetched into the
+     * clone (under the stack's lock, as a deploy would fetch it) to see what it changes.
      *
-     * @return array{stack: string, branch: string, remoteCommit: string, deployedCommit: ?string, failedCommit: ?string, upToDate: bool}
-     * @throws RuntimeException if the stack or the remote cannot be read
+     * changesStack is null when the stack is up to date. Otherwise it says whether the new
+     * commit changes anything in the stack's folder in the repository (the folder holding
+     * its compose file, or the whole repository for a compose file at the top). It is true
+     * when that cannot be identified: nothing deployed yet, or the clone no longer has the
+     * deployed commit (deployedCommitMissing says which, so the answer can say so). It is
+     * false when every change is outside the stack's folder, as a commit to another stack
+     * in a shared repository is. Files the stack uses from outside its folder (a ../shared
+     * bind mount, a build context of .., an env_file, extends or include in another folder)
+     * are not looked at, so false does not prove the new commit changes nothing the stack
+     * uses.
+     *
+     * stackFolder is that folder, relative to the top of the repository ('' for the top).
+     *
+     * @param int|null $timeoutSeconds How long to wait for the remote; null for git's usual limit
+     * @return array{stack: string, branch: string, remoteCommit: string, deployedCommit: ?string, failedCommit: ?string, upToDate: bool, changesStack: ?bool, deployedCommitMissing: bool, stackFolder: string}
+     * @throws RuntimeException if the stack or the remote cannot be read, or another operation on the stack is running
      */
-    public function check(string $folder): array
+    public function check(string $folder, ?int $timeoutSeconds = null): array
     {
         $stack = $this->stack($folder);
         $settings = $this->settings($stack);
         $state = GitStackState::load($stack->path);
-        $remote = (new GitClone($settings))->remoteBranchCommit();
+        $clone = new GitClone($settings);
+        $remote = $timeoutSeconds === null ? $clone->remoteBranchCommit() : $clone->remoteBranchCommit($timeoutSeconds);
+        $deployed = $state->deployedCommit;
+
+        $changesStack = null;
+        $deployedCommitMissing = false;
+        if ($deployed === null) {
+            // Nothing deployed yet: whatever the branch has is new to the stack.
+            $changesStack = true;
+        } elseif ($deployed !== $remote) {
+            [$changesStack, $deployedCommitMissing] = $this->withStackLock(
+                $stack,
+                /** @return array{bool, bool} changesStack, deployedCommitMissing */
+                static function () use ($clone, $deployed, $remote): array {
+                    $clone->fetch();
+                    if (!$clone->hasCommit($deployed)) {
+                        // Recloned since, after a force-push for one. Nothing to compare with.
+                        return [true, true];
+                    }
+                    return [$clone->stackFilesChanged($deployed, $remote), false];
+                }
+            );
+        }
+
         return [
             'stack' => $folder,
             'branch' => $settings->branch,
             'remoteCommit' => $remote,
-            'deployedCommit' => $state->deployedCommit,
+            'deployedCommit' => $deployed,
             'failedCommit' => $state->failedCommit,
-            'upToDate' => $state->deployedCommit === $remote,
+            'upToDate' => $deployed === $remote,
+            'changesStack' => $changesStack,
+            'deployedCommitMissing' => $deployedCommitMissing,
+            'stackFolder' => dirname($settings->composePath) === '.' ? '' : dirname($settings->composePath),
         ];
     }
 
