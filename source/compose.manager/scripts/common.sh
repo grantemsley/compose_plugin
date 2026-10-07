@@ -106,6 +106,55 @@ has_compose_file() {
     find_compose_file "$1" > /dev/null 2>&1
 }
 
+# True when a true/false setting in the plugin's config file is "true".
+# COMPOSE_MANAGER_CFG_FILE overrides the config path (used by tests).
+plugin_setting_enabled() {
+    local key="$1"
+    local cfg_file="${COMPOSE_MANAGER_CFG_FILE:-/boot/config/plugins/compose.manager/compose.manager.cfg}"
+    [ -f "$cfg_file" ] || return 1
+    grep -Eq "^${key}=\"?true\"?[[:space:]]*$" "$cfg_file"
+}
+
+# Print the name of each network declared `external: true`, one per line.
+# Reads the output of `docker compose config --format json` on stdin.
+external_network_names() {
+    local php_cmd="${COMPOSE_MANAGER_PHP:-php}"
+    # shellcheck disable=SC2016  # $config and $network are PHP variables, not shell.
+    "$php_cmd" -r '
+$config = json_decode(stream_get_contents(STDIN), true);
+foreach ($config["networks"] ?? [] as $key => $network) {
+    if (!empty($network["external"])) {
+        echo ($network["name"] ?? $key), PHP_EOL;
+    }
+}
+'
+}
+
+# Create each `external: true` network of a stack that does not exist yet, as a plain
+# bridge network. Compose never creates external networks itself, so `up` fails on them.
+# Arguments: the docker compose command that reads the stack's config, for example
+#   create_missing_external_networks docker compose -f compose.yaml -p mystack
+# A config that does not parse is skipped here; the compose command that follows reports it.
+create_missing_external_networks() {
+    local config_json network
+    if ! config_json=$("$@" config --format json 2>/dev/null); then
+        return 0
+    fi
+    while IFS= read -r network; do
+        [ -n "$network" ] || continue
+        if docker network inspect "$network" > /dev/null 2>&1; then
+            continue
+        fi
+        if docker network create "$network" > /dev/null; then
+            echo "✓ Created missing external network: $network"
+            composeLogger "Created missing external network: $network" info compose
+        else
+            echo "✗ Failed to create external network: $network"
+            composeLogger "Failed to create external network: $network" error compose
+        fi
+    done < <(printf '%s' "$config_json" | external_network_names)
+}
+
 # Resolve effective env file for a stack.
 # Order:
 #  1) <stack>/envpath when it points to a readable file
@@ -159,6 +208,7 @@ resolve_stack_env_file() {
 #   COMPOSE_SPEC_PROJECT_DIR
 #   COMPOSE_SPEC_USE_DEFAULT_FILE_DISCOVERY
 #   COMPOSE_SPEC_ENV_FILE_PATH
+#   COMPOSE_SPEC_CREDENTIAL_ID
 #   COMPOSE_SPEC_COMPOSE_FILES (array)
 #   COMPOSE_SPEC_PROFILES (array)
 #
@@ -225,6 +275,7 @@ load_compose_action_spec() {
     COMPOSE_SPEC_USE_DEFAULT_FILE_DISCOVERY="false"
     # shellcheck disable=SC2034  # Populated here, consumed by scripts that source common.sh.
     COMPOSE_SPEC_ENV_FILE_PATH=""
+    COMPOSE_SPEC_CREDENTIAL_ID=""
     COMPOSE_SPEC_ERROR_MESSAGE=""
     COMPOSE_SPEC_COMPOSE_FILES=()
     COMPOSE_SPEC_PROFILES=()
@@ -254,6 +305,10 @@ load_compose_action_spec() {
             envFilePath)
                 # shellcheck disable=SC2034  # Populated here, consumed by scripts that source common.sh.
                 COMPOSE_SPEC_ENV_FILE_PATH="$value"
+                ;;
+            credentialId)
+                # shellcheck disable=SC2034  # Populated here, consumed by scripts that source common.sh.
+                COMPOSE_SPEC_CREDENTIAL_ID="$value"
                 ;;
             composeFile)
                 COMPOSE_SPEC_COMPOSE_FILES+=("$value")

@@ -82,6 +82,19 @@ function sanitizeLogText(string $text): string
     return htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
+if (!function_exists('compose_get_autoupdate_parallel_limit')) {
+    function compose_get_autoupdate_parallel_limit(array $config): int
+    {
+        $limit = filter_var(
+            $config['defaults']['parallel_limit'] ?? null,
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1, 'max_range' => 16]]
+        );
+
+        return $limit === false ? 4 : $limit;
+    }
+}
+
 if (!function_exists('compose_get_icon_cache_path')) {
     function compose_get_icon_cache_path(string $source): string
     {
@@ -187,13 +200,51 @@ if (!function_exists('compose_icon_browser_url')) {
 }
 
 if (!function_exists('compose_icon_is_safe_host')) {    /** Block loopback, private, and link-local hosts (SSRF prevention). */
-    function compose_icon_is_safe_host(string $host): bool
+    function compose_icon_is_safe_host(string $host, ?callable $resolver = null): bool
     {
-        $ip = gethostbyname($host);
-        if ($ip === $host && filter_var($host, FILTER_VALIDATE_IP) === false) {
-            return false; // unresolvable
+        $host = trim($host, '[]');
+        $addresses = [];
+
+        if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+            $addresses[] = $host;
+        } else {
+            $records = $resolver !== null
+                ? $resolver($host)
+                : dns_get_record($host, DNS_A | DNS_AAAA);
+
+            foreach ($records ?: [] as $record) {
+                if (isset($record['ip'])) {
+                    $addresses[] = $record['ip'];
+                }
+                if (isset($record['ipv6'])) {
+                    $addresses[] = $record['ipv6'];
+                }
+            }
         }
-        return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
+
+        if ($addresses === []) {
+            return false;
+        }
+
+        foreach ($addresses as $address) {
+            $packedAddress = @inet_pton($address);
+            if (
+                $packedAddress !== false
+                && strlen($packedAddress) === 16
+                && substr($packedAddress, 0, 12) === str_repeat("\0", 10) . "\xff\xff"
+            ) {
+                $mappedIpv4 = inet_ntop(substr($packedAddress, 12));
+                if ($mappedIpv4 !== false) {
+                    $address = $mappedIpv4;
+                }
+            }
+
+            if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
 
@@ -2579,12 +2630,28 @@ class StackInfo
 
     /**
      * Get the custom env file path (from `envpath` file).
+     *
+     * A relative path is returned relative to the stack directory, the same rule
+     * getEffectiveEnvFilePath() applies when running compose. The file does not
+     * have to exist yet (the editor can create it).
      * @return string|null
      */
     public function getEnvFilePath(): ?string
     {
         $val = $this->readMetadata('envpath');
-        return ($val !== null && $val !== '') ? $val : null;
+        if ($val === null || $val === '') {
+            return null;
+        }
+        if (Path::isAbsolutePath($val)) {
+            return $val;
+        }
+        return $this->path . '/' . $val;
+    }
+
+    public function getCredentialId(): ?string
+    {
+        $value = $this->readMetadata('credential_id');
+        return ($value !== null && $value !== '') ? $value : null;
     }
 
     /**
@@ -3481,7 +3548,7 @@ class StackInfo
             return [];
         }
 
-        $cmd = "docker compose " . $this->buildComposeFileFlags();
+        $cmd = "docker compose " . $this->buildComposeFileFlagsWithoutManagedOverride();
         $envFlag = $this->buildEnvFileFlag();
         if ($envFlag !== '') {
             $cmd .= " " . $envFlag;
@@ -3496,6 +3563,46 @@ class StackInfo
         return array_values(array_filter(array_map('trim', explode("\n", trim($output))), function ($service) {
             return $service !== '';
         }));
+    }
+
+    /**
+     * The -f flags for this stack, leaving out the plugin-managed override and
+     * the icon override generated from it.
+     *
+     * Both files hold only labels. An entry for a service the compose file no
+     * longer has defines a service with no image, and compose refuses the
+     * whole project over it ("has neither an image nor a build context"), so
+     * they must be left out when asking which services are valid.
+     *
+     * With default file discovery, compose would find the managed override by
+     * itself: it sits next to the compose file under the override name
+     * compose looks for. So the files are named with -f in that mode too,
+     * from the same project directory compose would use.
+     *
+     * @return string
+     */
+    private function buildComposeFileFlagsWithoutManagedOverride(): string
+    {
+        $leftOut = [];
+        foreach ([$this->overrideInfo->getProjectOverridePath(), $this->getIconNormalizationOverridePath()] as $path) {
+            if ($path !== null) {
+                $leftOut[$this->normalizeComposeFilePath($path)] = true;
+            }
+        }
+
+        $flags = [];
+        if ($this->useDefaultComposeFileDiscovery()) {
+            $flags[] = '--project-directory ' . escapeshellarg($this->composeSource);
+        }
+        foreach ($this->getComposeFilePaths() as $filePath) {
+            if (isset($leftOut[$this->normalizeComposeFilePath($filePath)])) {
+                continue;
+            }
+            if (is_file($filePath)) {
+                $flags[] = '-f ' . escapeshellarg($filePath);
+            }
+        }
+        return implode(' ', $flags);
     }
 
     /**
