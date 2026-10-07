@@ -349,11 +349,13 @@ final class GitStackManagerTest extends TestCase
         $this->git(['--git-dir=' . $this->upstream, 'reflog', 'expire', '--expire=now', '--all'], null);
         $this->git(['--git-dir=' . $this->upstream, 'gc', '-q', '--prune=now'], null);
 
+        $rewrittenAway = GitStackState::load($stackDir)->deployedCommit;
         $this->manager->reclone($folder);
 
         $settings = GitStackSettings::load($stackDir);
         $this->assertSame($this->upstreamHead(), (new GitClone($settings))->checkedOutCommit());
-        $this->assertNull(GitStackState::load($stackDir)->deployedCommit);
+        // Still recorded: the next deploy sees it is gone from the clone and recreates every container.
+        $this->assertSame($rewrittenAway, GitStackState::load($stackDir)->deployedCommit);
     }
 
     public function testConvertNamesTheFoldersNextToTheOldComposeFile(): void
