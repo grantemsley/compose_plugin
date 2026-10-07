@@ -381,6 +381,29 @@ final class GitDeployCheckTest extends TestCase
         $this->assertSame([], $this->check());
     }
 
+    public function testTwoServicesOfTheStackPublishingTheSamePortIsAProblem(): void
+    {
+        $this->docker->setConfig(['name' => 'whoami', 'services' => [
+            'web' => ['image' => 'busybox', 'ports' => [['target' => 80, 'published' => '8080', 'protocol' => 'tcp']]],
+            'api' => ['image' => 'busybox', 'ports' => [['target' => 80, 'published' => '8080', 'protocol' => 'tcp', 'host_ip' => '0.0.0.0']]],
+            'dns' => ['image' => 'busybox', 'ports' => [['target' => 53, 'published' => '8080', 'protocol' => 'udp']]],
+        ]]);
+
+        $problems = $this->check();
+        $this->assertCount(1, $problems);
+        $this->assertSame("Services 'web' and 'api' both publish port 8080/tcp.", $problems[0]);
+    }
+
+    public function testOneServicePublishingTheSamePortTwiceIsAProblem(): void
+    {
+        $this->docker->setConfig($this->config(['image' => 'busybox', 'ports' => [
+            ['target' => 80, 'published' => '8080', 'protocol' => 'tcp'],
+            ['target' => 81, 'published' => '8080', 'protocol' => 'tcp', 'host_ip' => '127.0.0.1'],
+        ]]));
+
+        $this->assertSame(["Service 'whoami' publishes port 8080/tcp twice."], $this->check());
+    }
+
     public function testPublishedRangeIsLeftToDocker(): void
     {
         // "6000-6010:6000" means any free port in the range.
