@@ -120,6 +120,30 @@ final class GitStackInfoTest extends TestCase
         $this->assertFalse($this->stack()->hasBuildConfig());
     }
 
+    public function testARemovedRepositoryOverrideMakesTheCachesStale(): void
+    {
+        $repoOverride = $this->clone . '/whoami/compose.override.yaml';
+        file_put_contents($repoOverride, "services: {}\n");
+        file_put_contents($this->stackDir . '/profiles', json_encode(['cached']));
+        file_put_contents($this->stackDir . '/has_build', '1');
+        $old = time() - 3600;
+        touch($this->clone . '/whoami/compose.yaml', $old);
+        touch($repoOverride, $old);
+        touch($this->clone . '/whoami', $old);
+        touch($this->stackDir . '/profiles', time() - 60);
+        touch($this->stackDir . '/has_build', time() - 60);
+
+        $this->assertSame(['cached'], $this->stack()->getProfiles());
+        $this->assertTrue($this->stack()->hasBuildConfig());
+
+        // A commit that removes the repository's override leaves no file to compare, but
+        // the removal updates its folder.
+        unlink($repoOverride);
+
+        $this->assertNotSame(['cached'], $this->stack()->getProfiles());
+        $this->assertFalse($this->stack()->hasBuildConfig());
+    }
+
     public function testMissingOverridesAreLeftOut(): void
     {
         @unlink($this->stackDir . '/compose.override.yaml');
