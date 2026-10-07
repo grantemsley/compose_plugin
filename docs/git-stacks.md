@@ -316,7 +316,10 @@ is, the deploy stops instead.
 If the clone itself gets into a bad state, `compose-git reclone myapp` moves it aside (as
 `<clone>.replaced-<date>`, nothing is deleted) and clones the repository again at the deployed commit. It
 lists the untracked files left in the old clone: copy back anything you need, then delete the old clone
-yourself.
+yourself. A running container with a bind mount into the clone (`./config`, say) keeps using the moved
+folder until the container is recreated, so stop and start the stack before deleting the old clone. If the
+deployed commit is no longer on the branch (the branch was rewritten), the new clone is left at the
+branch's latest commit, and the next deploy recreates every container.
 
 ## What is checked before a deploy
 
