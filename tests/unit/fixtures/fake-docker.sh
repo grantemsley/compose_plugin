@@ -9,9 +9,17 @@
 #                                               a network file holds its driver, if any
 #   containers/<name>.json                      docker container inspect <name>
 #   running.ids, running.json                   docker ps -q, and docker container inspect <ids...>
+#   fail/<command>, fail/<command>.stdout       docker <command> fails: the first file is its stderr,
+#                                               the second (optional) what it still printed
 # Every call is appended to calls.log, one line per call.
 here="$(cd "$(dirname "$0")" && pwd)"
 printf '%s\n' "$*" >> "$here/calls.log"
+
+if [ -f "$here/fail/$1" ]; then
+  [ -f "$here/fail/$1.stdout" ] && cat "$here/fail/$1.stdout"
+  cat "$here/fail/$1" >&2
+  exit 1
+fi
 
 case "$1" in
   compose)

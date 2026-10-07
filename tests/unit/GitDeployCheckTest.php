@@ -284,6 +284,62 @@ final class GitDeployCheckTest extends TestCase
         $this->assertCount(1, $this->check());
     }
 
+    public function testContainerNameCheckThatDockerCannotAnswerIsAProblem(): void
+    {
+        $this->docker->setConfig($this->config(['image' => 'busybox', 'container_name' => 'plex']));
+        $this->docker->fail('container', 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?');
+
+        $problems = $this->check();
+        $this->assertCount(1, $problems);
+        $this->assertStringContainsString("Could not check whether the container name 'plex' is free: Cannot connect", $problems[0]);
+    }
+
+    public function testPortCheckThatCannotListTheRunningContainersIsAProblem(): void
+    {
+        $this->docker->setConfig($this->config(['image' => 'busybox', 'ports' => [
+            ['target' => 80, 'published' => '8080', 'protocol' => 'tcp'],
+        ]]));
+        $this->docker->fail('ps', 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?');
+
+        $problems = $this->check();
+        $this->assertCount(1, $problems);
+        $this->assertStringContainsString('Could not check whether the published ports are free: docker ps failed: Cannot connect', $problems[0]);
+    }
+
+    public function testPortCheckThatCannotInspectTheRunningContainersIsAProblem(): void
+    {
+        $this->docker->setConfig($this->config(['image' => 'busybox', 'ports' => [
+            ['target' => 80, 'published' => '8080', 'protocol' => 'tcp'],
+        ]]));
+        $this->docker->setRunning([
+            ['name' => 'nginx', 'project' => null, 'ports' => ['80/tcp' => [['HostIp' => '0.0.0.0', 'HostPort' => '8080']]]],
+        ]);
+        $this->docker->fail('container', 'error during connect: Get "http://...": context deadline exceeded');
+
+        $problems = $this->check();
+        $this->assertCount(1, $problems);
+        $this->assertStringContainsString('docker inspect failed: error during connect', $problems[0]);
+    }
+
+    public function testContainerRemovedBetweenPsAndInspectHoldsNoPort(): void
+    {
+        $this->docker->setConfig($this->config(['image' => 'busybox', 'ports' => [
+            ['target' => 80, 'published' => '8080', 'protocol' => 'tcp'],
+        ]]));
+        // docker inspect still prints the containers it found, and exits 1 for the one that is gone.
+        $this->docker->fail('container', 'Error response from daemon: No such container: id1', json_encode([
+            ['Name' => '/nginx', 'Config' => ['Labels' => []], 'NetworkSettings' => ['Ports' => ['80/tcp' => [['HostIp' => '0.0.0.0', 'HostPort' => '8080']]]]],
+        ]));
+        $this->docker->setRunning([
+            ['name' => 'nginx', 'project' => null, 'ports' => []],
+            ['name' => 'gone', 'project' => null, 'ports' => []],
+        ]);
+
+        $problems = $this->check();
+        $this->assertCount(1, $problems);
+        $this->assertStringContainsString("container 'nginx'", $problems[0]);
+    }
+
     public function testPortPublishedByAnotherContainerIsAProblem(): void
     {
         $this->docker->setConfig($this->config(['image' => 'busybox', 'ports' => [

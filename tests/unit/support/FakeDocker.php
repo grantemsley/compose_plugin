@@ -19,6 +19,7 @@ final class FakeDocker
         mkdir($this->dir . '/networks', 0755, true);
         mkdir($this->dir . '/volumes');
         mkdir($this->dir . '/containers');
+        mkdir($this->dir . '/fail');
         copy(__DIR__ . '/../fixtures/fake-docker.sh', COMPOSE_DOCKER_BIN);
         chmod(COMPOSE_DOCKER_BIN, 0755);
     }
@@ -26,6 +27,19 @@ final class FakeDocker
     public function cleanUp(): void
     {
         self::removeTree($this->dir);
+    }
+
+    /**
+     * Make every `docker <command> ...` call fail with this stderr (exit 1),
+     * after printing $stdout, if any. The command is the first argument
+     * ("ps", "container").
+     */
+    public function fail(string $command, string $stderr, string $stdout = ''): void
+    {
+        file_put_contents($this->dir . '/fail/' . $command, $stderr . "\n");
+        if ($stdout !== '') {
+            file_put_contents($this->dir . '/fail/' . $command . '.stdout', $stdout);
+        }
     }
 
     /**
