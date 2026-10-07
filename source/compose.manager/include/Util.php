@@ -3448,6 +3448,9 @@ class StackInfo
      * getOverridePath() returns the managed override for a git stack, so the
      * cache staleness checks compare that one; the repository's own override
      * is a compose input too (see getComposeFilePaths). Always false for other stacks.
+     *
+     * A checkout that removes the override leaves no file to compare, so its
+     * folder's modification time stands in: removing a file updates it.
      */
     private function isRepositoryOverrideNewerThan(int|false $cacheMtime): bool
     {
@@ -3455,7 +3458,15 @@ class StackInfo
             return false;
         }
         $repoOverride = $this->overrideInfo->indirectOverride;
-        return $repoOverride !== null && is_file($repoOverride) && filemtime($repoOverride) > $cacheMtime;
+        if ($repoOverride === null) {
+            return false;
+        }
+        if (is_file($repoOverride)) {
+            return filemtime($repoOverride) > $cacheMtime;
+        }
+        $folder = dirname($repoOverride);
+        clearstatcache(true, $folder);
+        return is_dir($folder) && filemtime($folder) > $cacheMtime;
     }
 
     /**
