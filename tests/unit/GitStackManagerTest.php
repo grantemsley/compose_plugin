@@ -702,6 +702,25 @@ final class GitStackManagerTest extends TestCase
         $this->assertSame('/', compose_git_deploy_directory(null));
     }
 
+    public function testDeployCommandRunsComposeShGitdeployForTheStack(): void
+    {
+        $folder = $this->manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+        $stack = \StackInfo::fromProject($this->composeRoot, $folder);
+        $commit = str_repeat('a', 40);
+
+        $command = buildGitDeployCommand($stack, $commit, true, ['tools'], ['--wait', '--wait-timeout', '60']);
+
+        $this->assertStringEndsWith('/scripts/compose.sh', $command[0]);
+        $this->assertSame([
+            '-cgitdeploy', '-p' . $stack->projectName, '-s' . $stack->path,
+            '-gtools', '--git-commit', $commit, '--save-local-changes', '--wait', '--wait-timeout', '60',
+        ], array_slice($command, 1));
+        $this->assertSame(
+            ['-cgitdeploy', '-p' . $stack->projectName, '-s' . $stack->path],
+            array_slice(buildGitDeployCommand($stack, null, false, [], []), 1)
+        );
+    }
+
     public function testDeployRefusesWaitAndNoWaitTogether(): void
     {
         $this->expectException(\ComposeGitUsageError::class);
@@ -719,18 +738,18 @@ final class GitStackManagerTest extends TestCase
         };
 
         // Nothing running and no defaults: no profiles.
-        $this->assertSame([], compose_git_profile_arguments($stack(), []));
+        $this->assertSame([], gitDeployProfiles($stack(), []));
 
         // The default profiles, as the web UI's Update uses on a first run.
         file_put_contents($stackDir . '/default_profile', 'media');
-        $this->assertSame(['-gmedia'], compose_git_profile_arguments($stack(), []));
+        $this->assertSame(['media'], gitDeployProfiles($stack(), []));
 
         // The profiles the stack is running with come first.
         file_put_contents($stackDir . '/running_profiles', 'extras,tools');
-        $this->assertSame(['-gextras', '-gtools'], compose_git_profile_arguments($stack(), []));
+        $this->assertSame(['extras', 'tools'], gitDeployProfiles($stack(), []));
 
         // --profile replaces both.
-        $this->assertSame(['-gdebug'], compose_git_profile_arguments($stack(), ['profile' => ['debug']]));
+        $this->assertSame(['debug'], gitDeployProfiles($stack(), ['debug']));
     }
 
     public function testCommandLineStatusAsJson(): void

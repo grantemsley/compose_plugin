@@ -415,6 +415,62 @@ function echoComposeCommand($action, array $options = [])
 }
 
 /**
+ * The compose profiles a git deploy runs with.
+ *
+ * The profiles asked for when there are any. Otherwise the profiles the stack
+ * is running with, else its default profiles, as the web UI's Update does: a
+ * deploy without profiles would leave the running profile services on the
+ * old commit, and compose.sh would forget the stack's running profiles.
+ *
+ * @param string[] $requested Profiles named for this deploy, often none
+ * @return string[]
+ */
+function gitDeployProfiles(StackInfo $stack, array $requested): array
+{
+    if ($requested !== []) {
+        return array_values($requested);
+    }
+    $running = $stack->getRunningProfiles();
+    if ($running !== []) {
+        return array_values($running);
+    }
+    return array_values($stack->getDefaultProfiles());
+}
+
+/**
+ * compose.sh's command line for deploying a git stack (compose.sh gitdeploy).
+ * Used by both compose-git deploy and the web UI, so the two deploy alike.
+ *
+ * @param string|null $commit A full commit id to deploy, or null for the branch's latest
+ * @param string[] $profiles Compose profiles to enable
+ * @param string[] $waitArguments --wait and --wait-timeout, if the deploy waits for healthy containers
+ * @return string[]
+ */
+function buildGitDeployCommand(StackInfo $stack, ?string $commit, bool $saveLocalChanges, array $profiles, array $waitArguments): array
+{
+    $command = [dirname(__DIR__) . '/scripts/compose.sh', '-cgitdeploy', '-p' . $stack->projectName, '-s' . $stack->path];
+    $credentialId = trim((string) ($stack->getCredentialId() ?? ''));
+    if ($credentialId !== '') {
+        $command[] = '--credential-id';
+        $command[] = $credentialId;
+    }
+    foreach ($profiles as $profile) {
+        $command[] = '-g' . $profile;
+    }
+    if ($commit !== null) {
+        $command[] = '--git-commit';
+        $command[] = $commit;
+    }
+    if ($saveLocalChanges) {
+        $command[] = '--save-local-changes';
+    }
+    foreach ($waitArguments as $argument) {
+        $command[] = $argument;
+    }
+    return $command;
+}
+
+/**
  * Build and echo a compose command for multiple stacks.
  *
  * @param string $action The compose action (up, down, update)

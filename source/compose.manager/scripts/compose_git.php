@@ -349,33 +349,6 @@ function compose_git_wait_arguments(array $waitSettings, array $options): array
 }
 
 /**
- * compose.sh's -g (profile) arguments for a deploy.
- *
- * The --profile options when given. Otherwise the profiles the stack is
- * running with, else its default profiles, as the web UI's Update does: a
- * deploy without profiles would leave the running profile services on the
- * old commit, and compose.sh would forget the stack's running profiles.
- *
- * @param array<string, string|true|string[]> $options
- * @return string[]
- */
-function compose_git_profile_arguments(StackInfo $stack, array $options): array
-{
-    $profiles = (array) ($options['profile'] ?? []);
-    if ($profiles === []) {
-        $profiles = $stack->getRunningProfiles();
-    }
-    if ($profiles === []) {
-        $profiles = $stack->getDefaultProfiles();
-    }
-    $args = [];
-    foreach ($profiles as $profile) {
-        $args[] = '-g' . $profile;
-    }
-    return $args;
-}
-
-/**
  * The environment compose.sh gets for a git deploy: what DockerCommand gives the deploy's
  * checks, plus the documented lock settings. Nothing else of the caller's shell is passed on.
  *
@@ -427,26 +400,14 @@ function compose_git_deploy(GitStackManager $manager, string $folder, array $opt
         return COMPOSE_GIT_EXIT_FAILED;
     }
 
-    $command = [__DIR__ . '/compose.sh', '-cgitdeploy', '-p' . $stack->projectName, '-s' . $stack->path];
-    $credentialId = trim((string) ($stack->getCredentialId() ?? ''));
-    if ($credentialId !== '') {
-        $command[] = '--credential-id';
-        $command[] = $credentialId;
-    }
-    foreach (compose_git_profile_arguments($stack, $options) as $arg) {
-        $command[] = $arg;
-    }
-    if (isset($options['commit'])) {
-        $command[] = '--git-commit';
-        $command[] = (string) $options['commit'];
-    }
-    if (isset($options['save-local-changes'])) {
-        $command[] = '--save-local-changes';
-    }
     $waitSettings = resolveStackWaitSettings($stack->path, parse_plugin_cfg('compose.manager'));
-    foreach (compose_git_wait_arguments($waitSettings, $options) as $arg) {
-        $command[] = $arg;
-    }
+    $command = buildGitDeployCommand(
+        $stack,
+        isset($options['commit']) ? (string) $options['commit'] : null,
+        isset($options['save-local-changes']),
+        gitDeployProfiles($stack, array_map('strval', (array) ($options['profile'] ?? []))),
+        compose_git_wait_arguments($waitSettings, $options)
+    );
 
     // compose.sh runs with the same environment and folder as the deploy's checks, so a
     // variable exported in the caller's shell (or the folder it was run from, ${PWD})
