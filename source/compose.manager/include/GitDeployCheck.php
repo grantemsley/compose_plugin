@@ -23,7 +23,8 @@ require_once '/usr/local/emhttp/plugins/compose.manager/include/DockerCommand.ph
  *    exist, which catches a typo of /mnt itself. Missing folders below those
  *    are left for Docker to create, as are paths inside the clone;
  *  - config and secret files, and local build folders, that do not exist;
- *  - container names and published ports already taken by another container.
+ *  - container names and published ports already taken by another container,
+ *    and a port published by two services of the stack.
  * When Docker cannot answer a question (the daemon is not responding, a
  * command times out), that is a problem too: "up" must not be the one to find
  * out, after it has changed some of the containers.
@@ -361,13 +362,31 @@ final class GitDeployCheck
             return [];
         }
 
+        // Two services of this stack asking for the same port clash with each
+        // other, not with a running container: "up" would start one of them
+        // and fail on the other.
+        $problems = [];
+        foreach ($wanted as $i => $want) {
+            foreach (array_slice($wanted, $i + 1) as $other) {
+                if ($other['port'] !== $want['port'] || $other['protocol'] !== $want['protocol']) {
+                    continue;
+                }
+                if (!self::addressesOverlap($want['ip'], $other['ip'])) {
+                    continue;
+                }
+                $problems[] = $other['service'] === $want['service']
+                    ? "Service '{$want['service']}' publishes port {$want['port']}/{$want['protocol']} twice."
+                    : "Services '{$want['service']}' and '{$other['service']}' both publish port {$want['port']}/{$want['protocol']}.";
+            }
+        }
+
         try {
             $heldByOthers = $this->portsHeldByOtherContainers();
         } catch (RuntimeException $error) {
-            return ['Could not check whether the published ports are free: ' . $error->getMessage()];
+            $problems[] = 'Could not check whether the published ports are free: ' . $error->getMessage();
+            return $problems;
         }
 
-        $problems = [];
         foreach ($wanted as $want) {
             foreach ($heldByOthers as $held) {
                 if ($held['port'] !== $want['port'] || $held['protocol'] !== $want['protocol']) {

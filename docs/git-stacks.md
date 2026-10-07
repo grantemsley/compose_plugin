@@ -331,7 +331,9 @@ without changing anything when:
 - a bind-mount source is missing in a way described in
   [Folders and files](#folders-and-files-your-containers-need), or a config or secret file, or a local build
   folder, is missing;
-- a `container_name` or published port is already taken by another stack or container.
+- a `container_name` or published port is already taken by another stack or container, or two services of
+  the stack publish the same port;
+- Docker could not be asked whether a name or port is free (the daemon is not answering, say).
 
 The deploy log says which `.env` was used.
 
