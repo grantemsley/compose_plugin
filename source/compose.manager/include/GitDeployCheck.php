@@ -24,6 +24,9 @@ require_once '/usr/local/emhttp/plugins/compose.manager/include/DockerCommand.ph
  *    are left for Docker to create, as are paths inside the clone;
  *  - config and secret files, and local build folders, that do not exist;
  *  - container names and published ports already taken by another container.
+ * When Docker cannot answer a question (the daemon is not responding, a
+ * command times out), that is a problem too: "up" must not be the one to find
+ * out, after it has changed some of the containers.
  */
 final class GitDeployCheck
 {
@@ -293,12 +296,21 @@ final class GitDeployCheck
             $name = (string) $service['container_name'];
             $inspect = DockerCommand::run(['container', 'inspect', '--', $name], null, 30);
             if (!$inspect->succeeded()) {
+                if (self::failedOnlyOnMissingContainers($inspect)) {
+                    // Nothing has that name.
+                    continue;
+                }
+                $problems[] = "Could not check whether the container name '$name' is free: " . self::failureText($inspect);
                 continue;
             }
             $containers = json_decode($inspect->stdout, true);
+            if (!is_array($containers)) {
+                $problems[] = "Could not check whether the container name '$name' is free: docker inspect did not print valid JSON.";
+                continue;
+            }
             // docker inspect also matches the start of a container id, so a short
             // hex-looking name such as "cafe" can find an unrelated container.
-            $foundName = is_array($containers) ? ltrim((string) ($containers[0]['Name'] ?? ''), '/') : '';
+            $foundName = ltrim((string) ($containers[0]['Name'] ?? ''), '/');
             if ($foundName !== $name) {
                 continue;
             }
@@ -349,7 +361,11 @@ final class GitDeployCheck
             return [];
         }
 
-        $heldByOthers = $this->portsHeldByOtherContainers();
+        try {
+            $heldByOthers = $this->portsHeldByOtherContainers();
+        } catch (RuntimeException $error) {
+            return ['Could not check whether the published ports are free: ' . $error->getMessage()];
+        }
 
         $problems = [];
         foreach ($wanted as $want) {
@@ -371,19 +387,28 @@ final class GitDeployCheck
      * Ports published by running containers of other stacks, or by plain containers.
      *
      * @return list<array{ip: string, port: int, protocol: string, owner: string}>
+     * @throws RuntimeException when Docker could not say
      */
     private function portsHeldByOtherContainers(): array
     {
         $result = [];
         $ids = DockerCommand::run(['ps', '-q'], null, 30);
+        if (!$ids->succeeded()) {
+            throw new RuntimeException('docker ps failed: ' . self::failureText($ids));
+        }
         $idList = array_values(array_filter(explode("\n", trim($ids->stdout))));
-        if (!$ids->succeeded() || $idList === []) {
+        if ($idList === []) {
             return $result;
         }
         $inspect = DockerCommand::run(array_merge(['container', 'inspect', '--'], $idList), null, 60);
+        // A container removed between the two commands makes inspect fail,
+        // but it still prints the others, and the removed one holds no port.
+        if (!$inspect->succeeded() && !self::failedOnlyOnMissingContainers($inspect)) {
+            throw new RuntimeException('docker inspect failed: ' . self::failureText($inspect));
+        }
         $containers = json_decode($inspect->stdout, true);
         if (!is_array($containers)) {
-            return $result;
+            throw new RuntimeException('docker inspect did not print valid JSON.');
         }
 
         foreach ($containers as $container) {
@@ -450,6 +475,35 @@ final class GitDeployCheck
             $this->externalNetworkDrivers[$name] = $inspect->succeeded() ? trim($inspect->stdout) : '';
         }
         return $this->externalNetworkDrivers[$name];
+    }
+
+    /**
+     * Whether a failed "docker container inspect" failed only because a
+     * container it was asked about does not exist. Any other failure (the
+     * daemon not answering, a timeout) means the question was not answered.
+     */
+    private static function failedOnlyOnMissingContainers(ProcessResult $inspect): bool
+    {
+        if ($inspect->timedOut) {
+            return false;
+        }
+        $lines = array_filter(array_map('trim', explode("\n", $inspect->stderr)), static fn(string $line): bool => $line !== '');
+        if ($lines === []) {
+            return false;
+        }
+        foreach ($lines as $line) {
+            // "Error response from daemon: No such container: x" (docker container inspect),
+            // "error: no such object: x" (docker inspect).
+            if (stripos($line, 'no such container') === false && stripos($line, 'no such object') === false) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static function failureText(ProcessResult $result): string
+    {
+        return trim($result->stderr) !== '' ? trim($result->stderr) : $result->errorSummary();
     }
 
     private static function addressesOverlap(string $a, string $b): bool
