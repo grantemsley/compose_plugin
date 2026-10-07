@@ -335,10 +335,12 @@ final class GitStackManager
             $deployed = $state->deployedCommit;
             if ($deployed !== null && $deployed !== $head) {
                 if (!$clone->hasCommit($deployed)) {
-                    // The branch was rewritten and no longer holds it.
+                    // The branch was rewritten and no longer holds it. The
+                    // deployed commit stays recorded: the next deploy finds it
+                    // gone from the clone and recreates every container, since
+                    // what changed cannot be measured (see GitDeploy::upArguments).
                     ($this->say)('The deployed commit ' . substr($deployed, 0, 12) . ' is not on the branch any more, so the clone was left at '
-                        . substr($head, 0, 12) . '. Deploy to bring the stack up to date.');
-                    (new GitStackState(null, $state->failedCommit))->save($stack->path);
+                        . substr($head, 0, 12) . '. Deploy to bring the stack up to date; that deploy recreates every container.');
                 } else {
                     try {
                         $clone->checkOut($deployed);
