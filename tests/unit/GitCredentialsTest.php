@@ -39,6 +39,30 @@ final class GitCredentialsTest extends TestCase
         $this->assertFileDoesNotExist($file);
     }
 
+    public function testACredentialFolderThatIsASymlinkIsRefused(): void
+    {
+        // The folder is in /var/tmp, where anyone can create things first. (A folder another
+        // user owns is refused too, but a test that does not run as root cannot make one.)
+        $directory = rtrim(COMPOSE_GIT_CREDENTIAL_DIR, '/');
+        $target = sys_get_temp_dir() . '/compose_git_credentials_elsewhere';
+        @mkdir($target, 0755);
+        $moved = $directory . '.real';
+        @rename($directory, $moved);
+        symlink($target, $directory);
+        try {
+            GitCredentials::writeRunFile('secret');
+            $this->fail('A credential was written through a symlinked folder.');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('is not a plain folder', $error->getMessage());
+        } finally {
+            unlink($directory);
+            @rename($moved, $directory);
+        }
+        $this->assertSame([], glob($target . '/*') ?: []);
+        $this->assertSame(0755, fileperms($target) & 0777);
+        rmdir($target);
+    }
+
     public function testGitGetsTheTokenForTheStacksRepositoryOnly(): void
     {
         $file = GitCredentials::writeFile($this->gitCredential('github.com'), 'https://github.com/owner/repo.git');

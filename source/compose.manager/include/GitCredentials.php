@@ -73,8 +73,13 @@ final class GitCredentials
         self::removeStaleFiles($directory);
 
         $file = $directory . '/' . bin2hex(random_bytes(16));
-        // Created empty with root-only permissions first, so the secret is never in a file others can read.
-        $handle = @fopen($file, 'x');
+        // Created with root-only permissions (the umask), so the secret is never in a file others can read.
+        $oldUmask = umask(0077);
+        try {
+            $handle = @fopen($file, 'x');
+        } finally {
+            umask($oldUmask);
+        }
         if ($handle === false) {
             throw new RuntimeException('Could not create a credential file for git.');
         }
@@ -114,13 +119,28 @@ final class GitCredentials
         @unlink($target);
     }
 
+    /**
+     * The folder for run files, made if missing. It is in /var/tmp, where anyone can
+     * create things, so a folder someone else made first (or a symlink there) is refused:
+     * its owner could read or swap the files root writes into it.
+     */
     private static function prepareDirectory(): string
     {
         $directory = rtrim(COMPOSE_GIT_CREDENTIAL_DIR, '/');
-        if (!is_dir($directory) && !@mkdir($directory, 0700, true) && !is_dir($directory)) {
+        if (!file_exists($directory) && @readlink($directory) === false && !@mkdir($directory, 0700, true) && !is_dir($directory)) {
             throw new RuntimeException('Could not create the folder for git credential files.');
         }
-        chmod($directory, 0700);
+        clearstatcache(true, $directory);
+        if (@readlink($directory) !== false || !is_dir($directory)) {
+            throw new RuntimeException("$directory is not a plain folder, so no credential was written there. Remove it.");
+        }
+        // Compared with whoever runs this (root on Unraid; the tests run as another user).
+        if (@fileowner($directory) !== (function_exists('posix_geteuid') ? posix_geteuid() : 0)) {
+            throw new RuntimeException("$directory belongs to another user, so no credential was written there. Remove it.");
+        }
+        if (!chmod($directory, 0700)) {
+            throw new RuntimeException("Could not make $directory private, so no credential was written there.");
+        }
         return $directory;
     }
 
