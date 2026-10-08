@@ -228,6 +228,27 @@ final class GitDeployCheckTest extends TestCase
         $this->assertStringContainsString('RAM', $this->check()[0]);
     }
 
+    public function testBindSourceOnARamMountInsideAPoolIsTheUsersChoice(): void
+    {
+        // A tmpfs in appdata, such as a RAM transcode folder, is meant to be in RAM. A missing
+        // folder in it (empty after every reboot) is left for Docker to create.
+        mkdir($this->mnt . '/cache/appdata/ram/transcode', 0755, true);
+        file_put_contents(
+            COMPOSE_MOUNTS_FILE,
+            "rootfs {$this->mnt} rootfs rw 0 0\nshfs {$this->mnt}/user fuse.shfs rw 0 0\n"
+            . "/dev/nvme0n1p1 {$this->mnt}/cache xfs rw 0 0\ntmpfs {$this->mnt}/cache/appdata/ram tmpfs rw 0 0\n"
+        );
+        $missing = $this->mnt . '/cache/appdata/ram/missing';
+        $this->docker->setConfig($this->config(['image' => 'busybox', 'volumes' => [
+            ['type' => 'bind', 'source' => $this->mnt . '/cache/appdata/ram/transcode', 'target' => '/transcode'],
+            ['type' => 'bind', 'source' => $missing, 'target' => '/cache'],
+        ]]));
+        $check = new GitDeployCheck('whoami', ['-f', $this->clone . '/whoami/compose.yaml'], $this->clone, $this->clone . '/whoami', null);
+
+        $this->assertSame([], $check->run());
+        $this->assertSame([$missing], $check->foldersDockerWillCreate());
+    }
+
     public function testExistingBindSourceAndMissingSourceInsideTheCloneAreFine(): void
     {
         $this->docker->setConfig($this->config(['image' => 'busybox', 'volumes' => [

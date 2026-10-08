@@ -254,6 +254,15 @@ final class GitDeployCheck
         }
 
         if (GitPathGuard::findMountFor($source) === null) {
+            // A tmpfs the user mounted inside a disk or pool (a RAM transcode folder, say) is
+            // meant to be in RAM. A missing folder in it, empty after every reboot, is left for
+            // Docker to create, as below an existing share.
+            if (GitPathGuard::isOnRamMountInsideADisk($source)) {
+                if (!file_exists($source)) {
+                    $this->foldersDockerWillCreate[] = $source;
+                }
+                return null;
+            }
             return "the bind mount $source is not on a mounted disk, pool or share. "
                 . 'Docker would create it in RAM. Check the path for a typo.';
         }
