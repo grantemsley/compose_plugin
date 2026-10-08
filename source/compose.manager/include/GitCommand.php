@@ -62,7 +62,13 @@ final class GitCommand
         array $extraEnvironment = [],
         array $trustedRepositories = []
     ): ProcessResult {
-        $homeDirectory = self::prepareHomeDirectory();
+        $homeDirectory = COMPOSE_GIT_HOME_DIR;
+        $homeProblem = self::homeDirectoryProblem($homeDirectory);
+        if ($homeProblem !== null) {
+            // 128, git's own code for "could not run": some callers read exit code 1 as an
+            // answer (merge-base --is-ancestor says "no" with 1).
+            return new ProcessResult(128, '', $homeProblem, false);
+        }
 
         $command = ['git'];
         foreach (self::FORCED_CONFIG as $setting) {
@@ -142,14 +148,29 @@ final class GitCommand
     }
 
     /**
-     * The empty folder git runs with as HOME, so no personal config is read.
+     * Make the folder git runs with as HOME, so no personal config is read, and
+     * say what is wrong with it, if anything.
+     *
+     * It is in /var/tmp, where anyone can create things, and the global config
+     * git reads is kept in it: a folder someone else made first (or a symlink
+     * there) would let its owner give git a config of their own. So only a plain
+     * folder owned by whoever runs this (root on Unraid) is used.
      */
-    private static function prepareHomeDirectory(): string
+    private static function homeDirectoryProblem(string $home): ?string
     {
-        $home = COMPOSE_GIT_HOME_DIR;
-        if (!is_dir($home)) {
-            @mkdir($home, 0700, true);
+        if (!file_exists($home) && @readlink($home) === false && !@mkdir($home, 0700, true) && !is_dir($home)) {
+            return "Could not create $home for git.";
         }
-        return $home;
+        clearstatcache(true, $home);
+        if (@readlink($home) !== false || !is_dir($home)) {
+            return "$home is not a plain folder, so git was not run. Remove it.";
+        }
+        if (@fileowner($home) !== (function_exists('posix_geteuid') ? posix_geteuid() : 0)) {
+            return "$home belongs to another user, so git was not run. Remove it.";
+        }
+        if (!chmod($home, 0700)) {
+            return "Could not make $home private, so git was not run.";
+        }
+        return null;
     }
 }

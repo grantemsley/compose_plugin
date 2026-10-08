@@ -39,6 +39,30 @@ final class GitCommandTest extends TestCase
         $this->assertStringStartsWith('git version', $result->stdout);
     }
 
+    public function testAGitHomeThatIsASymlinkIsRefused(): void
+    {
+        // The home folder is in /var/tmp, where anyone can create things first, and holds the
+        // global config git reads. (One another user owns is refused too, but a test that does
+        // not run as root cannot make one.)
+        $home = rtrim(COMPOSE_GIT_HOME_DIR, '/');
+        $target = sys_get_temp_dir() . '/compose_git_home_elsewhere';
+        @mkdir($target, 0755);
+        $moved = $home . '.real';
+        @rename($home, $moved);
+        symlink($target, $home);
+        try {
+            $result = GitCommand::run(['--version']);
+        } finally {
+            unlink($home);
+            @rename($moved, $home);
+        }
+
+        $this->assertFalse($result->succeeded());
+        $this->assertStringContainsString('is not a plain folder', $result->errorSummary());
+        $this->assertSame(0755, fileperms($target) & 0777);
+        rmdir($target);
+    }
+
     public function testFailureReportsTheLastErrorLine(): void
     {
         $result = GitCommand::run(['rev-parse', '--verify', 'no-such-ref'], $this->makeRepo());
