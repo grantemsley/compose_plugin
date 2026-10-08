@@ -281,6 +281,38 @@ final class GitStackSettingsTest extends TestCase
         $this->assertNull($loaded->withCredentialId(null)->credentialId);
     }
 
+    public function testSettingsNamingADeletedCredentialAreNotSaved(): void
+    {
+        // The race itself (a delete on the Credentials tab while compose-git reaches the
+        // repository) cannot be driven through add or setCredential here: the tests have no
+        // reachable repository that takes a credential. This is the save those three use.
+        @unlink(COMPOSE_CREDENTIAL_VAULT_FILE);
+        @unlink(COMPOSE_CREDENTIAL_KEY_FILE);
+
+        try {
+            $this->makeSettings()->withCredentialId(str_repeat('ab', 16))->saveCheckingCredential($this->stackDir);
+            $this->fail('Settings naming a deleted credential were saved.');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('was deleted while the repository was being reached', $error->getMessage());
+        }
+        $this->assertFileDoesNotExist($this->stackDir . '/' . GitStackSettings::FILE_NAME);
+    }
+
+    public function testSettingsNamingAnExistingCredentialOrNoneAreSaved(): void
+    {
+        @unlink(COMPOSE_CREDENTIAL_VAULT_FILE);
+        @unlink(COMPOSE_CREDENTIAL_KEY_FILE);
+        $credential = (new \CredentialVault())->saveCredential(
+            ['name' => 'Bot', 'provider' => 'git', 'registry' => 'github.com', 'username' => 'bot', 'secret' => 't']
+        );
+
+        $this->makeSettings()->withCredentialId($credential['id'])->saveCheckingCredential($this->stackDir);
+        $this->assertSame($credential['id'], GitStackSettings::load($this->stackDir)?->credentialId);
+
+        $this->makeSettings()->saveCheckingCredential($this->stackDir);
+        $this->assertNull(GitStackSettings::load($this->stackDir)?->credentialId);
+    }
+
     public function testRepositoryOnThisServerTakesNoCredential(): void
     {
         $settings = GitStackSettings::createNew(

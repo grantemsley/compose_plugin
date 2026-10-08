@@ -67,7 +67,7 @@ final class GitStackManager
         try {
             $stack = StackInfo::createNew($this->composeRoot, $stackName, $description, $settings->composeFileInClone());
             $stackDir = $this->composeRoot . '/' . $stack->projectFolder;
-            $settings->save($stackDir);
+            $settings->saveCheckingCredential($stackDir);
             (new GitStackState(null, null))->save($stackDir);
         } catch (Throwable $error) {
             // Nothing here deletes files, so name what was left: a retry makes a new clone,
@@ -170,7 +170,7 @@ final class GitStackManager
                     ($this->say)("Copied $oldEnv to $stackEnv.");
                 }
 
-                $settings->save($stackDir);
+                $settings->saveCheckingCredential($stackDir);
                 (new GitStackState(null, null))->save($stackDir);
 
                 // The managed override's name follows the compose file's name, so
@@ -313,7 +313,7 @@ final class GitStackManager
             $changed = $settings->withCredentialId($credentialId);
             ($this->say)("Checking that {$changed->url} can be reached with the new setting...");
             (new GitClone($changed))->remoteBranchCommit();
-            $changed->save($stack->path);
+            $changed->saveCheckingCredential($stack->path);
         });
         $this->logCredentialChange($folder, $credentialId);
         ($this->say)($credentialId === null

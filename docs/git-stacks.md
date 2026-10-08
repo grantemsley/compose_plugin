@@ -249,6 +249,8 @@ compose-git add myapp --url git@github.com:you/stacks.git --path myapp/compose.y
 The first time, the clone fails because the repository does not know the key yet. The command prints the
 public key: add it to the repository as a **read-only deploy key** (on GitHub: the repository's Settings >
 Deploy keys), then run the same command again. `compose-git deploy-key myapp` shows the key again later.
+Until then the key is listed on the Credentials tab as used by no stack: leave it there, or the second run
+makes a new key, and the one you added to the repository no longer works.
 
 When the stack is added, the server's ssh host keys are pinned and their fingerprints printed. Compare them with
 the ones your git host publishes (GitHub, GitLab and Codeberg list theirs). Every later connection must match

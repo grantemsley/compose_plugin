@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once '/usr/local/emhttp/plugins/compose.manager/include/Defines.php';
 require_once '/usr/local/emhttp/plugins/compose.manager/include/GitPathGuard.php';
 require_once '/usr/local/emhttp/plugins/compose.manager/include/GitCommand.php';
+require_once '/usr/local/emhttp/plugins/compose.manager/include/CredentialVault.php';
 
 /**
  * The git settings of one git-backed stack, stored as git.json in the stack folder.
@@ -222,6 +223,27 @@ final class GitStackSettings
         } catch (InvalidArgumentException $error) {
             throw new RuntimeException("$file: " . $error->getMessage(), 0, $error);
         }
+    }
+
+    /**
+     * Write git.json when it gives the stack a credential (a new stack, or a changed
+     * credential): check the credential still exists and write, both under the lock
+     * that deleting a credential takes. The repository was reached before this, which
+     * can take a while, and the credential may have been deleted meanwhile; it was not
+     * in use yet, so the delete was allowed. The lock is not held across the network.
+     *
+     * @throws RuntimeException if the credential is gone, or git.json cannot be written
+     */
+    public function saveCheckingCredential(string $stackDir): void
+    {
+        CredentialVault::withCredentialAssignmentLock(function () use ($stackDir): void {
+            if ($this->credentialId !== null && !(new CredentialVault())->hasCredential($this->credentialId)) {
+                throw new RuntimeException(
+                    'The credential was deleted while the repository was being reached, so the stack settings were not saved.'
+                );
+            }
+            $this->save($stackDir);
+        });
     }
 
     /**
