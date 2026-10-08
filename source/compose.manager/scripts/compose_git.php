@@ -330,6 +330,43 @@ function compose_git_profile_arguments(StackInfo $stack, array $options): array
 }
 
 /**
+ * The environment compose.sh gets for a git deploy: what DockerCommand gives the deploy's
+ * checks, plus the documented lock settings. Nothing else of the caller's shell is passed on.
+ *
+ * @param array<string, string> $current The caller's environment
+ * @return array<string, string>
+ */
+function compose_git_deploy_environment(array $current): array
+{
+    $environment = [
+        'PATH' => '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+        'HOME' => $current['HOME'] ?? '/root',
+        'LC_ALL' => 'C',
+    ];
+    // TERM only changes how Compose draws its progress.
+    foreach (['DOCKER_CONFIG', 'COMPOSE_LOCK_TIMEOUT', 'COMPOSE_LOCK_DIR', 'TERM'] as $name) {
+        if (isset($current[$name]) && $current[$name] !== '') {
+            $environment[$name] = $current[$name];
+        }
+    }
+    return $environment;
+}
+
+/**
+ * The folder compose.sh runs in for a git deploy: the compose file's folder, where the
+ * deploy's checks run too.
+ */
+function compose_git_deploy_directory(?string $composeFilePath): string
+{
+    $composeFile = $composeFilePath === null ? false : realpath($composeFilePath);
+    if ($composeFile === false) {
+        // The compose file is checked again by the deploy, which stops before up if it is missing.
+        return '/';
+    }
+    return dirname($composeFile);
+}
+
+/**
  * Deploy through compose.sh, so the deploy takes the same lock, credentials
  * and logging as every other stack action. Its output goes straight to ours.
  *
@@ -365,7 +402,16 @@ function compose_git_deploy(GitStackManager $manager, string $folder, array $opt
         $command[] = $arg;
     }
 
-    $process = proc_open($command, [0 => ['file', '/dev/null', 'r'], 1 => STDOUT, 2 => STDERR], $pipes);
+    // compose.sh runs with the same environment and folder as the deploy's checks, so a
+    // variable exported in the caller's shell (or the folder it was run from, ${PWD})
+    // cannot make up deploy something other than what was checked.
+    $process = proc_open(
+        $command,
+        [0 => ['file', '/dev/null', 'r'], 1 => STDOUT, 2 => STDERR],
+        $pipes,
+        compose_git_deploy_directory($stack->composeFilePath),
+        compose_git_deploy_environment(getenv())
+    );
     if (!is_resource($process)) {
         fwrite($errors, "Could not start compose.sh.\n");
         return COMPOSE_GIT_EXIT_FAILED;

@@ -484,6 +484,45 @@ final class GitStackManagerTest extends TestCase
         $this->assertSame(['--wait'], compose_git_wait_arguments(['enabled' => true, 'timeout' => '5m'], []));
     }
 
+    public function testDeployRunsComposeWithTheSameEnvironmentAsTheChecks(): void
+    {
+        // Exported variables win over the stack's .env in compose, and PWD is the caller's
+        // folder: neither may reach the deploy, since the checks never saw them.
+        $callersShell = [
+            'PATH' => '/root/bin:/usr/bin',
+            'HOME' => '/root',
+            'PWD' => '/root/somewhere',
+            'PORT' => '8080',
+            'DOCKER_HOST' => 'tcp://elsewhere:2375',
+            'COMPOSE_PROFILES' => 'debug',
+            'COMPOSE_LOCK_TIMEOUT' => '5',
+            'DOCKER_CONFIG' => '/tmp/registry-login',
+        ];
+
+        $this->assertSame([
+            'PATH' => '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+            'HOME' => '/root',
+            'LC_ALL' => 'C',
+            'DOCKER_CONFIG' => '/tmp/registry-login',
+            'COMPOSE_LOCK_TIMEOUT' => '5',
+        ], compose_git_deploy_environment($callersShell));
+    }
+
+    public function testDeployRunsComposeInTheComposeFilesFolder(): void
+    {
+        $folder = $this->mnt . '/user/appdata/git/whoami/whoami';
+        mkdir($folder, 0755, true);
+        file_put_contents($folder . '/compose.yaml', "services: {}\n");
+        // A compose file that is a symlink: the folder of the file it leads to, as the checks use.
+        mkdir($this->mnt . '/user/appdata/git/whoami/linked', 0755, true);
+        symlink($folder . '/compose.yaml', $this->mnt . '/user/appdata/git/whoami/linked/compose.yaml');
+
+        $this->assertSame(realpath($folder), compose_git_deploy_directory($folder . '/compose.yaml'));
+        $this->assertSame(realpath($folder), compose_git_deploy_directory($this->mnt . '/user/appdata/git/whoami/linked/compose.yaml'));
+        $this->assertSame('/', compose_git_deploy_directory($folder . '/missing.yaml'));
+        $this->assertSame('/', compose_git_deploy_directory(null));
+    }
+
     public function testDeployRefusesWaitAndNoWaitTogether(): void
     {
         $this->expectException(\ComposeGitUsageError::class);

@@ -231,6 +231,9 @@ With no custom env file set for the stack, a git stack uses, in order:
 Only one of the two is used; they are not merged. Editing a `.env` that came from the repository changes the
 clone, so the next deploy stops with "local changes": make the change in the repository instead.
 
+Variables exported in the shell you run `compose-git deploy` from are not passed on, and `${PWD}` in the compose
+file is the compose file's folder in the clone: a deploy uses only what its checks saw. Put values in the `.env`.
+
 If the `.env` sets `COMPOSE_FILE` with relative paths, they are relative to the folder the `.env` is in. For
 the stack folder's `.env` that is the stack folder, not the clone, so use paths relative to the clone only in
 a `.env` committed next to the compose file.

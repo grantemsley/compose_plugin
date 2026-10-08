@@ -28,6 +28,9 @@ final class DockerCommand
             $environment['DOCKER_CONFIG'] = $dockerConfig;
         }
 
+        // As a shell would set it: a compose file can use ${PWD}, and compose.sh's runs see it too.
+        $environment['PWD'] = $workingDirectory ?? '/';
+
         return ProcessRunner::run(
             array_merge([COMPOSE_DOCKER_BIN], $args),
             $workingDirectory ?? '/',
