@@ -644,9 +644,18 @@ case $command in
     # Optionally create missing `external: true` networks, as up and update do
     # (Settings > Compose > Create Missing External Networks). This is done
     # here, after every check, pull and build has passed, so a deploy that
-    # stops earlier creates nothing.
+    # stops earlier creates nothing. A network that cannot be created would make
+    # up fail, so stop here, while the previous commit can still be put back.
     if plugin_setting_enabled CREATE_MISSING_EXTERNAL_NETWORKS; then
-      create_missing_external_networks "${git_compose[@]}" -p "$name"
+      if ! create_missing_external_networks "${git_compose[@]}" -p "$name"; then
+        save_result "failed" 1 "gitdeploy"
+        log_msg "ERROR" "A missing external network could not be created for git stack $name"
+        echo ""
+        echo "✗ Stack $name was not deployed: a missing external network could not be created. No container was changed."
+        echo "Any network created above is left in place."
+        put_back_previous_commit
+        exit 1
+      fi
     fi
 
     # 4. Start the stack at the new commit.

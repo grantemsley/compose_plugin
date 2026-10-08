@@ -26,8 +26,9 @@ test_setup() {
     export PREPARE_OUTPUT="0000000000000000000000000000000000000001"
     # The plugin's settings: none, so Create Missing External Networks is off unless a test turns it on.
     export COMPOSE_MANAGER_CFG_FILE="$TEST_TEMP_DIR/compose.manager.cfg"
-    # What "docker compose config --format json" prints, and whether "docker network inspect" finds the network.
-    export CONFIG_JSON='{}' NETWORK_INSPECT_EXIT=0
+    # What "docker compose config --format json" prints, whether "docker network inspect" finds the network,
+    # and whether "docker network create" works.
+    export CONFIG_JSON='{}' NETWORK_INSPECT_EXIT=0 NETWORK_CREATE_EXIT=0
 
     STACK="$TEST_TEMP_DIR/whoami"
     mkdir -p "$STACK" "$TEST_TEMP_DIR/bin"
@@ -84,6 +85,7 @@ for arg in "$@"; do
     up) exit "$UP_EXIT" ;;
     config) printf '%s' "$CONFIG_JSON"; exit 0 ;;
     inspect) exit "$NETWORK_INSPECT_EXIT" ;;
+    create) exit "$NETWORK_CREATE_EXIT" ;;
   esac
 done
 exit 0
@@ -278,6 +280,18 @@ calls_matching() {
     up_line=$(grep -n ' up ' "$CALLS" | cut -d: -f1)
     [ "$build_line" -lt "$create_line" ]
     [ "$create_line" -lt "$up_line" ]
+}
+
+@test "gitdeploy puts the previous commit back when a missing network cannot be created, and never runs up" {
+    echo 'CREATE_MISSING_EXTERNAL_NETWORKS="true"' > "$COMPOSE_MANAGER_CFG_FILE"
+    export CONFIG_JSON='{"networks":{"proxy":{"name":"zz-proxy","external":true}}}' NETWORK_INSPECT_EXIT=1
+    export NETWORK_CREATE_EXIT=1
+    run_gitdeploy
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"a missing external network could not be created"* ]]
+    grep -q "git_stack restore $STACK 0000000000000000000000000000000000000001" "$CALLS"
+    [ "$(calls_matching ' up ')" -eq 0 ]
+    [ "$(calls_matching 'finish')" -eq 0 ]
 }
 
 @test "gitdeploy creates no network when the setting is off" {
