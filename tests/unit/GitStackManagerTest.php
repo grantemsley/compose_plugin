@@ -106,29 +106,30 @@ final class GitStackManagerTest extends TestCase
         $this->assertDirectoryDoesNotExist($this->composeRoot . '/whoami');
     }
 
-    public function testAddThatFailsAfterMakingTheStackFolderSaysToRemoveIt(): void
+    public function testAddDoesNothingWhileTheArrayIsStopped(): void
     {
-        // A projects folder on the array's root file system (RAM): the stack
-        // folder is made, then saving its git settings there is refused.
+        file_put_contents(COMPOSE_UNRAID_VAR_INI, "mdState=\"STOPPED\"\n");
+        $this->expectException(RuntimeException::class);
+        $this->manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+    }
+
+    public function testAddToAProjectsFolderWhoseMountIsGoneWritesNothing(): void
+    {
+        // A projects folder that is not on a mount (a pool that did not mount, while the
+        // folder is still there, in RAM): neither the clone nor the stack folder may be made.
+        // This used to make the stack folder first and fail only when saving its settings.
         $composeRoot = $this->mnt . '/projects';
         mkdir($composeRoot);
         $manager = new GitStackManager($composeRoot);
 
         try {
             $manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
-            $this->fail('Added a stack whose settings could not be saved');
+            $this->fail('The stack was added to a projects folder that is not on a mounted disk.');
         } catch (RuntimeException $error) {
-            $this->assertStringContainsString("the stack folder $composeRoot/whoami was only partly made", $error->getMessage());
-            $this->assertStringContainsString('Remove both folders', $error->getMessage());
+            $this->assertStringContainsString('not on a mounted disk', $error->getMessage());
         }
-        $this->assertDirectoryExists($composeRoot . '/whoami');
-    }
-
-    public function testAddDoesNothingWhileTheArrayIsStopped(): void
-    {
-        file_put_contents(COMPOSE_UNRAID_VAR_INI, "mdState=\"STOPPED\"\n");
-        $this->expectException(RuntimeException::class);
-        $this->manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+        $this->assertDirectoryDoesNotExist($composeRoot . '/whoami');
+        $this->assertSame([], glob($this->clonesRoot . '/*') ?: []);
     }
 
     // ----- convert -----

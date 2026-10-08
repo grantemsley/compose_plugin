@@ -57,6 +57,8 @@ final class GitStackManager
         if (file_exists($stackDir) || @readlink($stackDir) !== false) {
             throw new RuntimeException("A stack folder named '$folder' already exists. Choose another name, or use convert for that stack.");
         }
+        // Before the clone, so a projects folder whose mount is gone leaves nothing behind.
+        $this->assertSafeToWriteStackFolder($stackDir);
 
         $settings = GitStackSettings::createNew($url, $branch, $composePath, $clonesRoot ?? COMPOSE_GIT_DEFAULT_CLONES_ROOT, $folder);
         ($this->say)("Cloning $url ($branch) into {$settings->cloneDir}...");
