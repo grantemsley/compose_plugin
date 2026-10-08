@@ -437,6 +437,18 @@ case $command in
     echo "Pulling latest images..."
     "${compose_base[@]}" -p "$name" pull "${pull_args[@]}"
     pull_exit=$?
+
+    # Local-only images (build: + image:) can't be pulled; rebuild those from source instead.
+    if [ $pull_exit -ne 0 ] && [ "$build_on_update" != true ]; then
+      echo ""
+      echo "Pull failed; retrying without buildable services and rebuilding them from source..."
+      log_msg "WARNING" "Pull failed for $name, retrying with --ignore-buildable and --build"
+      "${compose_base[@]}" -p "$name" pull --ignore-buildable
+      pull_exit=$?
+      if [ $pull_exit -eq 0 ]; then
+        up_args+=("--build")
+      fi
+    fi
     
     if [ $pull_exit -ne 0 ]; then
       operation_exit_code=$pull_exit
