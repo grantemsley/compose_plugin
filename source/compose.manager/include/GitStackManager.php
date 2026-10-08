@@ -302,8 +302,11 @@ final class GitStackManager
         $this->assertArrayStarted();
         $stack = $this->stack($folder);
         $settings = $this->settings($stack);
-        if ($credentialId === null && $settings->isSsh()) {
-            throw new InvalidArgumentException("An ssh stack always uses its deploy key, so '$folder' cannot do without a credential.");
+        if ($settings->isSsh()) {
+            throw new InvalidArgumentException(
+                "An ssh stack always uses a deploy key of its own, so the credential of '$folder' cannot be changed. "
+                . 'compose-git deploy-key shows its public key.'
+            );
         }
 
         $this->withStackLock($stack, function () use ($stack, $settings, $credentialId): void {
@@ -327,7 +330,8 @@ final class GitStackManager
     {
         $gitCredentials = array_values(array_filter(
             (new CredentialVault())->listCredentials(),
-            static fn(array $credential): bool => in_array($credential['provider'] ?? '', ['git', 'git-ssh'], true)
+            // HTTPS tokens only: a deploy key belongs to the one stack it was made for.
+            static fn(array $credential): bool => ($credential['provider'] ?? '') === 'git'
         ));
         $matches = array_values(array_filter(
             $gitCredentials,
@@ -444,9 +448,12 @@ final class GitStackManager
         if ($address === null) {
             throw new InvalidArgumentException("The ssh repository address is not valid: $url");
         }
+        if ($credentialId !== null) {
+            throw new InvalidArgumentException('An ssh stack gets a deploy key of its own, so it cannot be given another credential.');
+        }
         // The host first: a mistyped host then fails before a deploy key is made for it.
         $knownHosts = GitSsh::scanHostKeys($address['host'], $address['port']);
-        $credentialId ??= $this->deployKeyFor($folder, $address);
+        $credentialId = $this->deployKeyFor($folder, $address);
         ($this->say)("Pinned the ssh host keys of {$address['host']}: " . implode(', ', GitSsh::fingerprints($knownHosts)));
         ($this->say)('Compare them with the fingerprints your git host publishes.');
         return $settings->withCredentialId($credentialId)->withSshKnownHosts($knownHosts);

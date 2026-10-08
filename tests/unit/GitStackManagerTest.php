@@ -316,6 +316,39 @@ final class GitStackManagerTest extends TestCase
         }
     }
 
+    public function testADeployKeyIsNotFoundAsAGitCredential(): void
+    {
+        // A deploy key belongs to the one stack it was made for: no other stack may pick it.
+        $vault = $this->emptyVault();
+        $token = $vault->saveCredential(['name' => 'Forgejo', 'provider' => 'git', 'registry' => 'git.example.com', 'username' => 'bot', 'secret' => 't1']);
+        $key = $vault->saveCredential(['name' => 'other deploy key', 'provider' => 'git-ssh', 'registry' => 'git.example.com', 'username' => 'git', 'secret' => 'k']);
+
+        foreach (['other deploy key', $key['id']] as $nameOrId) {
+            try {
+                $this->manager->findGitCredential($nameOrId);
+                $this->fail('Found a deploy key as a git credential');
+            } catch (RuntimeException $error) {
+                $this->assertStringContainsString('Git credentials: Forgejo.', $error->getMessage());
+            }
+        }
+        $this->assertSame($token['id'], $this->manager->findGitCredential('Forgejo'));
+    }
+
+    public function testAddingAnSshStackWithACredentialIsRefusedBeforeAnythingIsMade(): void
+    {
+        $token = $this->emptyVault()->saveCredential(['name' => 'Forgejo', 'provider' => 'git', 'registry' => 'github.com', 'username' => 'bot', 'secret' => 't1']);
+
+        try {
+            $this->manager->add('whoami', 'git@github.com:owner/repo.git', 'main', 'whoami/compose.yaml', $this->clonesRoot, '', $token['id']);
+            $this->fail('An ssh stack was added with another credential');
+        } catch (\InvalidArgumentException $error) {
+            $this->assertStringContainsString('gets a deploy key of its own', $error->getMessage());
+        }
+        $this->assertDirectoryDoesNotExist($this->composeRoot . '/whoami');
+        $this->assertSame([], glob($this->clonesRoot . '/*') ?: []);
+        $this->assertCount(1, (new \CredentialVault())->listCredentials());
+    }
+
     public function testTwoGitCredentialsWithTheSameNameAreNotGuessedBetween(): void
     {
         $vault = $this->emptyVault();
@@ -401,7 +434,7 @@ final class GitStackManagerTest extends TestCase
         $this->manager->trustHost($folder);
     }
 
-    public function testAnSshStackCannotBeLeftWithoutItsDeployKey(): void
+    public function testAnSshStackKeepsItsOwnDeployKey(): void
     {
         $folder = $this->manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
         $stackDir = $this->composeRoot . '/' . $folder;
@@ -410,11 +443,14 @@ final class GitStackManagerTest extends TestCase
             ->withSshKnownHosts("github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n")
             ->save($stackDir);
 
-        try {
-            $this->manager->setCredential($folder, null);
-            $this->fail('An ssh stack was left without its deploy key.');
-        } catch (\InvalidArgumentException $error) {
-            $this->assertStringContainsString('always uses its deploy key', $error->getMessage());
+        $token = $this->emptyVault()->saveCredential(['name' => 'Forgejo', 'provider' => 'git', 'registry' => 'github.com', 'username' => 'bot', 'secret' => 't1']);
+        foreach ([null, $token['id']] as $credentialId) {
+            try {
+                $this->manager->setCredential($folder, $credentialId);
+                $this->fail('The credential of an ssh stack was changed.');
+            } catch (\InvalidArgumentException $error) {
+                $this->assertStringContainsString('always uses a deploy key of its own', $error->getMessage());
+            }
         }
         $this->assertSame(str_repeat('cd', 16), GitStackSettings::load($stackDir)->credentialId);
     }

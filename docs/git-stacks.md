@@ -402,7 +402,8 @@ otherwise make compose refuse the stack. The log names each one removed.
 
 `<url>` is an `https://` address without a user name or password in it, an ssh address
 (`ssh://git@host[:port]/path` or `git@host:path`), or the path of a repository under `/mnt`. `--credential`
-is the name of a git credential on the Credentials tab. `<stack>` is the stack's exact folder name in the projects folder. `--clones-root` must be on a share,
+is the name of a git credential (an HTTPS token) on the Credentials tab, for an `https://` address; an ssh
+stack always uses the deploy key made for it. `<stack>` is the stack's exact folder name in the projects folder. `--clones-root` must be on a share,
 disk or pool, and the share must exist.
 
 Exit status: `0` success (for `check`: up to date), `1` failed, `2` the command line was not understood, `3`

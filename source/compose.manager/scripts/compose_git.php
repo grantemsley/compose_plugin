@@ -133,7 +133,7 @@ Usage: compose-git credential <stack> <name>
 Change the git credential a stack uses to reach its repository, or remove it. <name> is a
 git credential (an HTTPS token) from the plugin's Credentials tab, by its name or id. The
 repository is reached with the new setting first, and nothing is saved unless that works.
-No container is touched.
+No container is touched. An ssh stack always keeps the deploy key made for it.
 
 Options:
   --none   Reach the repository without a credential, as for a public one.
