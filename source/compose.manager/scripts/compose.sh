@@ -574,7 +574,11 @@ case $command in
 
     # A deploy always builds services that have a build section (the new
     # commit may change their Dockerfile), as a step of its own before up.
-    up_args=("-d" "--remove-orphans")
+    # up itself neither builds nor pulls again, whatever a service's
+    # pull_policy says: a failure there would come after the point where the
+    # previous commit can be put back. --pull missing still fetches an image
+    # the pull step did not.
+    up_args=("-d" "--remove-orphans" "--no-build" "--pull" "missing")
     if [ "$wait_for_healthy" = true ]; then
       up_args+=("--wait")
       if [ -n "$wait_timeout" ]; then

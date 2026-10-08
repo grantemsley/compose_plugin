@@ -41,8 +41,8 @@ to your shell profile.
   pulling new commits never touches them.
 - **A deploy changes no container until everything else has worked.** It fetches the commit, checks it out,
   checks it (see [below](#what-is-checked-before-a-deploy)), pulls and builds images, and only then runs
-  `docker compose up`. If anything before `up` fails, the previous commit is put back and your containers are
-  exactly as they were.
+  `docker compose up`, which neither builds nor pulls again, whatever a service's `pull_policy` says. If
+  anything before `up` fails, the previous commit is put back and your containers are exactly as they were.
 - **Nothing of yours is deleted.** Files the plugin replaces are moved into a backup folder, local changes are
   saved as a patch before they are discarded, and an old clone is moved aside rather than removed. The plugin
   removes only a clone it has just made itself, when setting it up fails (for example, the branch has no

@@ -218,7 +218,7 @@ calls_matching() {
     [ "$build_line" -lt "$up_line" ]
     [ "$up_line" -lt "$finish_line" ]
 
-    grep -q "docker compose -f /clone/whoami/compose.yaml --env-file /stack/.env -p whoami up -d --remove-orphans$" "$CALLS"
+    grep -q "docker compose -f /clone/whoami/compose.yaml --env-file /stack/.env -p whoami up -d --remove-orphans --no-build --pull missing$" "$CALLS"
     grep -q "git_stack finish $STACK success" "$CALLS"
     grep -q "docker rmi img-old$" "$CALLS"
     grep -q '"operation":"gitdeploy"' "$STACK/last_result.json"
@@ -234,7 +234,7 @@ calls_matching() {
 @test "gitdeploy waits for healthy containers when asked" {
     run_gitdeploy --wait --wait-timeout 90
     [ "$status" -eq 0 ]
-    grep -q -- "up -d --remove-orphans --wait --wait-timeout 90" "$CALLS"
+    grep -q -- "up -d --remove-orphans --no-build --pull missing --wait --wait-timeout 90" "$CALLS"
 }
 
 @test "gitdeploy recreates every container when the stack's folder changed" {
@@ -242,7 +242,7 @@ calls_matching() {
     run_gitdeploy --wait
     [ "$status" -eq 0 ]
     grep -q "git_stack up-arguments $STACK 0000000000000000000000000000000000000001" "$CALLS"
-    grep -q -- "up -d --remove-orphans --wait --force-recreate$" "$CALLS"
+    grep -q -- "up -d --remove-orphans --no-build --pull missing --wait --force-recreate$" "$CALLS"
 }
 
 @test "gitdeploy puts the previous commit back when it cannot tell whether to recreate, and never runs up" {
@@ -262,10 +262,13 @@ calls_matching() {
     [ "$(calls_matching ' up ')" -eq 0 ]
 }
 
-@test "gitdeploy never rebuilds during up, so a build failure cannot happen part-way" {
+@test "gitdeploy tells up never to build and to pull only missing images" {
+    # A service's pull_policy (build or always) would otherwise build or pull again during up,
+    # after the point where the previous commit can be put back.
     run_gitdeploy --build
     [ "$status" -eq 0 ]
     [ "$(grep -c -- ' up .*--build' "$CALLS" || true)" -eq 0 ]
+    grep -q -- ' up .*--no-build --pull missing' "$CALLS"
 }
 
 @test "gitdeploy creates a missing external network after the build and before up when the setting is on" {
