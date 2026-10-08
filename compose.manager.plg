@@ -36,7 +36,7 @@
 >
 
 <CHANGES>
-###2026.10.08.0952
+###2026.10.08.1156
 - Features (git): prune the override's orphan services before a git deploy's checks
 - Features (git): create missing external networks in a git deploy when the setting is on
 - Features (git): add the compose-git command
@@ -49,6 +49,8 @@
 - Features (git): clone, fetch and check out a git stack's repository safely
 - Features (git): store and validate a git stack's settings
 - Features (git): add a locked-down git runner for git stacks
+- Features (git): add a guard that keeps git stacks from writing to RAM or the flash
+- Bug Fixes (update): rebuild local-only images when pull is denied
 - Bug Fixes (compatibility): require Unraid 6.12 and remove legacy WebUI patches
 - Bug Fixes (git): notice a repository override that a checkout removed
 - Bug Fixes (git): keep the deployed commit when reclone finds the branch rewritten
@@ -57,8 +59,10 @@
 - Documentation (git): say what reclone leaves running on the old clone
 - Documentation: add a guide to git stacks
 - Tests (git): run the gitdeploy Bats tests without root, as CI does
+- Chores: update changelog for v2026.10.08.0952 [skip ci]
+- Chores: update changelog for v2026.10.07 [skip ci]
 - [PR #172](https://github.com/mstrhakr/compose_plugin/pull/172)
-- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.10.07...v2026.10.08.0952)
+- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.10.07...v2026.10.08.1156)
 </CHANGES>
 
 <!-- The 'pre-install' script. -->
