@@ -37,8 +37,9 @@ to your shell profile.
 - **The clone** lives on your array, by default under `/mnt/user/appdata/compose.manager/git/<stack>-<id>`,
   never on the flash drive. Each git stack has its own clone of the whole repository.
 - **The stack folder** in the projects folder holds the stack's settings (`git.json`), what was last deployed
-  (`git_state.json`), the stack's `.env` and the plugin's override file. These are never inside the clone, so
-  pulling new commits never touches them.
+  (`git_state.json`), the stack's `.env` and the plugin's override file (and, until the next deploy that works,
+  `git_discarded_changes`, see [below](#config-files-and-recreating-containers)). These are never inside the
+  clone, so pulling new commits never touches them.
 - **A deploy changes no container until everything else has worked.** It fetches the commit, checks it out,
   checks it (see [below](#what-is-checked-before-a-deploy)), pulls and builds images, and only then runs
   `docker compose up`, which neither builds nor pulls again, whatever a service's `pull_policy` says. If
@@ -184,7 +185,8 @@ unchanged, the stack keeps its volumes and networks. Check that it works.
 ### 8. Tidy up
 
 Once you are happy, delete the `pre-git-<date>` folder. Until then it is your way back: to undo the
-conversion, delete `git.json`, `git_state.json`, `indirect` and `indirect_mode` from the stack folder, then
+conversion, delete `git.json`, `git_state.json`, `git_discarded_changes` (if there is one), `indirect` and
+`indirect_mode` from the stack folder, then
 copy the backup folder's files back into it (they include the old `indirect` settings, if the stack had any).
 
 ## Day to day
@@ -285,6 +287,10 @@ a config file the container mounts would otherwise be checked out but never take
 
 So by default, **when a deploy changes anything in the stack's folder in the repository, every container in
 the stack is recreated**, and the new config takes effect.
+
+A deploy that saves local changes in the stack's folder as a patch and discards them recreates every
+container too, even at the same commit: a container may still hold an edited file. Until a deploy works, the
+stack folder holds a `git_discarded_changes` file that says so.
 
 Only the stack's own folder counts: a change to a shared folder elsewhere in the repository does not
 recreate anything yet. To turn the behaviour off, set `"recreateOnFolderChange": false` in the stack's

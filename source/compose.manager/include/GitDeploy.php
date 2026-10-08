@@ -21,6 +21,15 @@ require_once '/usr/local/emhttp/plugins/compose.manager/include/GitDeployCheck.p
  */
 final class GitDeploy
 {
+    /**
+     * A file in the stack folder that says local changes to files in the stack's
+     * folder in the clone were discarded, and no deploy has succeeded since. The
+     * containers may still hold the discarded files (a single-file bind mount keeps
+     * the old copy), but no commit differs, so only this tells the next "up" to
+     * recreate them.
+     */
+    public const DISCARDED_CHANGES_FILE = 'git_discarded_changes';
+
     /** @var callable(string): void */
     private $say;
 
@@ -113,6 +122,11 @@ final class GitDeploy
         $clone = new GitClone($settings);
         $current = $clone->checkedOutCommit();
 
+        if (is_file($this->stackDir . '/' . self::DISCARDED_CHANGES_FILE)) {
+            ($this->say)("Local changes in the stack's folder were discarded, so every container is recreated.");
+            return ['--force-recreate'];
+        }
+
         $compareFrom = [$previousCommit];
         $deployed = GitStackState::load($this->stackDir)->deployedCommit;
         if ($deployed !== null && $deployed !== $previousCommit) {
@@ -156,6 +170,12 @@ final class GitDeploy
             ? new GitStackState($commit, null)
             : new GitStackState($state->deployedCommit, $commit);
         $newState->save($this->stackDir);
+        if ($succeeded) {
+            // The containers were just made from the clone as it is. If this cannot be
+            // removed, every deploy recreates the containers until it is (it is in the
+            // stack folder, and removing it by hand is safe).
+            @unlink($this->stackDir . '/' . self::DISCARDED_CHANGES_FILE);
+        }
     }
 
     /**
@@ -283,7 +303,43 @@ final class GitDeploy
         if ($patch !== null) {
             ($this->say)("Saved the local changes to $patch");
         }
+        // Recorded before the discard, so a failure here leaves the changes in place.
+        if ($this->anyInStackFolder($clone, $changedFiles)) {
+            $this->recordDiscardedChanges();
+        }
         $clone->discardLocalChanges();
+    }
+
+    /**
+     * Whether any of these paths (relative to the repository) is in the stack's folder.
+     *
+     * @param string[] $paths
+     */
+    private function anyInStackFolder(GitClone $clone, array $paths): bool
+    {
+        $stackFolder = $clone->stackFolderInRepo();
+        if ($stackFolder === '') {
+            return $paths !== [];
+        }
+        foreach ($paths as $path) {
+            if (str_starts_with($path, $stackFolder . '/')) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function recordDiscardedChanges(): void
+    {
+        $stackDir = rtrim($this->stackDir, '/');
+        if (str_starts_with($stackDir, rtrim(COMPOSE_GIT_MNT_DIR, '/') . '/')) {
+            GitPathGuard::assertSafeToWrite($stackDir);
+        }
+        $file = $stackDir . '/' . self::DISCARDED_CHANGES_FILE;
+        $content = date('c') . "\n";
+        if (file_put_contents($file, $content) !== strlen($content)) {
+            throw new RuntimeException("Could not write $file, so the local changes were not discarded.");
+        }
     }
 
     /**
