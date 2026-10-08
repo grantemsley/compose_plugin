@@ -317,6 +317,13 @@ is, the deploy stops instead.
 
 - **Before `up`** (a check fails, the pull or build fails): the previous commit is put back and no container
   was changed. Fix the cause, usually in the repository, and deploy again.
+
+  "No container was changed" is about the containers themselves. A running container that mounts a file or
+  folder from the clone (`./config`, say) sees the new commit's files from the moment it is checked out, while
+  the checks, pull and build run, and the old ones again once it is put back. Most apps read their config only
+  when they start, so this does not matter to them. For an app that reloads its config when the file changes
+  (a proxy watching its config folder, say), keep that config at an absolute path outside the clone if a
+  deploy that is put back must not reach it.
 - **During `up`** (a container fails to start, or does not get healthy with `--wait`): a half-finished `up`
   cannot be undone safely, so it is not rolled back. The commit is recorded as failed and shown by
   `compose-git status`. Fix it in the repository and deploy again, or deploy a known good commit with
