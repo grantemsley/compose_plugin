@@ -195,6 +195,25 @@ final class GitStackManagerTest extends TestCase
         $this->assertSame($customEnv, \StackInfo::fromProject($this->composeRoot, $stack->projectFolder)->getEffectiveEnvFilePath());
     }
 
+    public function testConvertWithAnEnvPathToAMissingFileCopiesTheEnvInUse(): void
+    {
+        // An env file setting that names a file which is gone is ignored, and the .env next
+        // to the old compose file is used. That is the one to keep using after the convert.
+        $oldFolder = $this->mnt . '/user/appdata/legacy';
+        mkdir($oldFolder);
+        file_put_contents($oldFolder . '/compose.yaml', "services:\n  whoami:\n    image: traefik/whoami\n");
+        file_put_contents($oldFolder . '/.env', "NEXT_TO_COMPOSE=1\n");
+        $stack = \StackInfo::createNew($this->composeRoot, 'legacy', '', $oldFolder);
+        $stackDir = $this->composeRoot . '/' . $stack->projectFolder;
+        file_put_contents($stackDir . '/envpath', $this->mnt . '/user/appdata/moved-away.env');
+
+        $this->manager->convert($stack->projectFolder, $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+
+        $this->assertSame("NEXT_TO_COMPOSE=1\n", file_get_contents($stackDir . '/.env'));
+        \StackInfo::clearCache();
+        $this->assertSame($stackDir . '/.env', \StackInfo::fromProject($this->composeRoot, $stack->projectFolder)->getEffectiveEnvFilePath());
+    }
+
     public function testConvertOfAnIndirectStackCarriesItsOverrideIntoTheStackFolder(): void
     {
         $oldFolder = $this->mnt . '/user/appdata/legacy';
