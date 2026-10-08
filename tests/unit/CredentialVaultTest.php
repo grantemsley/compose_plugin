@@ -93,6 +93,41 @@ final class CredentialVaultTest extends TestCase
         $this->assertSame(base64_encode('user:token'), $config['auths']['ghcr.io']['auth']);
     }
 
+    public function testTheKindOfACredentialCannotChangeBetweenRegistryAndGit(): void
+    {
+        // A stack using it would break at its next run: refused, and the credential left as it was.
+        $vault = new CredentialVault();
+        $registry = $vault->saveCredential(['name' => 'Hub', 'provider' => 'docker', 'registry' => 'docker.io', 'username' => 'u', 'secret' => 's']);
+        $token = $vault->saveCredential(['name' => 'Forgejo', 'provider' => 'git', 'registry' => 'git.example.com', 'username' => 'u', 'secret' => 's']);
+        $key = $vault->saveCredential(['name' => 'app deploy key', 'provider' => 'git-ssh', 'registry' => 'git.example.com', 'username' => 'git', 'secret' => 'k']);
+
+        $changes = [
+            [$registry, 'git', 'git.example.com'],
+            [$token, 'github', 'ghcr.io'],
+            [$token, 'git-ssh', 'git.example.com'],
+            [$key, 'git', 'git.example.com'],
+        ];
+        foreach ($changes as [$credential, $provider, $host]) {
+            try {
+                $vault->saveCredential(['id' => $credential['id'], 'name' => $credential['name'], 'provider' => $provider, 'registry' => $host, 'username' => 'u']);
+                $this->fail("{$credential['provider']} was changed to $provider");
+            } catch (\InvalidArgumentException $error) {
+                $this->assertStringContainsString('cannot change between a registry login and a git credential', $error->getMessage());
+            }
+            $this->assertSame($credential['provider'], $vault->getCredentialSummary($credential['id'])['provider']);
+        }
+    }
+
+    public function testARegistryCredentialCanStillChangeBetweenRegistryKinds(): void
+    {
+        $vault = new CredentialVault();
+        $saved = $vault->saveCredential(['name' => 'Mine', 'provider' => 'generic', 'registry' => 'registry.example.com', 'username' => 'u', 'secret' => 's']);
+
+        $updated = $vault->saveCredential(['id' => $saved['id'], 'name' => 'Mine', 'provider' => 'docker', 'registry' => 'docker.io', 'username' => 'u']);
+
+        $this->assertSame('docker', $updated['provider']);
+    }
+
     public function testSelectedCredentialOverridesDockerCredentialHelpers(): void
     {
         $dockerConfigDirectory = sys_get_temp_dir() . '/docker-config-test-' . bin2hex(random_bytes(8));

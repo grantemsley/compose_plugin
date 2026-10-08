@@ -884,6 +884,18 @@ class ExecActionsTest extends TestCase
         $this->assertSame('registry-credential', file_get_contents($stackPath . '/credential_id'));
     }
 
+    public function testADeployKeyCannotBeAddedOnTheCredentialsTab(): void
+    {
+        $saved = json_decode($this->executeAction('saveCredential', [
+            'name' => 'Sneaky', 'provider' => 'git-ssh', 'registry' => 'github.com',
+            'username' => 'git', 'secret' => 'private key',
+        ]), true);
+
+        $this->assertSame('error', $saved['result']);
+        $this->assertStringContainsString('made by compose-git', $saved['message']);
+        $this->assertSame([], (new \CredentialVault())->listCredentials());
+    }
+
     public function testDeployKeyIsNotTestedAsARegistryAndCannotBeARegistryCredential(): void
     {
         $this->createTestStack('test-stack');

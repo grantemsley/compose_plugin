@@ -402,9 +402,13 @@
         onSaved = callback || null;
         $('#credential-modal-title').text(credential.id ? 'Edit credential' : 'Add credential');
         $('#credential-id').val(credential.id || '');
+        // A saved credential cannot change between a registry login and a git credential (a
+        // stack using it would break), so Edit offers neither change.
+        var editingGit = !!credential.id && credential.provider === 'git';
+        var hideGit = options.registryOnly === true || (!!credential.id && !editingGit);
         $('#credential-provider option[value="git"]')
-            .prop('disabled', options.registryOnly === true)
-            .prop('hidden', options.registryOnly === true);
+            .prop('disabled', hideGit)
+            .prop('hidden', hideGit);
         $('#credential-provider').val(credential.provider || 'github').prop('disabled', false);
         $('#credential-name').val(credential.name || '');
         $('#credential-registry').val(credential.registry || '');
@@ -414,6 +418,7 @@
         $('#credential-github-renew').prop('disabled', false);
         $('#credential-modal-error').hide().text('');
         applyProviderDefaults();
+        if (editingGit) $('#credential-provider').prop('disabled', true);
         if (credential.registry) $('#credential-registry').val(credential.registry);
         $('#compose-credential-modal').css('display', 'flex');
         $('#credential-name').trigger('focus');

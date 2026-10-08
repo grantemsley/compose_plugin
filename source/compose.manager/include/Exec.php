@@ -1032,6 +1032,10 @@ switch ($_POST['action']) {
         break;
     case 'saveCredential':
         try {
+            // Deploy keys are made by compose-git for one stack, never on the Credentials tab.
+            if (strtolower(trim((string) ($_POST['provider'] ?? ''))) === 'git-ssh') {
+                throw new \InvalidArgumentException('A deploy key is made by compose-git for its stack, not added here.');
+            }
             $credential = (new CredentialVault())->saveCredential([
                 'id' => trim((string) ($_POST['id'] ?? '')),
                 'name' => trim((string) ($_POST['name'] ?? '')),

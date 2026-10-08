@@ -54,6 +54,15 @@ final class CredentialVault
             if (!in_array($provider, ['github', 'docker', 'gitlab', 'quay', 'aws', 'azure', 'gcr', 'generic', 'git', 'git-ssh'], true)) {
                 throw new InvalidArgumentException('Unsupported credential provider.');
             }
+            // A stack using the credential would break at its next run: a git stack needs a git
+            // credential, and a registry login is never a git one. Changes among registry kinds
+            // (generic to docker, say) stay allowed.
+            $existingProvider = (string) ($existing['provider'] ?? '');
+            $gitKinds = ['git', 'git-ssh'];
+            if ($existing !== [] && $existingProvider !== $provider
+                && (in_array($existingProvider, $gitKinds, true) || in_array($provider, $gitKinds, true))) {
+                throw new InvalidArgumentException('A credential cannot change between a registry login and a git credential. Add a new credential instead.');
+            }
             // A git repository credential (an HTTPS token, or a git stack's ssh deploy key in
             // "git-ssh") is for one host, such as github.com.
             if (($provider === 'git' || $provider === 'git-ssh') && preg_match('/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?$/', $registry) !== 1) {
