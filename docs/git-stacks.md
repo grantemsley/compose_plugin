@@ -352,7 +352,8 @@ without changing anything when:
   folder, is missing;
 - a `container_name` or published port is already taken by another stack or container, or two services of
   the stack publish the same port;
-- Docker could not be asked whether a name or port is free (the daemon is not answering, say).
+- Docker could not be asked whether a name or port is free, or whether an external network or volume exists
+  (the daemon is not answering, say).
 
 The deploy log says which `.env` was used.
 

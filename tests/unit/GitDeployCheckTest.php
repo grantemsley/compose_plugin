@@ -123,12 +123,43 @@ final class GitDeployCheckTest extends TestCase
 
         $problems = $this->check();
         $this->assertCount(2, $problems);
-        $this->assertStringContainsString("network 'zz-proxy'", $problems[0]);
-        $this->assertStringContainsString("volume 'zz-ext'", $problems[1]);
+        $this->assertStringContainsString("The external network 'zz-proxy' does not exist", $problems[0]);
+        $this->assertStringContainsString("The external volume 'zz-ext' does not exist", $problems[1]);
 
         $this->docker->addNetwork('zz-proxy');
         $this->docker->addVolume('zz-ext');
         $this->assertSame([], $this->check());
+    }
+
+    public function testExternalNetworkAndVolumeThatDockerCannotBeAskedAboutAreNotCalledMissing(): void
+    {
+        $config = $this->config(['image' => 'busybox']);
+        $config['networks'] = ['proxy' => ['name' => 'zz-proxy', 'external' => true]];
+        $config['volumes'] = ['ext' => ['name' => 'zz-ext', 'external' => true]];
+        $this->docker->setConfig($config);
+        $daemonDown = 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?';
+        $this->docker->fail('network', $daemonDown);
+        $this->docker->fail('volume', $daemonDown);
+
+        $problems = $this->check();
+        $this->assertCount(2, $problems);
+        $this->assertStringContainsString("Could not check whether the external network 'zz-proxy' exists: Cannot connect", $problems[0]);
+        $this->assertStringContainsString("Could not check whether the external volume 'zz-ext' exists: Cannot connect", $problems[1]);
+    }
+
+    public function testOlderDockersWordingForAMissingNetworkOrVolumeCountsAsMissing(): void
+    {
+        $config = $this->config(['image' => 'busybox']);
+        $config['networks'] = ['proxy' => ['name' => 'zz-proxy', 'external' => true]];
+        $config['volumes'] = ['ext' => ['name' => 'zz-ext', 'external' => true]];
+        $this->docker->setConfig($config);
+        $this->docker->fail('network', 'Error: No such network: zz-proxy');
+        $this->docker->fail('volume', 'Error: No such volume: zz-ext');
+
+        $problems = $this->check();
+        $this->assertCount(2, $problems);
+        $this->assertStringContainsString("The external network 'zz-proxy' does not exist", $problems[0]);
+        $this->assertStringContainsString("The external volume 'zz-ext' does not exist", $problems[1]);
     }
 
     public function testMissingExternalNetworkIsNotAProblemWhenItWillBeCreated(): void

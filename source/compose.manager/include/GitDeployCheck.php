@@ -173,8 +173,14 @@ final class GitDeployCheck
                     continue;
                 }
                 $name = (string) ($definition['name'] ?? $key);
-                if (!DockerCommand::run([$kind, 'inspect', '--', $name], null, 30)->succeeded()) {
+                $inspect = DockerCommand::run([$kind, 'inspect', '--', $name], null, 30);
+                if ($inspect->succeeded()) {
+                    continue;
+                }
+                if (self::failedOnlyOnMissing($inspect, $kind)) {
                     $problems[] = "The external $kind '$name' does not exist. Create it before deploying.";
+                } else {
+                    $problems[] = "Could not check whether the external $kind '$name' exists: " . self::failureText($inspect);
                 }
             }
         }
@@ -523,6 +529,33 @@ final class GitDeployCheck
             // "Error response from daemon: No such container: x" (docker container inspect),
             // "error: no such object: x" (docker inspect).
             if (stripos($line, 'no such container') === false && stripos($line, 'no such object') === false) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Whether "docker network inspect" or "docker volume inspect" failed only because
+     * nothing has that name, rather than because Docker could not be asked.
+     */
+    private static function failedOnlyOnMissing(ProcessResult $inspect, string $kind): bool
+    {
+        if ($inspect->timedOut) {
+            return false;
+        }
+        $lines = array_filter(array_map('trim', explode("\n", $inspect->stderr)), static fn(string $line): bool => $line !== '');
+        if ($lines === []) {
+            return false;
+        }
+        foreach ($lines as $line) {
+            // Docker today: "Error response from daemon: network x not found" and
+            // "Error response from daemon: get x: no such volume". Older Docker:
+            // "Error: No such network: x" and "Error: No such volume: x".
+            $missing = $kind === 'network'
+                ? preg_match('/network .+ not found$/i', $line) === 1 || stripos($line, 'no such network') !== false
+                : stripos($line, 'no such volume') !== false;
+            if (!$missing) {
                 return false;
             }
         }

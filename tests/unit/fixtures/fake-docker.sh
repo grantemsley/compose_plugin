@@ -56,7 +56,12 @@ case "$1" in
       cat "$here/$kind/$name"
       exit 0
     fi
-    echo "Error: No such $1: $name" >&2
+    # What Docker prints for a network or volume that does not exist.
+    if [ "$1" = network ]; then
+      echo "Error response from daemon: network $name not found" >&2
+    else
+      echo "Error response from daemon: get $name: no such volume" >&2
+    fi
     exit 1
     ;;
   ps)
