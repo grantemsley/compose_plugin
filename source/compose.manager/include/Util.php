@@ -1541,9 +1541,8 @@ class OverrideInfo
     /**
      * Core override resolution logic shared by both factories.
      *
-     * Computes the override filename from the compose file, resolves project
-     * and indirect override paths while preserving legacy filenames as-is,
-     * and auto-creates a project override template if needed.
+      * Computes the override filename from the compose file and resolves
+      * project and indirect override paths while preserving legacy filenames.
      *
      * @param string      $projectPath     Full path to the stack directory
      * @param string|null $indirectPath     Indirect target directory, or null if not indirect
@@ -3098,7 +3097,11 @@ class StackInfo
             }
         } else {
             $overridePath = $this->getOverridePath();
-            if ($overridePath !== null) {
+            // Keep the preferred path available through getOverridePath() for
+            // editor/write operations, but only pass an existing optional
+            // override to Compose. Missing overrides are normal for older and
+            // manually created stacks.
+            if ($overridePath !== null && is_file($overridePath)) {
                 $paths[] = $overridePath;
             }
         }
