@@ -48,9 +48,9 @@ class ExtraComposeFilesTest extends TestCase
 
         $spec = \ComposeCommandBuilder::fromProject($this->tempRoot, 'extra-abs', 'up');
 
-        // The plugin auto-creates compose.override.yaml; extras come after it.
+        // Missing optional overrides are omitted; extras follow the main file.
         $this->assertSame(
-            [$stackDir . '/compose.yaml', $stackDir . '/compose.override.yaml', $extraFile],
+            [$stackDir . '/compose.yaml', $extraFile],
             $spec['composeFiles']
         );
     }
