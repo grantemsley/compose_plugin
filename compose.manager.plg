@@ -36,33 +36,36 @@
 >
 
 <CHANGES>
-###2026.10.08.1156
-- Features (git): prune the override's orphan services before a git deploy's checks
-- Features (git): create missing external networks in a git deploy when the setting is on
-- Features (git): add the compose-git command
-- Features (git): recreate a git stack's containers when its folder changes
-- Features (git): deploy a git stack with compose.sh gitdeploy
-- Features (git): record which commit a git stack has deployed
-- Features (git): check a git stack before a deploy touches any container
-- Features (git): keep a git stack's managed override and .env out of its clone
-- Features (git): save a git stack's local changes as a patch before discarding them
-- Features (git): clone, fetch and check out a git stack's repository safely
-- Features (git): store and validate a git stack's settings
-- Features (git): add a locked-down git runner for git stacks
-- Features (git): add a guard that keeps git stacks from writing to RAM or the flash
-- Bug Fixes (update): rebuild local-only images when pull is denied
-- Bug Fixes (compatibility): require Unraid 6.12 and remove legacy WebUI patches
-- Bug Fixes (git): notice a repository override that a checkout removed
-- Bug Fixes (git): keep the deployed commit when reclone finds the branch rewritten
-- Bug Fixes (git): catch two services of the stack publishing the same port
-- Bug Fixes (git): stop the deploy when Docker cannot say which names and ports are taken
-- Documentation (git): say what reclone leaves running on the old clone
-- Documentation: add a guide to git stacks
-- Tests (git): run the gitdeploy Bats tests without root, as CI does
-- Chores: update changelog for v2026.10.08.0952 [skip ci]
-- Chores: update changelog for v2026.10.07 [skip ci]
+###2026.10.09.1036
+- Features (credentials): show git stacks' deploy keys on the Credentials tab
+- Features (git): set up an ssh stack's deploy key and host keys from compose-git
+- Features (git): reach a repository over ssh with the stack's deploy key
+- Features (credentials): keep git stacks' ssh deploy keys in the vault
+- Features (git): accept ssh repository addresses and pin their host keys
+- Features (credentials): add and test git repository tokens on the Credentials tab
+- Features (git): choose a git stack's credential from compose-git
+- Features (credentials): count a git stack's repository credential as in use
+- Features (git): reach a private repository with an HTTPS token
+- Features (credentials): add a git repository kind of credential
+- Features (git): store which credential a git stack uses
+- Features (git): let a git run take settings of its own
+- Bug Fixes (git): refuse a credential folder someone else made first
+- Bug Fixes (git): save a stack's git credential under the credential assignment lock
+- Bug Fixes (credentials): keep a credential's kind between registry and git
+- Bug Fixes (git): never let a stack pick another stack's deploy key
+- Bug Fixes (git): refuse a git home folder someone else made first
+- Bug Fixes (git): tell a missing network or volume from one Docker could not be asked about
+- Bug Fixes (git): deploy with the same environment the checks used
+- Bug Fixes (git): recreate containers after discarding local changes in the stack folder
+- Bug Fixes (git): keep the .env in use when converting with a stale env path
+- Bug Fixes (git): check the projects folder before compose-git add clones
+- Bug Fixes (git): never build or pull again during a git deploy's up
+- Bug Fixes (git): stop a git deploy when a missing network cannot be created
+- Bug Fixes (git): refuse a RAM mount inside a disk or pool
+- Documentation (git): say that mounted files from the clone change before up
+- Documentation: private repositories for git stacks
 - [PR #172](https://github.com/mstrhakr/compose_plugin/pull/172)
-- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.10.07...v2026.10.08.1156)
+- [beta release diff](https://github.com/mstrhakr/compose_plugin/compare/v2026.10.07...v2026.10.09.1036)
 </CHANGES>
 
 <!-- The 'pre-install' script. -->
