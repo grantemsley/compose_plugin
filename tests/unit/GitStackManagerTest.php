@@ -106,29 +106,30 @@ final class GitStackManagerTest extends TestCase
         $this->assertDirectoryDoesNotExist($this->composeRoot . '/whoami');
     }
 
-    public function testAddThatFailsAfterMakingTheStackFolderSaysToRemoveIt(): void
+    public function testAddDoesNothingWhileTheArrayIsStopped(): void
     {
-        // A projects folder on the array's root file system (RAM): the stack
-        // folder is made, then saving its git settings there is refused.
+        file_put_contents(COMPOSE_UNRAID_VAR_INI, "mdState=\"STOPPED\"\n");
+        $this->expectException(RuntimeException::class);
+        $this->manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+    }
+
+    public function testAddToAProjectsFolderWhoseMountIsGoneWritesNothing(): void
+    {
+        // A projects folder that is not on a mount (a pool that did not mount, while the
+        // folder is still there, in RAM): neither the clone nor the stack folder may be made.
+        // This used to make the stack folder first and fail only when saving its settings.
         $composeRoot = $this->mnt . '/projects';
         mkdir($composeRoot);
         $manager = new GitStackManager($composeRoot);
 
         try {
             $manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
-            $this->fail('Added a stack whose settings could not be saved');
+            $this->fail('The stack was added to a projects folder that is not on a mounted disk.');
         } catch (RuntimeException $error) {
-            $this->assertStringContainsString("the stack folder $composeRoot/whoami was only partly made", $error->getMessage());
-            $this->assertStringContainsString('Remove both folders', $error->getMessage());
+            $this->assertStringContainsString('not on a mounted disk', $error->getMessage());
         }
-        $this->assertDirectoryExists($composeRoot . '/whoami');
-    }
-
-    public function testAddDoesNothingWhileTheArrayIsStopped(): void
-    {
-        file_put_contents(COMPOSE_UNRAID_VAR_INI, "mdState=\"STOPPED\"\n");
-        $this->expectException(RuntimeException::class);
-        $this->manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+        $this->assertDirectoryDoesNotExist($composeRoot . '/whoami');
+        $this->assertSame([], glob($this->clonesRoot . '/*') ?: []);
     }
 
     // ----- convert -----
@@ -192,6 +193,25 @@ final class GitStackManagerTest extends TestCase
         $this->assertFileDoesNotExist($stackDir . '/.env');
         \StackInfo::clearCache();
         $this->assertSame($customEnv, \StackInfo::fromProject($this->composeRoot, $stack->projectFolder)->getEffectiveEnvFilePath());
+    }
+
+    public function testConvertWithAnEnvPathToAMissingFileCopiesTheEnvInUse(): void
+    {
+        // An env file setting that names a file which is gone is ignored, and the .env next
+        // to the old compose file is used. That is the one to keep using after the convert.
+        $oldFolder = $this->mnt . '/user/appdata/legacy';
+        mkdir($oldFolder);
+        file_put_contents($oldFolder . '/compose.yaml', "services:\n  whoami:\n    image: traefik/whoami\n");
+        file_put_contents($oldFolder . '/.env', "NEXT_TO_COMPOSE=1\n");
+        $stack = \StackInfo::createNew($this->composeRoot, 'legacy', '', $oldFolder);
+        $stackDir = $this->composeRoot . '/' . $stack->projectFolder;
+        file_put_contents($stackDir . '/envpath', $this->mnt . '/user/appdata/moved-away.env');
+
+        $this->manager->convert($stack->projectFolder, $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+
+        $this->assertSame("NEXT_TO_COMPOSE=1\n", file_get_contents($stackDir . '/.env'));
+        \StackInfo::clearCache();
+        $this->assertSame($stackDir . '/.env', \StackInfo::fromProject($this->composeRoot, $stack->projectFolder)->getEffectiveEnvFilePath());
     }
 
     public function testConvertOfAnIndirectStackCarriesItsOverrideIntoTheStackFolder(): void
@@ -626,6 +646,45 @@ final class GitStackManagerTest extends TestCase
         $this->assertSame(['--wait', '--wait-timeout', '45'], compose_git_wait_arguments($off, ['wait-timeout' => '45']));
         // A timeout file holding something other than a number is not passed on.
         $this->assertSame(['--wait'], compose_git_wait_arguments(['enabled' => true, 'timeout' => '5m'], []));
+    }
+
+    public function testDeployRunsComposeWithTheSameEnvironmentAsTheChecks(): void
+    {
+        // Exported variables win over the stack's .env in compose, and PWD is the caller's
+        // folder: neither may reach the deploy, since the checks never saw them.
+        $callersShell = [
+            'PATH' => '/root/bin:/usr/bin',
+            'HOME' => '/root',
+            'PWD' => '/root/somewhere',
+            'PORT' => '8080',
+            'DOCKER_HOST' => 'tcp://elsewhere:2375',
+            'COMPOSE_PROFILES' => 'debug',
+            'COMPOSE_LOCK_TIMEOUT' => '5',
+            'DOCKER_CONFIG' => '/tmp/registry-login',
+        ];
+
+        $this->assertSame([
+            'PATH' => '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+            'HOME' => '/root',
+            'LC_ALL' => 'C',
+            'DOCKER_CONFIG' => '/tmp/registry-login',
+            'COMPOSE_LOCK_TIMEOUT' => '5',
+        ], compose_git_deploy_environment($callersShell));
+    }
+
+    public function testDeployRunsComposeInTheComposeFilesFolder(): void
+    {
+        $folder = $this->mnt . '/user/appdata/git/whoami/whoami';
+        mkdir($folder, 0755, true);
+        file_put_contents($folder . '/compose.yaml', "services: {}\n");
+        // A compose file that is a symlink: the folder of the file it leads to, as the checks use.
+        mkdir($this->mnt . '/user/appdata/git/whoami/linked', 0755, true);
+        symlink($folder . '/compose.yaml', $this->mnt . '/user/appdata/git/whoami/linked/compose.yaml');
+
+        $this->assertSame(realpath($folder), compose_git_deploy_directory($folder . '/compose.yaml'));
+        $this->assertSame(realpath($folder), compose_git_deploy_directory($this->mnt . '/user/appdata/git/whoami/linked/compose.yaml'));
+        $this->assertSame('/', compose_git_deploy_directory($folder . '/missing.yaml'));
+        $this->assertSame('/', compose_git_deploy_directory(null));
     }
 
     public function testDeployRefusesWaitAndNoWaitTogether(): void

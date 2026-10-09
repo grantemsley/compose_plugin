@@ -59,6 +59,8 @@ final class GitStackManager
         if (file_exists($stackDir) || @readlink($stackDir) !== false) {
             throw new RuntimeException("A stack folder named '$folder' already exists. Choose another name, or use convert for that stack.");
         }
+        // Before the clone, so a projects folder whose mount is gone leaves nothing behind.
+        $this->assertSafeToWriteStackFolder($stackDir);
 
         $settings = $this->newSettings($url, $branch, $composePath, $clonesRoot, $folder, $credentialId);
         ($this->say)("Cloning $url ($branch) into {$settings->cloneDir}...");
@@ -118,7 +120,10 @@ final class GitStackManager
         return $this->withStackLock($stack, function () use ($stack, $stackDir, $folder, $url, $branch, $composePath, $clonesRoot, $credentialId): string {
             $oldOverride = $stack->getOverridePath();
             $oldEnv = $stack->getEffectiveEnvFilePath();
-            $hasExplicitEnvPath = trim((string) @file_get_contents($stackDir . '/envpath')) !== '';
+            // Whether the .env in use is the one next to the old compose file. That one stops
+            // being used once the compose file is in the clone. An envpath setting is not enough
+            // to tell: one that names a missing file is ignored, and that .env is used instead.
+            $usesEnvNextToComposeFile = $oldEnv !== null && Path::refersToSamePath($oldEnv, $stack->composeSource . '/.env');
             $oldComposeFile = $stack->isIndirect ? null : $stack->composeFilePath;
             $foldersNextToOldComposeFile = $this->foldersIn($stack->composeSource);
 
@@ -163,7 +168,7 @@ final class GitStackManager
                 // An indirect stack may have used a .env next to its old compose
                 // file. Keep using it: copy it into the stack folder.
                 $stackEnv = $stackDir . '/.env';
-                if (!$hasExplicitEnvPath && $oldEnv !== null && $oldEnv !== $stackEnv && !is_file($stackEnv)) {
+                if ($usesEnvNextToComposeFile && $oldEnv !== null && $oldEnv !== $stackEnv && !is_file($stackEnv)) {
                     if (!@copy($oldEnv, $stackEnv)) {
                         throw new RuntimeException("Could not copy $oldEnv to $stackEnv.");
                     }

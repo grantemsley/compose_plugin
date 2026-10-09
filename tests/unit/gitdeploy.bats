@@ -26,8 +26,9 @@ test_setup() {
     export PREPARE_OUTPUT="0000000000000000000000000000000000000001"
     # The plugin's settings: none, so Create Missing External Networks is off unless a test turns it on.
     export COMPOSE_MANAGER_CFG_FILE="$TEST_TEMP_DIR/compose.manager.cfg"
-    # What "docker compose config --format json" prints, and whether "docker network inspect" finds the network.
-    export CONFIG_JSON='{}' NETWORK_INSPECT_EXIT=0
+    # What "docker compose config --format json" prints, whether "docker network inspect" finds the network,
+    # and whether "docker network create" works.
+    export CONFIG_JSON='{}' NETWORK_INSPECT_EXIT=0 NETWORK_CREATE_EXIT=0
 
     STACK="$TEST_TEMP_DIR/whoami"
     mkdir -p "$STACK" "$TEST_TEMP_DIR/bin"
@@ -84,6 +85,7 @@ for arg in "$@"; do
     up) exit "$UP_EXIT" ;;
     config) printf '%s' "$CONFIG_JSON"; exit 0 ;;
     inspect) exit "$NETWORK_INSPECT_EXIT" ;;
+    create) exit "$NETWORK_CREATE_EXIT" ;;
   esac
 done
 exit 0
@@ -216,7 +218,7 @@ calls_matching() {
     [ "$build_line" -lt "$up_line" ]
     [ "$up_line" -lt "$finish_line" ]
 
-    grep -q "docker compose -f /clone/whoami/compose.yaml --env-file /stack/.env -p whoami up -d --remove-orphans$" "$CALLS"
+    grep -q "docker compose -f /clone/whoami/compose.yaml --env-file /stack/.env -p whoami up -d --remove-orphans --no-build --pull missing$" "$CALLS"
     grep -q "git_stack finish $STACK success" "$CALLS"
     grep -q "docker rmi img-old$" "$CALLS"
     grep -q '"operation":"gitdeploy"' "$STACK/last_result.json"
@@ -232,7 +234,7 @@ calls_matching() {
 @test "gitdeploy waits for healthy containers when asked" {
     run_gitdeploy --wait --wait-timeout 90
     [ "$status" -eq 0 ]
-    grep -q -- "up -d --remove-orphans --wait --wait-timeout 90" "$CALLS"
+    grep -q -- "up -d --remove-orphans --no-build --pull missing --wait --wait-timeout 90" "$CALLS"
 }
 
 @test "gitdeploy recreates every container when the stack's folder changed" {
@@ -240,7 +242,7 @@ calls_matching() {
     run_gitdeploy --wait
     [ "$status" -eq 0 ]
     grep -q "git_stack up-arguments $STACK 0000000000000000000000000000000000000001" "$CALLS"
-    grep -q -- "up -d --remove-orphans --wait --force-recreate$" "$CALLS"
+    grep -q -- "up -d --remove-orphans --no-build --pull missing --wait --force-recreate$" "$CALLS"
 }
 
 @test "gitdeploy puts the previous commit back when it cannot tell whether to recreate, and never runs up" {
@@ -260,10 +262,13 @@ calls_matching() {
     [ "$(calls_matching ' up ')" -eq 0 ]
 }
 
-@test "gitdeploy never rebuilds during up, so a build failure cannot happen part-way" {
+@test "gitdeploy tells up never to build and to pull only missing images" {
+    # A service's pull_policy (build or always) would otherwise build or pull again during up,
+    # after the point where the previous commit can be put back.
     run_gitdeploy --build
     [ "$status" -eq 0 ]
     [ "$(grep -c -- ' up .*--build' "$CALLS" || true)" -eq 0 ]
+    grep -q -- ' up .*--no-build --pull missing' "$CALLS"
 }
 
 @test "gitdeploy creates a missing external network after the build and before up when the setting is on" {
@@ -278,6 +283,18 @@ calls_matching() {
     up_line=$(grep -n ' up ' "$CALLS" | cut -d: -f1)
     [ "$build_line" -lt "$create_line" ]
     [ "$create_line" -lt "$up_line" ]
+}
+
+@test "gitdeploy puts the previous commit back when a missing network cannot be created, and never runs up" {
+    echo 'CREATE_MISSING_EXTERNAL_NETWORKS="true"' > "$COMPOSE_MANAGER_CFG_FILE"
+    export CONFIG_JSON='{"networks":{"proxy":{"name":"zz-proxy","external":true}}}' NETWORK_INSPECT_EXIT=1
+    export NETWORK_CREATE_EXIT=1
+    run_gitdeploy
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"a missing external network could not be created"* ]]
+    grep -q "git_stack restore $STACK 0000000000000000000000000000000000000001" "$CALLS"
+    [ "$(calls_matching ' up ')" -eq 0 ]
+    [ "$(calls_matching 'finish')" -eq 0 ]
 }
 
 @test "gitdeploy creates no network when the setting is off" {

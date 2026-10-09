@@ -123,12 +123,43 @@ final class GitDeployCheckTest extends TestCase
 
         $problems = $this->check();
         $this->assertCount(2, $problems);
-        $this->assertStringContainsString("network 'zz-proxy'", $problems[0]);
-        $this->assertStringContainsString("volume 'zz-ext'", $problems[1]);
+        $this->assertStringContainsString("The external network 'zz-proxy' does not exist", $problems[0]);
+        $this->assertStringContainsString("The external volume 'zz-ext' does not exist", $problems[1]);
 
         $this->docker->addNetwork('zz-proxy');
         $this->docker->addVolume('zz-ext');
         $this->assertSame([], $this->check());
+    }
+
+    public function testExternalNetworkAndVolumeThatDockerCannotBeAskedAboutAreNotCalledMissing(): void
+    {
+        $config = $this->config(['image' => 'busybox']);
+        $config['networks'] = ['proxy' => ['name' => 'zz-proxy', 'external' => true]];
+        $config['volumes'] = ['ext' => ['name' => 'zz-ext', 'external' => true]];
+        $this->docker->setConfig($config);
+        $daemonDown = 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?';
+        $this->docker->fail('network', $daemonDown);
+        $this->docker->fail('volume', $daemonDown);
+
+        $problems = $this->check();
+        $this->assertCount(2, $problems);
+        $this->assertStringContainsString("Could not check whether the external network 'zz-proxy' exists: Cannot connect", $problems[0]);
+        $this->assertStringContainsString("Could not check whether the external volume 'zz-ext' exists: Cannot connect", $problems[1]);
+    }
+
+    public function testOlderDockersWordingForAMissingNetworkOrVolumeCountsAsMissing(): void
+    {
+        $config = $this->config(['image' => 'busybox']);
+        $config['networks'] = ['proxy' => ['name' => 'zz-proxy', 'external' => true]];
+        $config['volumes'] = ['ext' => ['name' => 'zz-ext', 'external' => true]];
+        $this->docker->setConfig($config);
+        $this->docker->fail('network', 'Error: No such network: zz-proxy');
+        $this->docker->fail('volume', 'Error: No such volume: zz-ext');
+
+        $problems = $this->check();
+        $this->assertCount(2, $problems);
+        $this->assertStringContainsString("The external network 'zz-proxy' does not exist", $problems[0]);
+        $this->assertStringContainsString("The external volume 'zz-ext' does not exist", $problems[1]);
     }
 
     public function testMissingExternalNetworkIsNotAProblemWhenItWillBeCreated(): void
@@ -226,6 +257,27 @@ final class GitDeployCheckTest extends TestCase
             ['type' => 'bind', 'source' => $this->mnt . '/disk9/appdata', 'target' => '/config'],
         ]]));
         $this->assertStringContainsString('RAM', $this->check()[0]);
+    }
+
+    public function testBindSourceOnARamMountInsideAPoolIsTheUsersChoice(): void
+    {
+        // A tmpfs in appdata, such as a RAM transcode folder, is meant to be in RAM. A missing
+        // folder in it (empty after every reboot) is left for Docker to create.
+        mkdir($this->mnt . '/cache/appdata/ram/transcode', 0755, true);
+        file_put_contents(
+            COMPOSE_MOUNTS_FILE,
+            "rootfs {$this->mnt} rootfs rw 0 0\nshfs {$this->mnt}/user fuse.shfs rw 0 0\n"
+            . "/dev/nvme0n1p1 {$this->mnt}/cache xfs rw 0 0\ntmpfs {$this->mnt}/cache/appdata/ram tmpfs rw 0 0\n"
+        );
+        $missing = $this->mnt . '/cache/appdata/ram/missing';
+        $this->docker->setConfig($this->config(['image' => 'busybox', 'volumes' => [
+            ['type' => 'bind', 'source' => $this->mnt . '/cache/appdata/ram/transcode', 'target' => '/transcode'],
+            ['type' => 'bind', 'source' => $missing, 'target' => '/cache'],
+        ]]));
+        $check = new GitDeployCheck('whoami', ['-f', $this->clone . '/whoami/compose.yaml'], $this->clone, $this->clone . '/whoami', null);
+
+        $this->assertSame([], $check->run());
+        $this->assertSame([$missing], $check->foldersDockerWillCreate());
     }
 
     public function testExistingBindSourceAndMissingSourceInsideTheCloneAreFine(): void

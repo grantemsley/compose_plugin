@@ -100,6 +100,32 @@ final class GitPathGuardTest extends TestCase
         $this->assertNull(GitPathGuard::findMountFor($this->mnt . '/user0/appdata'));
     }
 
+    public function testRamMountInsideADiskMountIsRefused(): void
+    {
+        // A tmpfs mounted inside a pool (a RAM transcode folder, say) keeps its contents
+        // in RAM, even though the pool is mounted below it.
+        mkdir($this->mnt . '/cache/appdata/ram/git', 0755, true);
+        file_put_contents(
+            COMPOSE_MOUNTS_FILE,
+            "rootfs / rootfs rw 0 0\n"
+            . "rootfs {$this->mnt} rootfs rw 0 0\n"
+            . "/dev/nvme0n1p1 {$this->mnt}/cache xfs rw 0 0\n"
+            . "tmpfs {$this->mnt}/cache/appdata/ram tmpfs rw 0 0\n"
+        );
+
+        $this->assertNull(GitPathGuard::findMountFor($this->mnt . '/cache/appdata/ram/git'));
+        $this->assertSame($this->mnt . '/cache', GitPathGuard::findMountFor($this->mnt . '/cache/appdata/git'));
+
+        try {
+            GitPathGuard::assertSafeToWrite($this->mnt . '/cache/appdata/ram/git');
+            $this->fail('A folder on a tmpfs inside a pool was accepted for writing.');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('not on a mounted disk', $error->getMessage());
+        }
+        $this->expectException(InvalidArgumentException::class);
+        GitPathGuard::assertValidClonesRoot($this->mnt . '/cache/appdata/ram/git');
+    }
+
     // ----- clones root -----
 
     public function testUsualClonesRootsAreAccepted(): void

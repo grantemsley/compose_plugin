@@ -331,6 +331,39 @@ final class GitDeployTest extends TestCase
         $this->assertSame([], $this->deploy()->upArguments($previous));
     }
 
+    public function testDiscardedLocalChangesInTheStackFolderRecreateEveryContainer(): void
+    {
+        // A config file edited in the clone, then discarded at the same commit: no commit
+        // differs, but a container with a single-file mount of it still holds the edit.
+        $this->writeAndPush(['whoami/app.conf' => "from-repo\n"], 'config');
+        $previous = $this->deploy()->prepare('whoami', [], null, false);
+        $this->deploy()->finish(true);
+        file_put_contents($this->clone->settings()->cloneDir . '/whoami/app.conf', "edited-locally\n");
+
+        $previous = $this->deploy()->prepare('whoami', [], null, true);
+        $this->assertSame(['--force-recreate'], $this->deploy()->upArguments($previous));
+
+        // Until a deploy succeeds, every deploy recreates: the containers may still hold the edit.
+        $this->deploy()->finish(false);
+        $this->assertSame(['--force-recreate'], $this->deploy()->upArguments($previous));
+        $this->deploy()->finish(true);
+        $this->assertFileDoesNotExist($this->stackDir . '/' . GitDeploy::DISCARDED_CHANGES_FILE);
+        $previous = $this->deploy()->prepare('whoami', [], null, false);
+        $this->assertSame([], $this->deploy()->upArguments($previous));
+    }
+
+    public function testDiscardedLocalChangesOutsideTheStackFolderRecreateNothing(): void
+    {
+        $this->writeAndPush(['other/readme.txt' => "from-repo\n"], 'another folder');
+        $previous = $this->deploy()->prepare('whoami', [], null, false);
+        $this->deploy()->finish(true);
+        file_put_contents($this->clone->settings()->cloneDir . '/other/readme.txt', "edited-locally\n");
+
+        $previous = $this->deploy()->prepare('whoami', [], null, true);
+
+        $this->assertSame([], $this->deploy()->upArguments($previous));
+    }
+
     public function testWithTheSettingOffNothingIsRecreated(): void
     {
         GitStackSettings::load($this->stackDir)->withRecreateOnFolderChange(false)->save($this->stackDir);

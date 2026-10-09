@@ -38,12 +38,13 @@ to your shell profile.
 - **The clone** lives on your array, by default under `/mnt/user/appdata/compose.manager/git/<stack>-<id>`,
   never on the flash drive. Each git stack has its own clone of the whole repository.
 - **The stack folder** in the projects folder holds the stack's settings (`git.json`), what was last deployed
-  (`git_state.json`), the stack's `.env` and the plugin's override file. These are never inside the clone, so
-  pulling new commits never touches them.
+  (`git_state.json`), the stack's `.env` and the plugin's override file (and, until the next deploy that works,
+  `git_discarded_changes`, see [below](#config-files-and-recreating-containers)). These are never inside the
+  clone, so pulling new commits never touches them.
 - **A deploy changes no container until everything else has worked.** It fetches the commit, checks it out,
   checks it (see [below](#what-is-checked-before-a-deploy)), pulls and builds images, and only then runs
-  `docker compose up`. If anything before `up` fails, the previous commit is put back and your containers are
-  exactly as they were.
+  `docker compose up`, which neither builds nor pulls again, whatever a service's `pull_policy` says. If
+  anything before `up` fails, the previous commit is put back and your containers are exactly as they were.
 - **Nothing of yours is deleted.** Files the plugin replaces are moved into a backup folder, local changes are
   saved as a patch before they are discarded, and an old clone is moved aside rather than removed. The plugin
   removes only a clone it has just made itself, when setting it up fails (for example, the branch has no
@@ -185,7 +186,8 @@ unchanged, the stack keeps its volumes and networks. Check that it works.
 ### 8. Tidy up
 
 Once you are happy, delete the `pre-git-<date>` folder. Until then it is your way back: to undo the
-conversion, delete `git.json`, `git_state.json`, `indirect` and `indirect_mode` from the stack folder, then
+conversion, delete `git.json`, `git_state.json`, `git_discarded_changes` (if there is one), `indirect` and
+`indirect_mode` from the stack folder, then
 copy the backup folder's files back into it (they include the old `indirect` settings, if the stack had any).
 
 ## Day to day
@@ -271,6 +273,9 @@ With no custom env file set for the stack, a git stack uses, in order:
 Only one of the two is used; they are not merged. Editing a `.env` that came from the repository changes the
 clone, so the next deploy stops with "local changes": make the change in the repository instead.
 
+Variables exported in the shell you run `compose-git deploy` from are not passed on, and `${PWD}` in the compose
+file is the compose file's folder in the clone: a deploy uses only what its checks saw. Put values in the `.env`.
+
 If the `.env` sets `COMPOSE_FILE` with relative paths, they are relative to the folder the `.env` is in. For
 the stack folder's `.env` that is the stack folder, not the clone, so use paths relative to the clone only in
 a `.env` committed next to the compose file.
@@ -328,6 +333,10 @@ a config file the container mounts would otherwise be checked out but never take
 So by default, **when a deploy changes anything in the stack's folder in the repository, every container in
 the stack is recreated**, and the new config takes effect.
 
+A deploy that saves local changes in the stack's folder as a patch and discards them recreates every
+container too, even at the same commit: a container may still hold an edited file. Until a deploy works, the
+stack folder holds a `git_discarded_changes` file that says so.
+
 Only the stack's own folder counts: a change to a shared folder elsewhere in the repository does not
 recreate anything yet. To turn the behaviour off, set `"recreateOnFolderChange": false` in the stack's
 `git.json`.
@@ -350,6 +359,13 @@ is, the deploy stops instead.
 
 - **Before `up`** (a check fails, the pull or build fails): the previous commit is put back and no container
   was changed. Fix the cause, usually in the repository, and deploy again.
+
+  "No container was changed" is about the containers themselves. A running container that mounts a file or
+  folder from the clone (`./config`, say) sees the new commit's files from the moment it is checked out, while
+  the checks, pull and build run, and the old ones again once it is put back. Most apps read their config only
+  when they start, so this does not matter to them. For an app that reloads its config when the file changes
+  (a proxy watching its config folder, say), keep that config at an absolute path outside the clone if a
+  deploy that is put back must not reach it.
 - **During `up`** (a container fails to start, or does not get healthy with `--wait`): a half-finished `up`
   cannot be undone safely, so it is not rolled back. The commit is recorded as failed and shown by
   `compose-git status`. Fix it in the repository and deploy again, or deploy a known good commit with
@@ -378,7 +394,8 @@ without changing anything when:
   folder, is missing;
 - a `container_name` or published port is already taken by another stack or container, or two services of
   the stack publish the same port;
-- Docker could not be asked whether a name or port is free (the daemon is not answering, say).
+- Docker could not be asked whether a name or port is free, or whether an external network or volume exists
+  (the daemon is not answering, say).
 
 The deploy log says which `.env` was used.
 

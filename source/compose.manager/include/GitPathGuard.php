@@ -48,42 +48,59 @@ final class GitPathGuard
      */
     public static function listMountPoints(): array
     {
-        $content = @file_get_contents(COMPOSE_MOUNTS_FILE);
-        if ($content === false) {
-            return [];
-        }
-
         $mountPoints = [];
-        foreach (explode("\n", $content) as $line) {
-            $fields = explode(' ', trim($line));
-            if (count($fields) < 3) {
-                continue;
+        foreach (self::listMounts() as $mountPoint => $filesystem) {
+            if (!in_array($filesystem, self::RAM_FILESYSTEMS, true)) {
+                $mountPoints[] = $mountPoint;
             }
-            if (in_array($fields[2], self::RAM_FILESYSTEMS, true)) {
-                continue;
-            }
-            // The kernel writes spaces, tabs, newlines and backslashes in mount
-            // points as octal escapes, for example "\040" for a space.
-            $mountPoints[] = preg_replace_callback(
-                '/\\\\([0-7]{3})/',
-                static fn(array $match): string => chr((int) octdec($match[1])),
-                $fields[1]
-            );
         }
         return $mountPoints;
     }
 
     /**
+     * Every mount listed in the mounts file, RAM filesystems included.
+     *
+     * @return array<string, string> mount point => filesystem type
+     */
+    private static function listMounts(): array
+    {
+        $content = @file_get_contents(COMPOSE_MOUNTS_FILE);
+        if ($content === false) {
+            return [];
+        }
+
+        $mounts = [];
+        foreach (explode("\n", $content) as $line) {
+            $fields = explode(' ', trim($line));
+            if (count($fields) < 3) {
+                continue;
+            }
+            // The kernel writes spaces, tabs, newlines and backslashes in mount
+            // points as octal escapes, for example "\040" for a space.
+            $mountPoint = preg_replace_callback(
+                '/\\\\([0-7]{3})/',
+                static fn(array $match): string => chr((int) octdec($match[1])),
+                $fields[1]
+            );
+            $mounts[$mountPoint] = $fields[2];
+        }
+        return $mounts;
+    }
+
+    /**
      * The mount under /mnt that holds a path, or null when the path is not on one.
      *
-     * Picks the longest listed mount point that contains the path. /mnt itself
-     * and / never count: on Unraid both are RAM.
+     * Picks the longest listed mount point that contains the path, RAM mounts
+     * included, and returns null when that one is in RAM: a tmpfs mounted inside
+     * a disk or pool keeps its contents in RAM even though the disk is below it.
+     * /mnt itself and / never count: on Unraid both are RAM.
      */
     public static function findMountFor(string $path): ?string
     {
         $mntDir = rtrim(COMPOSE_GIT_MNT_DIR, '/');
         $best = null;
-        foreach (self::listMountPoints() as $mountPoint) {
+        $bestFilesystem = null;
+        foreach (self::listMounts() as $mountPoint => $filesystem) {
             $mountPoint = rtrim($mountPoint, '/');
             if (!str_starts_with($mountPoint, $mntDir . '/')) {
                 continue;
@@ -93,9 +110,42 @@ final class GitPathGuard
             }
             if ($best === null || strlen($mountPoint) > strlen($best)) {
                 $best = $mountPoint;
+                $bestFilesystem = $filesystem;
             }
         }
+        if ($bestFilesystem !== null && in_array($bestFilesystem, self::RAM_FILESYSTEMS, true)) {
+            return null;
+        }
         return $best;
+    }
+
+    /**
+     * Whether a path is on a RAM mount that sits inside a disk, pool or share mount,
+     * such as a tmpfs transcode folder in appdata. Unassigned Devices' tmpfs over
+     * /mnt/disks is not: nothing real is mounted below it.
+     */
+    public static function isOnRamMountInsideADisk(string $path): bool
+    {
+        $mntDir = rtrim(COMPOSE_GIT_MNT_DIR, '/');
+        $deepestRam = null;
+        $diskBelow = false;
+        foreach (self::listMounts() as $mountPoint => $filesystem) {
+            $mountPoint = rtrim($mountPoint, '/');
+            if (!str_starts_with($mountPoint, $mntDir . '/')) {
+                continue;
+            }
+            if ($path !== $mountPoint && !str_starts_with($path, $mountPoint . '/')) {
+                continue;
+            }
+            if (in_array($filesystem, self::RAM_FILESYSTEMS, true)) {
+                if ($deepestRam === null || strlen($mountPoint) > strlen($deepestRam)) {
+                    $deepestRam = $mountPoint;
+                }
+            } else {
+                $diskBelow = true;
+            }
+        }
+        return $deepestRam !== null && $diskBelow && self::findMountFor($path) === null;
     }
 
     /**
