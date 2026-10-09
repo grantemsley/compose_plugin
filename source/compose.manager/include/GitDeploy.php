@@ -207,6 +207,20 @@ final class GitDeploy
     }
 
     /**
+     * The folder docker compose runs in for the deploy: the compose file's
+     * folder, where the checks ran it too.
+     */
+    public function composeFolder(): string
+    {
+        $settings = $this->loadSettings();
+        $composeFile = realpath($settings->composeFileInClone());
+        if ($composeFile === false) {
+            throw new RuntimeException("The compose file {$settings->composeFileInClone()} was not found.");
+        }
+        return dirname($composeFile);
+    }
+
+    /**
      * After a failed check or checkout, check the previous commit out again.
      * Returns the error to throw: the original problem, or, if putting the
      * commit back failed too, both, so nobody is told the clone is where it
