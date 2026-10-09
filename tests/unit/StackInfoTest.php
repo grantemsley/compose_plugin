@@ -1121,10 +1121,11 @@ class StackInfoTest extends TestCase
         $info = \StackInfo::fromProject($this->tempRoot, $stack);
         $args = $info->buildComposeArgs();
 
-        $this->assertSame(2, count($args['filePaths']));
+        $this->assertCount(2, $args['filePaths']);
         $this->assertStringContainsString('compose.debug.yaml', $args['files']);
         $this->assertContains($stackDir . '/compose.debug.yaml', $args['filePaths']);
         $this->assertNotContains($stackDir . '/compose.override.yaml', $args['filePaths']);
+        $this->assertStringNotContainsString($stackDir . '/compose.override.yaml', $args['files']);
     }
 
     public function testProjectLoadsWhenComposeFileIsOnlyDeclaredInDotEnv(): void

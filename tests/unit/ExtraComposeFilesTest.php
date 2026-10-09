@@ -48,7 +48,8 @@ class ExtraComposeFilesTest extends TestCase
 
         $spec = \ComposeCommandBuilder::fromProject($this->tempRoot, 'extra-abs', 'up');
 
-        // Missing optional overrides are omitted; extras follow the main file.
+        // The app-managed override is optional and only included when its file exists.
+        // With no override file, extras follow the main compose file.
         $this->assertSame(
             [$stackDir . '/compose.yaml', $extraFile],
             $spec['composeFiles']

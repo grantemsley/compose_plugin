@@ -1541,8 +1541,8 @@ class OverrideInfo
     /**
      * Core override resolution logic shared by both factories.
      *
-        * Computes the override filename from the compose file and resolves
-        * project and indirect override paths while preserving legacy filenames.
+      * Computes the override filename from the compose file and resolves
+      * project and indirect override paths while preserving legacy filenames.
      *
      * @param string      $projectPath     Full path to the stack directory
      * @param string|null $indirectPath     Indirect target directory, or null if not indirect
