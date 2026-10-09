@@ -3395,8 +3395,8 @@ class StackInfo
      * Extract available profiles via `docker compose config --profiles`.
      *
      * Mirrors the approach used by {@see getDefinedServices()}.  On success
-     * the result is written back to the profiles metadata file so subsequent
-     * reads hit the fast-path cache.
+     * the result, even an empty one, is written back to the profiles metadata
+     * file so subsequent reads hit the fast-path cache.
      *
      * @return string[]
      */
@@ -3413,17 +3413,23 @@ class StackInfo
         }
         $cmd .= " config --profiles 2>/dev/null";
 
-        $output = shell_exec($cmd);
-        if (!is_string($output) || trim($output) === '') {
+        $output = [];
+        $exitCode = 0;
+        exec($cmd, $output, $exitCode);
+        if ($exitCode !== 0) {
+            // Compose could not read the stack (a broken compose file, say): nothing is
+            // cached, so the next read asks again once it is fixed.
             return [];
         }
 
         $profiles = array_values(array_filter(
-            array_map('trim', explode("\n", trim($output))),
+            array_map('trim', $output),
             fn(string $p): bool => $p !== ''
         ));
 
-        // Write-through: persist so future reads hit the cache.
+        // Write-through: persist so future reads hit the cache. An empty list is cached
+        // too: most stacks have no profiles, and asking compose again costs about 0.1 s
+        // per stack on every load of the stack list.
         $this->writeMetadata('profiles', json_encode($profiles));
 
         return $profiles;
