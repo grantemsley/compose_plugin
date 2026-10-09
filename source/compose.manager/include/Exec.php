@@ -1045,7 +1045,7 @@ switch ($_POST['action']) {
                 'username' => trim((string) ($_POST['username'] ?? '')),
                 'secret' => trim((string) ($_POST['secret'] ?? '')),
             ]);
-            composeLogger('Saved registry credential', ['id' => $credential['id'], 'provider' => $credential['provider'], 'registry' => $credential['registry']], 'user', 'info', 'credentials');
+            composeLogger('Saved credential', ['id' => $credential['id'], 'provider' => $credential['provider'], 'registry' => $credential['registry']], 'user', 'info', 'credentials');
             echo json_encode(['result' => 'success', 'credential' => $credential]);
         } catch (\InvalidArgumentException $error) {
             echo json_encode(['result' => 'error', 'message' => $error->getMessage()]);
@@ -1065,7 +1065,7 @@ switch ($_POST['action']) {
                 return (new CredentialVault())->deleteCredential($credentialId);
             });
             if ($deleted) {
-                composeLogger('Deleted registry credential', ['id' => $credentialId], 'user', 'info', 'credential');
+                composeLogger('Deleted credential', ['id' => $credentialId], 'user', 'info', 'credential');
             }
             echo json_encode(['result' => $deleted ? 'success' : 'error', 'message' => $deleted ? '' : 'Credential not found.']);
         } catch (\Throwable $error) {
