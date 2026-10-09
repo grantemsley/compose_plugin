@@ -4203,8 +4203,30 @@ class StackInfo
 
         // Batch-preload container data with a single docker ps call to avoid
         // O(n) docker invocations when callers iterate getContainerList().
+        $containersByProject = self::containersByProject();
+        foreach ($stacks as $stack) {
+            $key = $stack->projectName;
+            $stack->setContainerList($containersByProject[$key] ?? []);
+        }
+
+        return $stacks;
+    }
+
+    /**
+     * The containers of compose projects, from a single `docker ps` call, by project name.
+     *
+     * Rows are `docker ps --format json` rows, filtered on the compose project label.
+     * That is much quicker than `docker compose ps` for each stack, which has to read
+     * the stack's compose files first. Pass a project name for that project's only.
+     *
+     * @param string|null $projectName One project, or null for every compose project
+     * @return array<string, array[]> Rows by project name
+     */
+    public static function containersByProject(?string $projectName = null): array
+    {
+        $filter = 'label=com.docker.compose.project' . ($projectName === null ? '' : '=' . $projectName);
         $containersByProject = [];
-        $psOutput = shell_exec("docker ps -a --filter label=com.docker.compose.project --format json 2>/dev/null");
+        $psOutput = shell_exec('docker ps -a --filter ' . escapeshellarg($filter) . ' --format json 2>/dev/null');
         if ($psOutput) {
             foreach (explode("\n", trim($psOutput)) as $line) {
                 if ($line === '') {
@@ -4221,12 +4243,7 @@ class StackInfo
                 }
             }
         }
-        foreach ($stacks as $stack) {
-            $key = $stack->projectName;
-            $stack->setContainerList($containersByProject[$key] ?? []);
-        }
-
-        return $stacks;
+        return $containersByProject;
     }
 
     /**
