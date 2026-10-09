@@ -22,6 +22,12 @@ final class GitStackManager
 {
     public const DEFAULT_BRANCH = 'main';
 
+    /**
+     * How long the Credentials tab's Test waits for a repository: the browser waits for the
+     * answer, and the registry test waits at most 15 seconds too.
+     */
+    private const CREDENTIAL_TEST_TIMEOUT_SECONDS = 15;
+
     /** @var callable(string): void */
     private $say;
 
@@ -375,10 +381,10 @@ final class GitStackManager
             $summary = (new CredentialVault())->getCredentialSummary($credentialId);
             $result = ['id' => $credentialId, 'name' => $summary['name'], 'registry' => $summary['registry']];
             try {
-                (new GitClone($settings))->remoteBranchCommit();
+                (new GitClone($settings))->remoteBranchCommit(self::CREDENTIAL_TEST_TIMEOUT_SECONDS);
                 return $result + ['valid' => true, 'message' => "Reached {$settings->url} (used by '$folder')."];
             } catch (Throwable $error) {
-                return $result + ['valid' => false, 'message' => "Could not reach {$settings->url} (used by '$folder'): " . $error->getMessage()];
+                return $result + ['valid' => false, 'message' => "{$settings->url} (used by '$folder'): " . $error->getMessage()];
             }
         }
         return null;

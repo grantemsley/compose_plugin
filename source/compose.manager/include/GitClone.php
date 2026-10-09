@@ -65,15 +65,16 @@ final class GitClone
     /**
      * Ask the remote which commit the branch points at, without changing anything.
      *
+     * @param int $timeoutSeconds How long to wait for the remote
      * @throws RuntimeException if the remote cannot be reached or the branch does not exist
      */
-    public function remoteBranchCommit(): string
+    public function remoteBranchCommit(int $timeoutSeconds = self::REMOTE_TIMEOUT_SECONDS): string
     {
         $ref = 'refs/heads/' . $this->settings->branch;
         $result = $this->git(
             ['ls-remote', '--heads', '--', $this->settings->url, $ref],
             null,
-            self::REMOTE_TIMEOUT_SECONDS
+            $timeoutSeconds
         );
         if (!$result->succeeded()) {
             throw new RuntimeException('Could not reach the repository: ' . $result->errorSummary());

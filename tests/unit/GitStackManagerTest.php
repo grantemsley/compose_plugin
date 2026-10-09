@@ -436,7 +436,7 @@ final class GitStackManagerTest extends TestCase
 
         $this->assertNotNull($test);
         $this->assertFalse($test['valid']);
-        $this->assertStringContainsString("Could not reach https://127.0.0.1:9/team/stacks.git (used by '$folder')", $test['message']);
+        $this->assertStringStartsWith("https://127.0.0.1:9/team/stacks.git (used by '$folder'): Could not reach the repository", $test['message']);
     }
 
     public function testOnlyAnSshStackHasADeployKeyOrPinnedHostKeys(): void
