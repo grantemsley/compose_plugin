@@ -14,7 +14,8 @@ require_once '/usr/local/emhttp/plugins/compose.manager/include/ProcessRunner.ph
  *    up for other uses of git on the server),
  *  - never asks for input (no password prompt that could hang a deploy),
  *  - runs no repository hooks and no filesystem monitor,
- *  - allows only the https and local-path transports,
+ *  - allows only the https and local-path transports (and ssh for a stack
+ *    with a deploy key, through its own run settings: see GitSsh),
  *  - starts from an empty environment, so stray GIT_DIR or GIT_WORK_TREE
  *    variables cannot point it at a different repository,
  *  - is stopped after a time limit, gets no input, and runs without a shell
@@ -54,18 +55,27 @@ final class GitCommand
      * @param string|null $workingDirectory Folder to run in (the clone), or null for a neutral folder
      * @param array<string, string> $extraEnvironment Extra environment variables for this run
      * @param string[] $trustedRepositories Repositories git may use even when another user owns them
+     * @param string[] $extraConfig Settings for this run only, passed with -c after the forced ones, such as
+     *                              a credential helper for one stack. Built by the plugin, never from user
+     *                              input, and never holding a secret: anyone on the server can read a
+     *                              command line.
      */
     public static function run(
         array $args,
         ?string $workingDirectory = null,
         int $timeoutSeconds = self::DEFAULT_TIMEOUT_SECONDS,
         array $extraEnvironment = [],
-        array $trustedRepositories = []
+        array $trustedRepositories = [],
+        array $extraConfig = []
     ): ProcessResult {
         $homeDirectory = self::prepareHomeDirectory();
 
         $command = ['git'];
         foreach (self::FORCED_CONFIG as $setting) {
+            $command[] = '-c';
+            $command[] = $setting;
+        }
+        foreach ($extraConfig as $setting) {
             $command[] = '-c';
             $command[] = $setting;
         }

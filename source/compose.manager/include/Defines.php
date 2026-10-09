@@ -42,6 +42,8 @@ defined('COMPOSE_UNRAID_VAR_INI') || define('COMPOSE_UNRAID_VAR_INI', '/var/loca
 defined('COMPOSE_MOUNTS_FILE') || define('COMPOSE_MOUNTS_FILE', '/proc/self/mounts');
 defined('COMPOSE_GIT_MNT_DIR') || define('COMPOSE_GIT_MNT_DIR', '/mnt');
 defined('COMPOSE_GIT_HOME_DIR') || define('COMPOSE_GIT_HOME_DIR', '/var/tmp/compose-manager-git-home');
+// Short-lived files that hand a git stack's credential to git for one run (in RAM, emptied at reboot).
+defined('COMPOSE_GIT_CREDENTIAL_DIR') || define('COMPOSE_GIT_CREDENTIAL_DIR', '/var/tmp/compose-manager-git-credentials');
 defined('COMPOSE_GIT_DEFAULT_CLONES_ROOT') || define('COMPOSE_GIT_DEFAULT_CLONES_ROOT', '/mnt/user/appdata/compose.manager/git');
 // The docker CLI (the git deploy checks run it; tests point this at a scripted stand-in).
 defined('COMPOSE_DOCKER_BIN') || define('COMPOSE_DOCKER_BIN', 'docker');

@@ -29,16 +29,25 @@ final class ComposeGitUsageError extends InvalidArgumentException
 
 const COMPOSE_GIT_USAGE = <<<'TEXT'
 Usage:
-  compose-git add <name> --url <url> --path <compose file> [--branch <branch>] [--clones-root <folder>] [--description <text>]
-  compose-git convert <stack> --url <url> --path <compose file> [--branch <branch>] [--clones-root <folder>]
+  compose-git add <name> --url <url> --path <compose file> [--branch <branch>] [--clones-root <folder>] [--description <text>] [--credential <name>]
+  compose-git convert <stack> --url <url> --path <compose file> [--branch <branch>] [--clones-root <folder>] [--credential <name>]
+  compose-git credential <stack> <name>|--none
+  compose-git deploy-key <stack>
+  compose-git trust-host <stack>
   compose-git check <stack>|--all
   compose-git deploy <stack> [--commit <full commit id>] [--save-local-changes] [--wait|--no-wait] [--wait-timeout <seconds>] [--profile <name>]...
   compose-git reclone <stack>
   compose-git status [<stack>|--all] [--json]
 
-<url> is an https address (no user name or password in it) or the path of a repository under /mnt.
+<url> is an https address (no user name or password in it), an ssh address (ssh://git@host/path
+or git@host:path), or the path of a repository under /mnt.
 <compose file> is the compose file's path inside the repository, such as stacks/whoami/compose.yaml.
 --branch defaults to main. <stack> is the stack's exact folder name.
+--credential names a git credential (an HTTPS token) from the plugin's Credentials tab, for a
+private repository; credential changes or removes it on an existing stack.
+An ssh stack gets a deploy key of its own when it is added; deploy-key shows it again, to add to
+the repository as a read-only deploy key. Its host's keys are pinned when it is added;
+trust-host pins them again after the server's keys change.
 deploy waits for healthy containers when the stack's wait-for-healthy setting says so;
 --wait and --no-wait override it.
 
@@ -67,9 +76,11 @@ is printed at the end. No stack folder by that name may exist yet; to put an exi
 under git, use 'compose-git convert'.
 
 Options:
-  --url <url>             The repository: a public https:// address, with no user name or
-                          password in it, or the path of a repository on this server under
-                          /mnt. Required.
+  --url <url>             The repository: an https:// address with no user name or
+                          password in it, an ssh address (ssh://git@host[:port]/path or
+                          git@host:path), or the path of a repository on this server under
+                          /mnt. Required. An ssh stack gets a deploy key of its own, and the
+                          host's ssh keys are pinned.
   --path <compose file>   The compose file's path inside the repository, such as
                           stacks/whoami/compose.yaml. Required.
   --branch <branch>       The branch to follow. Default: main.
@@ -77,6 +88,8 @@ Options:
                           share, disk or pool, and the share must exist.
                           Default: /mnt/user/appdata/compose.manager/git.
   --description <text>    The description shown for the stack on the Compose page.
+  --credential <name>     A git credential (an HTTPS token) from the Credentials tab, by
+                          its name or id, for a private repository.
 
 Example:
   compose-git add whoami --url https://github.com/you/stacks.git --path whoami/compose.yaml
@@ -98,16 +111,49 @@ If the clone fails, or the branch has no compose file at --path, nothing is chan
 refuses to start while another operation on the stack is running.
 
 Options:
-  --url <url>             The repository: a public https:// address, with no user name or
-                          password in it, or the path of a repository on this server under
-                          /mnt. Required.
+  --url <url>             The repository: an https:// address with no user name or
+                          password in it, an ssh address (ssh://git@host[:port]/path or
+                          git@host:path), or the path of a repository on this server under
+                          /mnt. Required. An ssh stack gets a deploy key of its own, and the
+                          host's ssh keys are pinned.
   --path <compose file>   The compose file's path inside the repository. Required.
   --branch <branch>       The branch to follow. Default: main.
   --clones-root <folder>  The folder the clone goes in, as <stack>-<id>. It must be on a
                           share, disk or pool, and the share must exist.
                           Default: /mnt/user/appdata/compose.manager/git.
+  --credential <name>     A git credential (an HTTPS token) from the Credentials tab, by
+                          its name or id, for a private repository.
 
 Then deploy it: compose-git deploy <stack>
+TEXT,
+        'credential' => <<<'TEXT'
+Usage: compose-git credential <stack> <name>
+       compose-git credential <stack> --none
+
+Change the git credential a stack uses to reach its repository, or remove it. <name> is a
+git credential (an HTTPS token) from the plugin's Credentials tab, by its name or id. The
+repository is reached with the new setting first, and nothing is saved unless that works.
+No container is touched. An ssh stack always keeps the deploy key made for it.
+
+Options:
+  --none   Reach the repository without a credential, as for a public one.
+TEXT,
+        'deploy-key' => <<<'TEXT'
+Usage: compose-git deploy-key <stack>
+
+Print the public half of an ssh stack's deploy key, to add to the repository as a read-only
+deploy key (on GitHub: the repository's Settings, Deploy keys). The key was made for the
+stack when it was added, and is kept in the plugin's credential vault. Changes nothing.
+TEXT,
+        'trust-host' => <<<'TEXT'
+Usage: compose-git trust-host <stack>
+
+Pin an ssh stack's repository server keys again, after the server was rebuilt or its keys
+were changed on purpose. Until then every fetch fails, because a changed host key is also
+what an attacker in between would look like. The pinned and the offered fingerprints are
+printed: compare the new ones with the ones your git host publishes before you deploy. The
+new keys are saved only after the repository has been reached with them. No container is
+touched.
 TEXT,
         'check' => <<<'TEXT'
 Usage: compose-git check <stack>
@@ -412,6 +458,9 @@ function compose_git_print_status(array $status): void
     echo '  repository:   ' . $status['url'] . ' (' . $status['branch'] . ")\n";
     echo '  compose file: ' . $status['composePath'] . "\n";
     echo '  clone:        ' . $status['cloneDir'] . "\n";
+    if ($status['credential'] !== null) {
+        echo '  credential:   ' . $status['credential'] . "\n";
+    }
     echo '  deployed:     ' . $short($status['deployedCommit']) . "\n";
     if ($status['failedCommit'] !== null) {
         echo '  failed:       ' . $short($status['failedCommit']) . " (fix it and deploy again)\n";
@@ -449,29 +498,52 @@ function compose_git_main(array $argv, string $composeRoot, $errors = null): int
     try {
         switch ($command) {
             case 'add':
-                [$positional, $options] = compose_git_parse($args, ['url', 'path', 'branch', 'clones-root', 'description'], []);
+                [$positional, $options] = compose_git_parse($args, ['url', 'path', 'branch', 'clones-root', 'description', 'credential'], []);
                 $folder = $manager->add(
                     compose_git_one_stack($positional),
                     compose_git_required($options, 'url'),
                     (string) ($options['branch'] ?? GitStackManager::DEFAULT_BRANCH),
                     compose_git_required($options, 'path'),
                     isset($options['clones-root']) ? (string) $options['clones-root'] : null,
-                    (string) ($options['description'] ?? '')
+                    (string) ($options['description'] ?? ''),
+                    isset($options['credential']) ? $manager->findGitCredential((string) $options['credential']) : null
                 );
                 echo "Deploy it with: compose-git deploy $folder\n";
                 return COMPOSE_GIT_EXIT_OK;
 
             case 'convert':
-                [$positional, $options] = compose_git_parse($args, ['url', 'path', 'branch', 'clones-root'], []);
+                [$positional, $options] = compose_git_parse($args, ['url', 'path', 'branch', 'clones-root', 'credential'], []);
                 $folder = compose_git_one_stack($positional);
                 $backup = $manager->convert(
                     $folder,
                     compose_git_required($options, 'url'),
                     (string) ($options['branch'] ?? GitStackManager::DEFAULT_BRANCH),
                     compose_git_required($options, 'path'),
-                    isset($options['clones-root']) ? (string) $options['clones-root'] : null
+                    isset($options['clones-root']) ? (string) $options['clones-root'] : null,
+                    isset($options['credential']) ? $manager->findGitCredential((string) $options['credential']) : null
                 );
                 echo "The replaced files are in $backup.\nDeploy it with: compose-git deploy $folder\n";
+                return COMPOSE_GIT_EXIT_OK;
+
+            case 'credential':
+                [$positional, $options] = compose_git_parse($args, [], ['none']);
+                if (count($positional) === 2 && !isset($options['none'])) {
+                    $manager->setCredential($positional[0], $manager->findGitCredential($positional[1]));
+                } elseif (count($positional) === 1 && isset($options['none'])) {
+                    $manager->setCredential($positional[0], null);
+                } else {
+                    throw new ComposeGitUsageError('credential needs a stack and either a credential name or --none.');
+                }
+                return COMPOSE_GIT_EXIT_OK;
+
+            case 'deploy-key':
+                [$positional] = compose_git_parse($args, [], []);
+                echo $manager->deployKey(compose_git_one_stack($positional)) . "\n";
+                return COMPOSE_GIT_EXIT_OK;
+
+            case 'trust-host':
+                [$positional] = compose_git_parse($args, [], []);
+                $manager->trustHost(compose_git_one_stack($positional));
                 return COMPOSE_GIT_EXIT_OK;
 
             case 'check':

@@ -22,6 +22,7 @@ to your shell profile.
 - [Moving an existing stack into git](#moving-an-existing-stack-into-git)
 - [Day to day](#day-to-day)
 - [How to lay out your repositories](#how-to-lay-out-your-repositories)
+- [Private repositories](#private-repositories)
 - [Which .env is used](#which-env-is-used)
 - [Folders and files your containers need](#folders-and-files-your-containers-need)
 - [Config files and recreating containers](#config-files-and-recreating-containers)
@@ -53,8 +54,9 @@ to your shell profile.
 
 ## Quick start
 
-You need a repository with a compose file in it, reachable over `https://` without a password (a public
-repository), or a repository on this server under `/mnt` (see [step 2](#2-create-the-repository)).
+You need a repository with a compose file in it: a public one over `https://`, a private one (see
+[Private repositories](#private-repositories)), or one on this server under `/mnt` (see
+[step 2](#2-create-the-repository)).
 
 ```bash
 compose-git add whoami --url https://github.com/you/stacks.git --path whoami/compose.yaml
@@ -91,9 +93,8 @@ stacks/
 
 Either:
 
-- **On GitHub, Gitea, Forgejo or similar.** It must be public for now (private repositories need credentials,
-  which are not supported yet; see [Limitations](#limitations)). Anything in a public repository is public,
-  so keep secrets out of it (step 4).
+- **On GitHub, Gitea, Forgejo or similar.** Public or private; a private one needs an access token or a
+  deploy key (see [Private repositories](#private-repositories)). Either way, keep secrets out of it (step 4).
 - **On this server.** A bare repository under `/mnt` works without any credentials:
 
   ```bash
@@ -217,6 +218,47 @@ big things:
 
 A change to another stack's folder in a shared repository is fetched by every stack, but only recreates the
 containers of the stack whose folder changed (see [below](#config-files-and-recreating-containers)).
+
+## Private repositories
+
+A private repository is reached in one of two ways. Either way, the secret is kept encrypted in the plugin's
+credential vault, given to git only while it runs, and never written into the clone.
+
+**An HTTPS access token.** Make a token on your git host that can only read the repository (on GitHub, a
+fine-grained token with read access to its contents; on Gitea or Forgejo, an access token with read access to
+repositories). Add it on the **Credentials** tab of the plugin settings, as **Git repository (HTTPS token, for
+git stacks)**, with the host only (`github.com`, or `git.example.com:3000`). Then name it when you add the
+stack:
+
+```bash
+compose-git add myapp --url https://github.com/you/stacks.git --path myapp/compose.yaml --credential "GitHub stacks"
+```
+
+Use the repository's address exactly as the host gives it for cloning, usually ending in `.git`. The token is
+offered only for that address, so a host that redirects a shorter address gets no token after the redirect.
+
+One token can serve every stack on the same host that it can read. **Test** on the Credentials tab tries it
+against a stack that already uses it, so add the stack first; until then the tab says no git stack uses it.
+
+**An SSH deploy key.** Use an ssh address, and the stack gets a key of its own:
+
+```bash
+compose-git add myapp --url git@github.com:you/stacks.git --path myapp/compose.yaml
+```
+
+The first time, the clone fails because the repository does not know the key yet. The command prints the
+public key: add it to the repository as a **read-only deploy key** (on GitHub: the repository's Settings >
+Deploy keys), then run the same command again. `compose-git deploy-key myapp` shows the key again later.
+Until then the key is listed on the Credentials tab as used by no stack: leave it there, or the second run
+makes a new key, and the one you added to the repository no longer works.
+
+When the stack is added, the server's ssh host keys are pinned and their fingerprints printed. Compare them with
+the ones your git host publishes (GitHub, GitLab and Codeberg list theirs). Every later connection must match
+them. If the server is rebuilt and its keys change, deploys stop until you run `compose-git trust-host myapp`,
+which shows the old and new fingerprints and pins the new ones.
+
+To change or remove a stack's HTTPS credential later: `compose-git credential myapp "Other token"` or
+`compose-git credential myapp --none`. The change is saved only if the repository can be reached with it.
 
 ## Which .env is used
 
@@ -348,8 +390,11 @@ otherwise make compose refuse the stack. The log names each one removed.
 
 | Command | What it does |
 |---|---|
-| `add <name> --url <url> --path <file> [--branch <b>] [--clones-root <folder>] [--description <text>]` | Clone a repository and make a new git stack. Not deployed yet. |
-| `convert <stack> --url <url> --path <file> [--branch <b>] [--clones-root <folder>]` | Turn an existing stack into a git stack (see above). |
+| `add <name> --url <url> --path <file> [--branch <b>] [--clones-root <folder>] [--description <text>] [--credential <name>]` | Clone a repository and make a new git stack. Not deployed yet. |
+| `convert <stack> --url <url> --path <file> [--branch <b>] [--clones-root <folder>] [--credential <name>]` | Turn an existing stack into a git stack (see above). |
+| `credential <stack> <name>` or `credential <stack> --none` | Change or remove the HTTPS credential a stack uses. |
+| `deploy-key <stack>` | Show an ssh stack's public deploy key. |
+| `trust-host <stack>` | Pin an ssh stack's server host keys again, after they changed. |
 | `check <stack>` or `check --all` | Compare the deployed commit with the branch on the remote. Changes nothing. |
 | `deploy <stack> [--commit <id>] [--save-local-changes] [--wait\|--no-wait] [--wait-timeout <s>] [--profile <p>]...` | Deploy the branch's latest commit, or the given one. Waits for healthy containers when the stack's wait-for-healthy setting says so, unless `--wait` or `--no-wait` overrides it. |
 | `reclone <stack>` | Move the clone aside and clone again at the deployed commit. |
@@ -357,8 +402,10 @@ otherwise make compose refuse the stack. The log names each one removed.
 
 `compose-git <command> --help` explains a command and each of its options.
 
-`<url>` is an `https://` address without a user name or password in it, or the path of a repository under
-`/mnt`. `<stack>` is the stack's exact folder name in the projects folder. `--clones-root` must be on a share,
+`<url>` is an `https://` address without a user name or password in it, an ssh address
+(`ssh://git@host[:port]/path` or `git@host:path`), or the path of a repository under `/mnt`. `--credential`
+is the name of a git credential (an HTTPS token) on the Credentials tab, for an `https://` address; an ssh
+stack always uses the deploy key made for it. `<stack>` is the stack's exact folder name in the projects folder. `--clones-root` must be on a share,
 disk or pool, and the share must exist.
 
 Exit status: `0` success (for `check`: up to date), `1` failed, `2` the command line was not understood, `3`
@@ -386,8 +433,8 @@ deployed commit: only `compose-git deploy` does that.
 
 ## Limitations
 
-- **Public `https` repositories and repositories on this server only.** Private repositories (access tokens,
-  SSH deploy keys) are planned.
+- **An `https` server needs a certificate this server trusts.** A self-hosted git server with a self-signed
+  certificate is refused over `https`; reach it over ssh instead.
 - **No web UI yet.** Git stacks are created and deployed from the command line; the Compose page shows and
   runs them like other stacks.
 - **No automatic deploys yet.** Use `check` and `deploy` from your own schedule or a git hook.

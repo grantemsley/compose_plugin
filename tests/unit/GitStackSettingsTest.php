@@ -51,7 +51,23 @@ final class GitStackSettingsTest extends TestCase
             'port' => ['https://git.example.com:3000/owner/repo.git'],
             'nested path' => ['https://gitlab.example.com/group/sub/repo.git'],
             'local bare repo' => [COMPOSE_GIT_MNT_DIR . '/user/appdata/repos/stacks.git'],
+            'ssh' => ['ssh://git@github.com/owner/repo.git'],
+            'ssh with port' => ['ssh://git@git.example.com:2222/owner/repo.git'],
+            'scp style' => ['git@github.com:owner/repo.git'],
+            'scp style absolute path' => ['git@nas.example.com:/srv/git/stacks.git'],
         ];
+    }
+
+    public function testSshAddressIsSplitIntoItsParts(): void
+    {
+        $this->assertSame(
+            ['user' => 'git', 'host' => 'git.example.com', 'port' => 2222, 'path' => 'owner/repo.git'],
+            GitStackSettings::sshAddress('ssh://git@Git.Example.com:2222/owner/repo.git')
+        );
+        $this->assertSame(
+            ['user' => 'git', 'host' => 'github.com', 'port' => 22, 'path' => 'owner/repo.git'],
+            GitStackSettings::sshAddress('git@github.com:owner/repo.git')
+        );
     }
 
     #[DataProvider('goodUrls')]
@@ -68,8 +84,13 @@ final class GitStackSettingsTest extends TestCase
             'empty' => ['', 'empty'],
             'plain http' => ['http://github.com/owner/repo.git', 'https://'],
             'upper case scheme, which git refuses' => ['HTTPS://github.com/owner/repo.git', 'https://'],
-            'ssh' => ['ssh://git@github.com/owner/repo.git', 'https://'],
-            'scp style' => ['git@github.com:owner/repo.git', 'https://'],
+            'ssh without a user' => ['ssh://github.com/owner/repo.git', 'ssh repository address is not valid'],
+            'ssh host starting with a dash' => ['ssh://git@-oProxyCommand=x/repo.git', 'ssh repository address is not valid'],
+            'ssh user starting with a dash' => ['-oProxyCommand=x@github.com:repo.git', 'ssh repository address is not valid'],
+            'ssh port too large' => ['ssh://git@github.com:99999/owner/repo.git', 'ssh repository address is not valid'],
+            'ssh password' => ['ssh://git:secret@github.com/owner/repo.git', 'ssh repository address is not valid'],
+            'ssh path traversal' => ['git@github.com:../../etc/passwd', 'ssh repository address is not valid'],
+            'ssh path starting with a dash' => ['git@github.com:-repo.git', 'ssh repository address is not valid'],
             'file url' => ['file:///mnt/user/repo.git', 'https://'],
             'ext transport' => ['ext::sh -c touch% /tmp/x', 'spaces'],
             'ext transport without spaces' => ['ext::sh', 'https://'],
@@ -235,6 +256,116 @@ final class GitStackSettingsTest extends TestCase
         $this->assertSame($settings->cloneDir, $loaded->cloneDir);
     }
 
+    public function testNoCredentialByDefaultAndNoneWrittenToTheFile(): void
+    {
+        $settings = $this->makeSettings();
+        $this->assertNull($settings->credentialId);
+
+        $settings->save($this->stackDir);
+
+        // Left out, so a version from before credentials existed still loads the file.
+        $data = json_decode((string) file_get_contents($this->stackDir . '/git.json'), true);
+        $this->assertArrayNotHasKey('credentialId', $data);
+        $this->assertNull(GitStackSettings::load($this->stackDir)?->credentialId);
+    }
+
+    public function testCredentialIsSavedAndLoaded(): void
+    {
+        $credentialId = str_repeat('ab', 16);
+        $this->makeSettings()->withCredentialId($credentialId)->save($this->stackDir);
+
+        $loaded = GitStackSettings::load($this->stackDir);
+
+        $this->assertNotNull($loaded);
+        $this->assertSame($credentialId, $loaded->credentialId);
+        $this->assertNull($loaded->withCredentialId(null)->credentialId);
+    }
+
+    public function testSettingsNamingADeletedCredentialAreNotSaved(): void
+    {
+        // The race itself (a delete on the Credentials tab while compose-git reaches the
+        // repository) cannot be driven through add or setCredential here: the tests have no
+        // reachable repository that takes a credential. This is the save those three use.
+        @unlink(COMPOSE_CREDENTIAL_VAULT_FILE);
+        @unlink(COMPOSE_CREDENTIAL_KEY_FILE);
+
+        try {
+            $this->makeSettings()->withCredentialId(str_repeat('ab', 16))->saveCheckingCredential($this->stackDir);
+            $this->fail('Settings naming a deleted credential were saved.');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('was deleted while the repository was being reached', $error->getMessage());
+        }
+        $this->assertFileDoesNotExist($this->stackDir . '/' . GitStackSettings::FILE_NAME);
+    }
+
+    public function testSettingsNamingAnExistingCredentialOrNoneAreSaved(): void
+    {
+        @unlink(COMPOSE_CREDENTIAL_VAULT_FILE);
+        @unlink(COMPOSE_CREDENTIAL_KEY_FILE);
+        $credential = (new \CredentialVault())->saveCredential(
+            ['name' => 'Bot', 'provider' => 'git', 'registry' => 'github.com', 'username' => 'bot', 'secret' => 't']
+        );
+
+        $this->makeSettings()->withCredentialId($credential['id'])->saveCheckingCredential($this->stackDir);
+        $this->assertSame($credential['id'], GitStackSettings::load($this->stackDir)?->credentialId);
+
+        $this->makeSettings()->saveCheckingCredential($this->stackDir);
+        $this->assertNull(GitStackSettings::load($this->stackDir)?->credentialId);
+    }
+
+    public function testRepositoryOnThisServerTakesNoCredential(): void
+    {
+        $settings = GitStackSettings::createNew(
+            $this->mnt . '/user/repos/stacks.git',
+            'main',
+            'whoami/compose.yaml',
+            $this->mnt . '/user/appdata/git',
+            'whoami'
+        );
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('needs no credential');
+        $settings->withCredentialId(str_repeat('ab', 16));
+    }
+
+    public function testSshStackKeepsItsPinnedHostKeys(): void
+    {
+        $knownHosts = "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"
+            . "[git.example.com]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTY=\n";
+        $settings = GitStackSettings::createNew('git@github.com:owner/repo.git', 'main', 'whoami/compose.yaml', $this->mnt . '/user/appdata/git', 'whoami')
+            ->withCredentialId(str_repeat('cd', 16))
+            ->withSshKnownHosts($knownHosts);
+        $this->assertTrue($settings->isSsh());
+
+        $settings->save($this->stackDir);
+        $loaded = GitStackSettings::load($this->stackDir);
+
+        $this->assertNotNull($loaded);
+        $this->assertSame($knownHosts, $loaded->sshKnownHosts);
+        $this->assertSame(str_repeat('cd', 16), $loaded->credentialId);
+    }
+
+    public function testPinnedHostKeysMustBeKnownHostsLinesForAnSshRepository(): void
+    {
+        $ssh = GitStackSettings::createNew('git@github.com:owner/repo.git', 'main', 'whoami/compose.yaml', $this->mnt . '/user/appdata/git', 'whoami');
+        try {
+            $ssh->withSshKnownHosts("github.com ssh-ed25519 AAAA\n@cert-authority * ssh-rsa AAAA\n");
+            $this->fail('Accepted a line that is not a plain host key');
+        } catch (InvalidArgumentException $error) {
+            $this->assertStringContainsString('not a known_hosts line', $error->getMessage());
+        }
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('only for an ssh repository');
+        $this->makeSettings()->withSshKnownHosts("github.com ssh-ed25519 AAAA\n");
+    }
+
+    public function testCredentialIdThatIsNotAVaultIdIsRefused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->makeSettings()->withCredentialId('../../vault');
+    }
+
     public function testStackWithoutGitJsonIsNotAGitStack(): void
     {
         $this->assertNull(GitStackSettings::load($this->stackDir));
@@ -268,6 +399,14 @@ final class GitStackSettingsTest extends TestCase
             }],
             'number instead of string' => [static function (array $data): string {
                 $data['branch'] = 5;
+                return (string) json_encode($data);
+            }],
+            'credential id not a vault id' => [static function (array $data): string {
+                $data['credentialId'] = 'not-an-id';
+                return (string) json_encode($data);
+            }],
+            'credential id not a string' => [static function (array $data): string {
+                $data['credentialId'] = 7;
                 return (string) json_encode($data);
             }],
             'string instead of true or false' => [static function (array $data): string {
@@ -344,6 +483,7 @@ final class GitStackSettingsTest extends TestCase
         $this->assertSame('https://github.com/owner/repo.git', $settings->url);
         $this->assertSame('whoami/compose.yaml', $settings->composePath);
         $this->assertTrue($settings->recreateOnFolderChange);
+        $this->assertNull($settings->credentialId);
     }
 
     public function testSettingFromANewerVersionIsRefusedByName(): void

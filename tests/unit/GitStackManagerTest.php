@@ -298,6 +298,170 @@ final class GitStackManagerTest extends TestCase
         $this->assertSame([$folder], $this->manager->listGitStacks());
     }
 
+    // ----- credentials -----
+
+    public function testGitCredentialIsFoundByNameOrIdAndRegistryCredentialsAreIgnored(): void
+    {
+        $vault = $this->emptyVault();
+        $git = $vault->saveCredential(['name' => 'Forgejo', 'provider' => 'git', 'registry' => 'git.example.com', 'username' => 'bot', 'secret' => 't1']);
+        $vault->saveCredential(['name' => 'Docker', 'provider' => 'docker', 'registry' => 'docker.io', 'username' => 'bot', 'secret' => 't2']);
+
+        $this->assertSame($git['id'], $this->manager->findGitCredential('Forgejo'));
+        $this->assertSame($git['id'], $this->manager->findGitCredential($git['id']));
+        try {
+            $this->manager->findGitCredential('Docker');
+            $this->fail('Found a registry credential as a git credential');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('Git credentials: Forgejo', $error->getMessage());
+        }
+    }
+
+    public function testADeployKeyIsNotFoundAsAGitCredential(): void
+    {
+        // A deploy key belongs to the one stack it was made for: no other stack may pick it.
+        $vault = $this->emptyVault();
+        $token = $vault->saveCredential(['name' => 'Forgejo', 'provider' => 'git', 'registry' => 'git.example.com', 'username' => 'bot', 'secret' => 't1']);
+        $key = $vault->saveCredential(['name' => 'other deploy key', 'provider' => 'git-ssh', 'registry' => 'git.example.com', 'username' => 'git', 'secret' => 'k']);
+
+        foreach (['other deploy key', $key['id']] as $nameOrId) {
+            try {
+                $this->manager->findGitCredential($nameOrId);
+                $this->fail('Found a deploy key as a git credential');
+            } catch (RuntimeException $error) {
+                $this->assertStringContainsString('Git credentials: Forgejo.', $error->getMessage());
+            }
+        }
+        $this->assertSame($token['id'], $this->manager->findGitCredential('Forgejo'));
+    }
+
+    public function testAddingAnSshStackWithACredentialIsRefusedBeforeAnythingIsMade(): void
+    {
+        $token = $this->emptyVault()->saveCredential(['name' => 'Forgejo', 'provider' => 'git', 'registry' => 'github.com', 'username' => 'bot', 'secret' => 't1']);
+
+        try {
+            $this->manager->add('whoami', 'git@github.com:owner/repo.git', 'main', 'whoami/compose.yaml', $this->clonesRoot, '', $token['id']);
+            $this->fail('An ssh stack was added with another credential');
+        } catch (\InvalidArgumentException $error) {
+            $this->assertStringContainsString('gets a deploy key of its own', $error->getMessage());
+        }
+        $this->assertDirectoryDoesNotExist($this->composeRoot . '/whoami');
+        $this->assertSame([], glob($this->clonesRoot . '/*') ?: []);
+        $this->assertCount(1, (new \CredentialVault())->listCredentials());
+    }
+
+    public function testTwoGitCredentialsWithTheSameNameAreNotGuessedBetween(): void
+    {
+        $vault = $this->emptyVault();
+        $vault->saveCredential(['name' => 'Bot', 'provider' => 'git', 'registry' => 'github.com', 'username' => 'a', 'secret' => 't1']);
+        $vault->saveCredential(['name' => 'Bot', 'provider' => 'git', 'registry' => 'gitlab.com', 'username' => 'b', 'secret' => 't2']);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage("Several git credentials are named 'Bot'");
+        $this->manager->findGitCredential('Bot');
+    }
+
+    public function testAddThatCannotReachAPrivateRepositoryLeavesNoCloneAndNoCredentialFile(): void
+    {
+        $credential = $this->emptyVault()->saveCredential(
+            ['name' => 'Local', 'provider' => 'git', 'registry' => '127.0.0.1:9', 'username' => 'bot', 'secret' => 'token']
+        );
+
+        try {
+            $this->manager->add('private', 'https://127.0.0.1:9/team/stacks.git', 'main', 'whoami/compose.yaml', $this->clonesRoot, '', $credential['id']);
+            $this->fail('Added a stack whose repository could not be reached');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('Could not clone', $error->getMessage());
+        }
+        $this->assertDirectoryDoesNotExist($this->composeRoot . '/private');
+        $this->assertSame([], glob($this->clonesRoot . '/*') ?: []);
+        $this->assertSame([], glob(COMPOSE_GIT_CREDENTIAL_DIR . '/*') ?: []);
+    }
+
+    public function testCredentialCanBeRemovedAndIsShownInStatus(): void
+    {
+        $folder = $this->manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+        $this->assertNull($this->manager->status($folder)['credential']);
+
+        // A repository on this server never takes one.
+        $credential = $this->emptyVault()->saveCredential(
+            ['name' => 'Forgejo', 'provider' => 'git', 'registry' => 'git.example.com', 'username' => 'bot', 'secret' => 't1']
+        );
+        try {
+            $this->manager->setCredential($folder, $credential['id']);
+            $this->fail('Gave a repository on this server a credential');
+        } catch (\InvalidArgumentException $error) {
+            $this->assertStringContainsString('needs no credential', $error->getMessage());
+        }
+
+        $this->manager->setCredential($folder, null);
+        $this->assertNull(GitStackSettings::load($this->composeRoot . '/' . $folder)?->credentialId);
+    }
+
+    public function testCredentialTestReachesTheRepositoryOfAStackThatUsesIt(): void
+    {
+        $credential = $this->emptyVault()->saveCredential(
+            ['name' => 'Local', 'provider' => 'git', 'registry' => '127.0.0.1:9', 'username' => 'bot', 'secret' => 'token']
+        );
+        $this->assertNull($this->manager->testCredential($credential['id']));
+
+        // A stack whose repository cannot be reached (nothing listens on port 9).
+        $folder = $this->manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+        $stackDir = $this->composeRoot . '/' . $folder;
+        $data = json_decode((string) file_get_contents($stackDir . '/git.json'), true);
+        $data['url'] = 'https://127.0.0.1:9/team/stacks.git';
+        $data['credentialId'] = $credential['id'];
+        file_put_contents($stackDir . '/git.json', (string) json_encode($data));
+
+        $test = $this->manager->testCredential($credential['id']);
+
+        $this->assertNotNull($test);
+        $this->assertFalse($test['valid']);
+        $this->assertStringContainsString("Could not reach https://127.0.0.1:9/team/stacks.git (used by '$folder')", $test['message']);
+    }
+
+    public function testOnlyAnSshStackHasADeployKeyOrPinnedHostKeys(): void
+    {
+        $folder = $this->manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+
+        try {
+            $this->manager->deployKey($folder);
+            $this->fail('Showed a deploy key for a stack that does not use ssh');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('has no deploy key', $error->getMessage());
+        }
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('does not reach its repository over ssh');
+        $this->manager->trustHost($folder);
+    }
+
+    public function testAnSshStackKeepsItsOwnDeployKey(): void
+    {
+        $folder = $this->manager->add('whoami', $this->upstream, 'main', 'whoami/compose.yaml', $this->clonesRoot);
+        $stackDir = $this->composeRoot . '/' . $folder;
+        GitStackSettings::createNew('git@github.com:owner/repo.git', 'main', 'whoami/compose.yaml', $this->clonesRoot, $folder)
+            ->withCredentialId(str_repeat('cd', 16))
+            ->withSshKnownHosts("github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n")
+            ->save($stackDir);
+
+        $token = $this->emptyVault()->saveCredential(['name' => 'Forgejo', 'provider' => 'git', 'registry' => 'github.com', 'username' => 'bot', 'secret' => 't1']);
+        foreach ([null, $token['id']] as $credentialId) {
+            try {
+                $this->manager->setCredential($folder, $credentialId);
+                $this->fail('The credential of an ssh stack was changed.');
+            } catch (\InvalidArgumentException $error) {
+                $this->assertStringContainsString('always uses a deploy key of its own', $error->getMessage());
+            }
+        }
+        $this->assertSame(str_repeat('cd', 16), GitStackSettings::load($stackDir)->credentialId);
+    }
+
+    public function testCommandLineCredentialNeedsAStackAndANameOrNone(): void
+    {
+        $this->assertSame(2, $this->runCli(['compose-git', 'credential', 'whoami']));
+        $this->assertSame(2, $this->runCli(['compose-git', 'credential', 'whoami', 'Bot', '--none']));
+        $this->assertSame(1, $this->runCli(['compose-git', 'credential', 'whoami', 'No such credential']));
+    }
+
     // ----- reclone -----
 
     public function testRecloneMovesTheOldCloneAsideAndReturnsToTheDeployedCommit(): void
@@ -536,8 +700,11 @@ final class GitStackManagerTest extends TestCase
     public static function commandsAndTheirOptions(): array
     {
         return [
-            'add' => ['add', ['--url', '--path', '--branch', '--clones-root', '--description']],
-            'convert' => ['convert', ['--url', '--path', '--branch', '--clones-root']],
+            'add' => ['add', ['--url', '--path', '--branch', '--clones-root', '--description', '--credential']],
+            'convert' => ['convert', ['--url', '--path', '--branch', '--clones-root', '--credential']],
+            'credential' => ['credential', ['--none']],
+            'deploy-key' => ['deploy-key', []],
+            'trust-host' => ['trust-host', []],
             'check' => ['check', ['--all']],
             'deploy' => ['deploy', ['--commit', '--save-local-changes', '--wait', '--no-wait', '--wait-timeout', '--profile']],
             'reclone' => ['reclone', []],
@@ -608,6 +775,13 @@ final class GitStackManagerTest extends TestCase
         $errorText = (string) stream_get_contents($errors);
         fclose($errors);
         return [$exit, $output, $errorText];
+    }
+
+    private function emptyVault(): \CredentialVault
+    {
+        @unlink(COMPOSE_CREDENTIAL_VAULT_FILE);
+        @unlink(COMPOSE_CREDENTIAL_KEY_FILE);
+        return new \CredentialVault();
     }
 
     /** @param string[] $argv */

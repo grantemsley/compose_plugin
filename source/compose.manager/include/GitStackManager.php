@@ -8,6 +8,7 @@ require_once '/usr/local/emhttp/plugins/compose.manager/include/GitPathGuard.php
 require_once '/usr/local/emhttp/plugins/compose.manager/include/GitStackSettings.php';
 require_once '/usr/local/emhttp/plugins/compose.manager/include/GitStackState.php';
 require_once '/usr/local/emhttp/plugins/compose.manager/include/GitClone.php';
+require_once '/usr/local/emhttp/plugins/compose.manager/include/CredentialVault.php';
 
 /**
  * Creates and looks after git stacks: what the compose-git command does,
@@ -46,7 +47,8 @@ final class GitStackManager
         string $branch,
         string $composePath,
         ?string $clonesRoot,
-        string $description = ''
+        string $description = '',
+        ?string $credentialId = null
     ): string {
         $this->assertArrayStarted();
         $folder = StackInfo::sanitizeProjectString($stackName);
@@ -58,14 +60,14 @@ final class GitStackManager
             throw new RuntimeException("A stack folder named '$folder' already exists. Choose another name, or use convert for that stack.");
         }
 
-        $settings = GitStackSettings::createNew($url, $branch, $composePath, $clonesRoot ?? COMPOSE_GIT_DEFAULT_CLONES_ROOT, $folder);
+        $settings = $this->newSettings($url, $branch, $composePath, $clonesRoot, $folder, $credentialId);
         ($this->say)("Cloning $url ($branch) into {$settings->cloneDir}...");
-        (new GitClone($settings))->create();
+        $this->createClone($settings);
 
         try {
             $stack = StackInfo::createNew($this->composeRoot, $stackName, $description, $settings->composeFileInClone());
             $stackDir = $this->composeRoot . '/' . $stack->projectFolder;
-            $settings->save($stackDir);
+            $settings->saveCheckingCredential($stackDir);
             (new GitStackState(null, null))->save($stackDir);
         } catch (Throwable $error) {
             // Nothing here deletes files, so name what was left: a retry makes a new clone,
@@ -80,6 +82,9 @@ final class GitStackManager
             throw new RuntimeException($error->getMessage() . "\n" . $leftBehind, 0, $error);
         }
         ($this->say)("Created stack '{$stack->projectFolder}'. It is not deployed yet.");
+        if ($settings->credentialId !== null) {
+            $this->logCredentialChange($stack->projectFolder, $settings->credentialId);
+        }
         return $stack->projectFolder;
     }
 
@@ -95,8 +100,14 @@ final class GitStackManager
      * @return string The backup folder
      * @throws RuntimeException|InvalidArgumentException naming why nothing was changed
      */
-    public function convert(string $folder, string $url, string $branch, string $composePath, ?string $clonesRoot): string
-    {
+    public function convert(
+        string $folder,
+        string $url,
+        string $branch,
+        string $composePath,
+        ?string $clonesRoot,
+        ?string $credentialId = null
+    ): string {
         $this->assertArrayStarted();
         $stack = $this->stack($folder);
         if ($stack->isGitStack()) {
@@ -104,16 +115,16 @@ final class GitStackManager
         }
         $stackDir = $stack->path;
 
-        return $this->withStackLock($stack, function () use ($stack, $stackDir, $folder, $url, $branch, $composePath, $clonesRoot): string {
+        return $this->withStackLock($stack, function () use ($stack, $stackDir, $folder, $url, $branch, $composePath, $clonesRoot, $credentialId): string {
             $oldOverride = $stack->getOverridePath();
             $oldEnv = $stack->getEffectiveEnvFilePath();
             $hasExplicitEnvPath = trim((string) @file_get_contents($stackDir . '/envpath')) !== '';
             $oldComposeFile = $stack->isIndirect ? null : $stack->composeFilePath;
             $foldersNextToOldComposeFile = $this->foldersIn($stack->composeSource);
 
-            $settings = GitStackSettings::createNew($url, $branch, $composePath, $clonesRoot ?? COMPOSE_GIT_DEFAULT_CLONES_ROOT, $folder);
+            $settings = $this->newSettings($url, $branch, $composePath, $clonesRoot, $folder, $credentialId);
             ($this->say)("Cloning $url ($branch) into {$settings->cloneDir}...");
-            (new GitClone($settings))->create();
+            $this->createClone($settings);
 
             // From here the stack folder changes; everything replaced goes into the backup.
             $backupDir = $stackDir . '/pre-git-' . date('Y-m-d_His');
@@ -159,7 +170,7 @@ final class GitStackManager
                     ($this->say)("Copied $oldEnv to $stackEnv.");
                 }
 
-                $settings->save($stackDir);
+                $settings->saveCheckingCredential($stackDir);
                 (new GitStackState(null, null))->save($stackDir);
 
                 // The managed override's name follows the compose file's name, so
@@ -185,6 +196,9 @@ final class GitStackManager
             }
 
             ($this->say)("'$folder' is now a git stack. Its containers change at the next deploy.");
+            if ($settings->credentialId !== null) {
+                $this->logCredentialChange($folder, $settings->credentialId);
+            }
             if ($foldersNextToOldComposeFile !== []) {
                 // The compose file is not parsed here; this is only a reminder.
                 ($this->say)(
@@ -242,7 +256,7 @@ final class GitStackManager
     /**
      * What is known about a git stack locally, without asking the remote.
      *
-     * @return array{stack: string, url: string, branch: string, composePath: string, cloneDir: string, recreateOnFolderChange: bool, deployedCommit: ?string, failedCommit: ?string, checkedOutCommit: ?string, localChanges: list<string>, problem: ?string}
+     * @return array{stack: string, url: string, branch: string, composePath: string, cloneDir: string, recreateOnFolderChange: bool, credential: ?string, deployedCommit: ?string, failedCommit: ?string, checkedOutCommit: ?string, localChanges: list<string>, problem: ?string}
      */
     public function status(string $folder): array
     {
@@ -266,12 +280,269 @@ final class GitStackManager
             'composePath' => $settings->composePath,
             'cloneDir' => $settings->cloneDir,
             'recreateOnFolderChange' => $settings->recreateOnFolderChange,
+            'credential' => $settings->credentialId === null ? null : $this->credentialName($settings->credentialId),
             'deployedCommit' => $state->deployedCommit,
             'failedCommit' => $state->failedCommit,
             'checkedOutCommit' => $checkedOut,
             'localChanges' => $changes,
             'problem' => $problem,
         ];
+    }
+
+    /**
+     * Change the credential a git stack uses to reach its repository, or remove it.
+     *
+     * The repository is reached with the new setting first, and nothing is
+     * saved unless that works.
+     *
+     * @throws RuntimeException|InvalidArgumentException naming why nothing was changed
+     */
+    public function setCredential(string $folder, ?string $credentialId): void
+    {
+        $this->assertArrayStarted();
+        $stack = $this->stack($folder);
+        $settings = $this->settings($stack);
+        if ($settings->isSsh()) {
+            throw new InvalidArgumentException(
+                "An ssh stack always uses a deploy key of its own, so the credential of '$folder' cannot be changed. "
+                . 'compose-git deploy-key shows its public key.'
+            );
+        }
+
+        $this->withStackLock($stack, function () use ($stack, $settings, $credentialId): void {
+            $changed = $settings->withCredentialId($credentialId);
+            ($this->say)("Checking that {$changed->url} can be reached with the new setting...");
+            (new GitClone($changed))->remoteBranchCommit();
+            $changed->saveCheckingCredential($stack->path);
+        });
+        $this->logCredentialChange($folder, $credentialId);
+        ($this->say)($credentialId === null
+            ? "'$folder' now reaches its repository without a credential."
+            : "'$folder' now uses the credential '" . $this->credentialName($credentialId) . "'.");
+    }
+
+    /**
+     * The id of a git repository credential, given its exact name or its id.
+     *
+     * @throws RuntimeException if there is none, or several with that name
+     */
+    public function findGitCredential(string $nameOrId): string
+    {
+        $gitCredentials = array_values(array_filter(
+            (new CredentialVault())->listCredentials(),
+            // HTTPS tokens only: a deploy key belongs to the one stack it was made for.
+            static fn(array $credential): bool => ($credential['provider'] ?? '') === 'git'
+        ));
+        $matches = array_values(array_filter(
+            $gitCredentials,
+            static fn(array $credential): bool => $credential['id'] === $nameOrId || $credential['name'] === $nameOrId
+        ));
+        if (count($matches) === 1) {
+            return $matches[0]['id'];
+        }
+        if (count($matches) > 1) {
+            throw new RuntimeException("Several git credentials are named '$nameOrId'. Use the credential's id instead.");
+        }
+        $names = array_map(static fn(array $credential): string => $credential['name'], $gitCredentials);
+        throw new RuntimeException(
+            "There is no git credential named '$nameOrId'. "
+            . ($names === [] ? 'Add one on the Credentials tab of the plugin settings first.' : 'Git credentials: ' . implode(', ', $names) . '.')
+        );
+    }
+
+    /**
+     * Test a git credential by reaching the repository of a git stack that uses it.
+     *
+     * @return array{id: string, name: string, registry: string, valid: bool, message: string}|null
+     *     null when no git stack uses the credential, so there is no repository to try
+     */
+    public function testCredential(string $credentialId): ?array
+    {
+        foreach ($this->listGitStacks() as $folder) {
+            try {
+                $settings = $this->settings($this->stack($folder));
+            } catch (Throwable) {
+                continue;
+            }
+            if ($settings->credentialId !== $credentialId) {
+                continue;
+            }
+            $summary = (new CredentialVault())->getCredentialSummary($credentialId);
+            $result = ['id' => $credentialId, 'name' => $summary['name'], 'registry' => $summary['registry']];
+            try {
+                (new GitClone($settings))->remoteBranchCommit();
+                return $result + ['valid' => true, 'message' => "Reached {$settings->url} (used by '$folder')."];
+            } catch (Throwable $error) {
+                return $result + ['valid' => false, 'message' => "Could not reach {$settings->url} (used by '$folder'): " . $error->getMessage()];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The public half of an ssh stack's deploy key, to add to the repository's settings.
+     *
+     * @throws RuntimeException if the stack is not an ssh stack
+     */
+    public function deployKey(string $folder): string
+    {
+        $settings = $this->settings($this->stack($folder));
+        if (!$settings->isSsh() || $settings->credentialId === null) {
+            throw new RuntimeException("'$folder' does not reach its repository over ssh, so it has no deploy key.");
+        }
+        return GitSsh::publicKey($settings->credentialId);
+    }
+
+    /**
+     * Pin an ssh stack's repository host keys again, after the server's keys changed.
+     *
+     * The old and new fingerprints are shown, and the new keys are saved only
+     * after the repository has been reached with them.
+     *
+     * @throws RuntimeException naming why nothing was changed
+     */
+    public function trustHost(string $folder): void
+    {
+        $this->assertArrayStarted();
+        $stack = $this->stack($folder);
+        $settings = $this->settings($stack);
+        $address = GitStackSettings::sshAddress($settings->url);
+        if ($address === null) {
+            throw new RuntimeException("'$folder' does not reach its repository over ssh.");
+        }
+
+        $this->withStackLock($stack, function () use ($stack, $settings, $address): void {
+            $knownHosts = GitSsh::scanHostKeys($address['host'], $address['port']);
+            ($this->say)('Pinned now:   ' . implode(', ', GitSsh::fingerprints((string) $settings->sshKnownHosts)));
+            ($this->say)('Host offers:  ' . implode(', ', GitSsh::fingerprints($knownHosts)));
+            if ($knownHosts === $settings->sshKnownHosts) {
+                ($this->say)('The host keys have not changed.');
+                return;
+            }
+            ($this->say)('Compare the new fingerprints with the ones your git host publishes before you deploy.');
+            $changed = $settings->withSshKnownHosts($knownHosts);
+            (new GitClone($changed))->remoteBranchCommit();
+            $changed->save($stack->path);
+            ($this->say)('The new host keys are pinned.');
+        });
+    }
+
+    /**
+     * Settings for a new git stack. For an ssh repository this also makes (or
+     * reuses) the stack's deploy key and pins the host's keys.
+     */
+    private function newSettings(
+        string $url,
+        string $branch,
+        string $composePath,
+        ?string $clonesRoot,
+        string $folder,
+        ?string $credentialId
+    ): GitStackSettings {
+        $settings = GitStackSettings::createNew($url, $branch, $composePath, $clonesRoot ?? COMPOSE_GIT_DEFAULT_CLONES_ROOT, $folder);
+        if (!$settings->isSsh()) {
+            return $settings->withCredentialId($credentialId);
+        }
+
+        $address = GitStackSettings::sshAddress($url);
+        if ($address === null) {
+            throw new InvalidArgumentException("The ssh repository address is not valid: $url");
+        }
+        if ($credentialId !== null) {
+            throw new InvalidArgumentException('An ssh stack gets a deploy key of its own, so it cannot be given another credential.');
+        }
+        // The host first: a mistyped host then fails before a deploy key is made for it.
+        $knownHosts = GitSsh::scanHostKeys($address['host'], $address['port']);
+        $credentialId = $this->deployKeyFor($folder, $address);
+        ($this->say)("Pinned the ssh host keys of {$address['host']}: " . implode(', ', GitSsh::fingerprints($knownHosts)));
+        ($this->say)('Compare them with the fingerprints your git host publishes.');
+        return $settings->withCredentialId($credentialId)->withSshKnownHosts($knownHosts);
+    }
+
+    /**
+     * The stack's deploy key: the one made for it by an earlier attempt, or a new one.
+     *
+     * @param array{user: string, host: string, port: int, path: string} $address
+     */
+    private function deployKeyFor(string $folder, array $address): string
+    {
+        $name = "$folder deploy key";
+        $host = $address['host'] . ($address['port'] === 22 ? '' : ':' . $address['port']);
+        foreach ((new CredentialVault())->listCredentials() as $credential) {
+            if ($credential['name'] === $name && $credential['provider'] === 'git-ssh' && $credential['registry'] === $host) {
+                ($this->say)("Using the deploy key made for '$folder' earlier.");
+                return $credential['id'];
+            }
+        }
+        $key = GitSsh::generateKey("compose-manager $folder");
+        ($this->say)("Made a new deploy key for '$folder'.");
+        $id = (new CredentialVault())->saveCredential([
+            'name' => $name,
+            'provider' => 'git-ssh',
+            'registry' => $host,
+            'username' => $address['user'],
+            'secret' => $key['private'],
+        ])['id'];
+        composeLogger("Made a deploy key for git stack '$folder'", ['id' => $id, 'host' => $host], 'user', 'info', 'credentials');
+        return $id;
+    }
+
+    /**
+     * Clone a new stack's repository. When an ssh clone fails, show the deploy
+     * key: the usual reason is that it has not been added to the repository yet.
+     */
+    private function createClone(GitStackSettings $settings): void
+    {
+        try {
+            (new GitClone($settings))->create();
+        } catch (RuntimeException $error) {
+            if (!$settings->isSsh() || $settings->credentialId === null) {
+                throw $error;
+            }
+            try {
+                $publicKey = GitSsh::publicKey($settings->credentialId);
+            } catch (RuntimeException) {
+                // Not a deploy key at all (the wrong --credential): the clone's own message says so.
+                throw $error;
+            }
+            throw new RuntimeException(
+                $error->getMessage() . "\n\nIf the repository does not know this stack's deploy key yet, add it as a "
+                . "read-only deploy key in the repository's settings, then run the same command again:\n"
+                . $publicKey,
+                0,
+                $error
+            );
+        }
+    }
+
+    /**
+     * A credential's name for messages, or a note that it is gone.
+     */
+    private function credentialName(string $credentialId): string
+    {
+        try {
+            return (new CredentialVault())->getCredentialSummary($credentialId)['name'];
+        } catch (Throwable) {
+            return "$credentialId (no longer in the credential vault)";
+        }
+    }
+
+    /**
+     * Record in the syslog which credential a git stack now uses, as the web UI's credential actions do.
+     */
+    private function logCredentialChange(string $folder, ?string $credentialId): void
+    {
+        if ($credentialId === null) {
+            composeLogger("Git stack '$folder' no longer uses a credential", null, 'user', 'info', 'credentials');
+            return;
+        }
+        composeLogger(
+            "Git stack '$folder' now uses the credential '" . $this->credentialName($credentialId) . "'",
+            ['id' => $credentialId],
+            'user',
+            'info',
+            'credentials'
+        );
     }
 
     /**
