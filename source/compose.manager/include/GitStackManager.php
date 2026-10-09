@@ -473,6 +473,10 @@ final class GitStackManager
     /**
      * The stack's deploy key: the one made for it by an earlier attempt, or a new one.
      *
+     * The key is found by the stack's name and host. The vault does not record the repository,
+     * so a key left behind by a deleted stack of the same name is reused too; the message says
+     * what to do when that key belongs to another repository.
+     *
      * @param array{user: string, host: string, port: int, path: string} $address
      */
     private function deployKeyFor(string $folder, array $address): string
@@ -481,7 +485,11 @@ final class GitStackManager
         $host = $address['host'] . ($address['port'] === 22 ? '' : ':' . $address['port']);
         foreach ((new CredentialVault())->listCredentials() as $credential) {
             if ($credential['name'] === $name && $credential['provider'] === 'git-ssh' && $credential['registry'] === $host) {
-                ($this->say)("Using the deploy key made for '$folder' earlier.");
+                ($this->say)(
+                    "Using the deploy key made for '$folder' earlier ('$name' on the Credentials tab). If it was "
+                    . "made for another repository, by a stack of the same name that has since been deleted, "
+                    . "delete '$name' first: GitHub, for one, refuses a deploy key that another repository has."
+                );
                 return $credential['id'];
             }
         }

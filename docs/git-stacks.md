@@ -254,6 +254,10 @@ Deploy keys), then run the same command again. `compose-git deploy-key myapp` sh
 Until then the key is listed on the Credentials tab as used by no stack: leave it there, or the second run
 makes a new key, and the one you added to the repository no longer works.
 
+Deleting a stack leaves its key on the Credentials tab. Delete the key there too before you add a new stack of
+the same name for another repository on the same host: otherwise the new stack reuses the old key, and GitHub
+refuses a deploy key that another repository already has.
+
 When the stack is added, the server's ssh host keys are pinned and their fingerprints printed. Compare them with
 the ones your git host publishes (GitHub, GitLab and Codeberg list theirs). Every later connection must match
 them. If the server is rebuilt and its keys change, deploys stop until you run `compose-git trust-host myapp`,
