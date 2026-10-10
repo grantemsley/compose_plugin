@@ -226,7 +226,7 @@ later plain `deploy` brings the stack back to the branch's latest.
 | Stack menu, **Check for Changes** | Compare the deployed commit with the branch on the remote. Says whether a newer commit changes the stack's folder, or only files outside it, and offers to deploy it either way (see [below](#the-stacks-folder-and-files-outside-it)). | `check` |
 | Stack menu, **Pull and Redeploy** | Deploy the branch's latest commit. If files in the clone were changed, or a commit was made in it by hand, offers to save them as a patch and discard them first. Not offered while the clone has a problem (missing or unreadable): the dialog says what it is. | `deploy` (with `--save-local-changes`) |
 | Stack menu, **Deploy Commit...** | Deploy a commit given by its full id, to go back to an older version. | `deploy --commit` |
-| Edit Stack, Sources tab | Shows the repository, branch, compose file, clone, the deployed and checked-out commits, a failed commit, files changed in the clone, and an ssh stack's deploy key. | `status`, `deploy-key` |
+| Edit Stack, Sources tab | Shows the repository, branch, compose file, clone, the deployed and checked-out commits, a failed commit, files changed in the clone (also shown above the file on the Compose tab), and an ssh stack's deploy key. | `status`, `deploy-key` |
 | Stack list | Under the project name: the branch and deployed commit, and "failed" after a failed deploy. | `status` |
 
 Changing a stack's credential, pinning a changed ssh host key and recloning are done from the command line.
@@ -522,6 +522,6 @@ deployed commit: only `compose-git deploy` does that.
 - **No automatic deploys yet.** Use `check` and `deploy` from your own schedule or a git hook.
 - No submodules and no Git LFS: the clone checks out plain files only.
 - **The web UI's editor edits the file in the clone** (it says so above the file). The next deploy treats that
-  as a local change. Changes that must survive deploys belong in the plugin's override or the stack folder's
+  as a local change, and the editor lists it in a "Changed in the clone" box. Changes that must survive deploys belong in the plugin's override or the stack folder's
   `.env`.
 - **Deleting a git stack leaves its clone** under the clones folder, and names it. Remove it by hand.

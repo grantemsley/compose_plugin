@@ -280,6 +280,25 @@
   white-space: pre-wrap;
 }
 
+/* Changes made in a git stack's clone, which the next deploy stops on: in the same orange
+   box as the deploy key panel, on the Sources tab and above the compose file. */
+.compose-git-warning-box {
+  background-color: var(--dynamix-tablesorter-tbody-row-alt-bg-color);
+  border: 1px solid var(--brand-orange);
+  border-left-width: 5px;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.compose-git-warning-box-title {
+  font-weight: 600;
+  color: var(--brand-orange);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .settings-field {
   margin-bottom: 24px;
   position: relative;

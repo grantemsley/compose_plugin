@@ -547,6 +547,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                     <div id="editor-compose-git-banner" class="compose-status-warning" style="display:none;padding:6px 12px;font-size:0.9em;">
                         <i class="fa fa-code-fork"></i> <strong>This is a git stack.</strong> This file is in the plugin's clone of the repository: change it in the repository, then use Pull and Redeploy. An edit saved here is a local change, which the next deploy stops on (it can save it as a patch and discard it). Changes that must survive deploys belong in the Labels tab (the plugin's override) or the .env tab.
                     </div>
+                    <div id="editor-compose-git-changed" class="compose-git-warning-box" style="display:none;margin:6px 12px;"></div>
                     <div id="compose-file-selector-wrap" style="display:none;align-items:center;gap:8px;padding:6px 12px;">
                         <label for="compose-file-selector" style="margin:0;">File:</label>
                         <select id="compose-file-selector" onchange="switchComposeFile(this.value)"></select>
@@ -642,7 +643,7 @@ $acePath = file_exists('/usr/local/emhttp/plugins/dynamix/javascript/ace/ace.js'
                                     <tr><th>Checked out</th><td id="settings-git-checked-out"></td></tr>
                                 </tbody>
                             </table>
-                            <div id="settings-git-local-changes" class="compose-status-warning" style="display:none;margin-top:8px;"></div>
+                            <div id="settings-git-local-changes" class="compose-git-warning-box" style="display:none;margin-top:8px;"></div>
                             <div id="settings-git-problem" class="compose-status-danger" style="display:none;margin-top:8px;"></div>
                             <div id="settings-git-deploy-key-wrap" style="display:none;margin-top:8px;">
                                 <div class="settings-field-help">This stack's deploy key. Add it to the repository as a read-only deploy key:</div>

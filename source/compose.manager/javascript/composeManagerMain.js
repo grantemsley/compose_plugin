@@ -1326,6 +1326,7 @@ var editorModal = {
     modifiedTabs: new Set(),
     currentProject: null,
     currentProjectName: null,
+    isGitStack: false,
     validationTimeout: null,
     // Settings state
     originalSettings: {},
@@ -6501,7 +6502,7 @@ function openEditorModalByProject(project, projectName, initialTab) {
     $('#env-editor-wrap').show();
     // A git stack's Sources readout and banner are shown again from getStackSettings.
     showGitSourceForStack(project, false);
-    $('#editor-compose-git-banner').hide();
+    $('#editor-compose-git-banner, #editor-compose-git-changed').hide();
 
     // Set modal title
     $('#editor-modal-title').text('Editing: ' + projectName);
@@ -6672,6 +6673,8 @@ function gitShortCommit(commit) {
 // of the Compose Source choice: a git stack's compose file is in its clone,
 // and is chosen by the stack's git settings, not here.
 function showGitSourceForStack(project, isGitStack) {
+    editorModal.isGitStack = isGitStack;
+    $('#editor-compose-git-changed').hide();
     $('#settings-compose-source-field').toggle(!isGitStack);
     $('#settings-git-source').toggle(isGitStack);
     if (!isGitStack) {
@@ -6707,6 +6710,32 @@ function showGitSourceForStack(project, isGitStack) {
         $('#settings-git-source-loading').hide();
         $('#settings-git-source-error').text('Could not read the git stack.').show();
     });
+}
+
+// Fill a box with the changes made in a git stack's clone (a hand-made commit, changed
+// files), or leave it hidden when there are none.
+function showGitLocalChanges($box, git) {
+    var changes = git.localChanges || [];
+    if (!git.commitMadeByHand && changes.length === 0) {
+        $box.hide();
+        return;
+    }
+    $box.empty().append(
+        $('<div class="compose-git-warning-box-title">').append(
+            $('<i class="fa fa-exclamation-triangle">'),
+            $('<span>').text('Changed in the clone')
+        )
+    );
+    if (git.commitMadeByHand) {
+        $box.append($('<div>').text('The checked-out commit ' + gitShortCommit(git.checkedOutCommit)
+            + ' was made in the clone by hand, not in the repository.'));
+    }
+    if (changes.length > 0) {
+        $box.append($('<div>').text('Files changed: ' + changes.join(', ')));
+    }
+    $box.append($('<div style="margin-top:6px;">').text('The next deploy stops on these. Pull and Redeploy offers to '
+        + 'save them as a patch in the stack folder and discard them. To keep a change, make it in the repository.'));
+    $box.show();
 }
 
 // Turn the stack open in the editor into a git stack (the Sources tab's
@@ -6857,18 +6886,12 @@ function renderGitSource(git) {
     $('#settings-git-checked-out').text(gitShortCommit(git.checkedOutCommit));
     $('#settings-git-source-table').show();
 
-    // What the next deploy will stop on (or offer to save and discard, from the stack menu).
-    var changes = git.localChanges || [];
-    var changeLines = [];
-    if (git.commitMadeByHand) {
-        changeLines.push('The checked-out commit was made in the clone by hand, which the next deploy will stop on.');
-    }
-    if (changes.length > 0) {
-        changeLines.push('Files changed in the clone, which the next deploy will stop on: ' + changes.join(', '));
-    }
-    if (changeLines.length > 0) {
-        $('#settings-git-local-changes').text(changeLines.join(' ')).show();
-    }
+    // What the next deploy will stop on (or offer to save and discard, from the stack menu),
+    // on this tab and above the compose file, so it is seen where the file is edited.
+    showGitLocalChanges($('#settings-git-local-changes'), git);
+    showGitLocalChanges($('#editor-compose-git-changed'), git);
+    // The box above the compose file takes room from the editor, so it is sized again.
+    refreshEditorContents('compose');
     if (git.problem) {
         $('#settings-git-problem').text(git.problem).show();
     }
@@ -7993,6 +8016,12 @@ function saveTab(tabName, saveErrors) {
         // Regenerate profiles if compose file was saved
         if (tabName === 'compose') {
             generateProfiles(null, project);
+        }
+
+        // A git stack's files are in its clone, so saving one changes the clone:
+        // read its state again for the Sources tab and the "Changed in the clone" box.
+        if (editorModal.isGitStack) {
+            showGitSourceForStack(project, true);
         }
 
         return true;
